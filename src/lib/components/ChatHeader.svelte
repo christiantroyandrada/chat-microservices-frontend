@@ -1,0 +1,69 @@
+<script lang="ts">
+	import type { ChatConversation } from '$lib/types';
+	import { createEventDispatcher } from 'svelte';
+
+	export let recipient: ChatConversation | null = null;
+	export let typingUsers: Set<string> = new Set();
+
+	const dispatch = createEventDispatcher();
+</script>
+
+{#if recipient}
+	<div class="border-b border-gray-200 bg-white p-4">
+		<div class="flex items-center justify-between">
+			<div class="flex items-center gap-3">
+				<!-- Avatar -->
+				<div
+					class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold"
+				>
+					{recipient.username.charAt(0).toUpperCase()}
+				</div>
+
+				<div>
+					<h3 class="text-lg font-semibold text-gray-900">{recipient.username}</h3>
+					{#if typingUsers.has(recipient.userId)}
+						<p class="text-sm text-green-600">typing...</p>
+					{:else}
+						<p class="text-sm text-gray-500">Online</p>
+					{/if}
+				</div>
+			</div>
+
+			<!-- Actions -->
+			<div class="flex items-center gap-2">
+				<button
+					onclick={() => dispatch('call')}
+					class="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
+					title="Video call"
+				>
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+						/>
+					</svg>
+				</button>
+				<button
+					onclick={() => dispatch('info')}
+					class="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
+					title="User info"
+				>
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+						/>
+					</svg>
+				</button>
+			</div>
+		</div>
+	</div>
+{:else}
+	<div class="border-b border-gray-200 bg-white p-4">
+		<div class="text-gray-500 text-center">Select a conversation</div>
+	</div>
+{/if}
