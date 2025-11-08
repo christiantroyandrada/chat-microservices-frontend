@@ -69,8 +69,9 @@ function createAuthStore() {
 			update((state) => ({ ...state, loading: true, error: null }));
 
 			try {
-				const authUser = await authService.login(credentials);
-				const { token: _token, ...user } = authUser;
+				// Perform login (stores token) then fetch full user profile to avoid timing/race issues
+				await authService.login(credentials);
+				const user = await authService.getCurrentUser();
 
 				update((state) => ({ ...state, user, loading: false, error: null }));
 
@@ -97,8 +98,9 @@ function createAuthStore() {
 			update((state) => ({ ...state, loading: true, error: null }));
 
 			try {
-				const authUser = await authService.register(credentials);
-				const { token: _token, ...user } = authUser;
+				// Perform registration (stores token) then fetch full user profile to avoid timing/race issues
+				await authService.register(credentials);
+				const user = await authService.getCurrentUser();
 
 				update((state) => ({ ...state, user, loading: false, error: null }));
 
