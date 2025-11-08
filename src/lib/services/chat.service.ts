@@ -39,7 +39,7 @@ function normalizeMessage(serverMsg: ServerMessage): Message {
 		timestamp: serverMsg.timestamp ?? serverMsg.createdAt ?? new Date().toISOString(),
 		read: serverMsg.read ?? serverMsg.isRead ?? false,
 		createdAt: serverMsg.createdAt,
-		updatedAt: serverMsg.updatedAt,
+		updatedAt: serverMsg.updatedAt
 	} as Message;
 }
 
@@ -81,7 +81,7 @@ export const chatService = {
 		// backend expects `message` field, not `content`
 		const response = await apiClient.post<ServerMessage>('/chat/send', {
 			receiverId: payload.receiverId,
-			message: payload.content, // map content -> message for backend
+			message: payload.content // map content -> message for backend
 		});
 
 		if (!response.data) {

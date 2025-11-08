@@ -10,7 +10,7 @@ export const notificationService = {
 	 */
 	async getNotifications(limit = 20, offset = 0): Promise<Notification[]> {
 		try {
-			// include trailing slash so nginx location /notifications/ matches and doesn't redirect
+			// Use canonical `/notifications` prefix
 			const response = await apiClient.get<Notification[]>(
 				`/notifications/?limit=${limit}&offset=${offset}`
 			);

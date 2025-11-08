@@ -8,7 +8,9 @@ export const authService = {
 	async register(credentials: RegisterCredentials): Promise<AuthUser> {
 		// Backend expects 'name' field, frontend uses 'username'
 		// Normalize and sanitize to remove any hidden unicode characters
-		const rawName = (credentials as any).name ?? (credentials as any).username ?? '';
+		// Use a safe, narrow cast instead of `any` to satisfy lint rules
+		const creds = credentials as unknown as Record<string, unknown>;
+		const rawName = (creds.name ?? creds.username ?? '') as string;
 		const normalizedName = String(rawName)
 			.replace(/\u00A0/g, ' ') // Replace non-breaking spaces
 			.replace(/[\s\uFEFF\xA0]+/g, ' ') // Collapse whitespace
@@ -59,13 +61,13 @@ export const authService = {
 	 * Get current user profile
 	 */
 	async getCurrentUser(): Promise<User> {
-		const response = await apiClient.get<any>('/user/me');
-		const d = response.data;
+		const response = await apiClient.get<unknown>('/user/me');
+		const d = response.data as unknown as Record<string, unknown>;
 		// Normalize backend shape { id, name, email } -> frontend User { _id, username, email }
 		const user: User = {
-			_id: d?.id ?? d?._id,
-			username: d?.name ?? d?.username ?? '',
-			email: d?.email ?? ''
+			_id: String(d?.id ?? d?._id ?? ''),
+			username: String(d?.name ?? d?.username ?? ''),
+			email: String(d?.email ?? '')
 		};
 
 		return user;

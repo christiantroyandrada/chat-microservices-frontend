@@ -4,15 +4,23 @@
  * @param delay Delay in milliseconds
  * @returns Debounced function
  */
-export function debounce<T extends (...args: any[]) => any>(
-	fn: T,
+export function debounce<T extends unknown[]>(
+	fn: (...args: T) => unknown,
 	delay: number
-): (...args: Parameters<T>) => void {
+): (...args: T) => void {
 	let timeoutId: ReturnType<typeof setTimeout>;
 
-	return function (this: any, ...args: Parameters<T>) {
+	return function (this: unknown, ...args: T) {
 		clearTimeout(timeoutId);
-		timeoutId = setTimeout(() => fn.apply(this, args), delay);
+		timeoutId = setTimeout(() => {
+			try {
+				(fn as (...a: T) => unknown).apply(this, args);
+			} catch (e) {
+				// swallow errors inside debounced fn to avoid unhandled rejections
+				// caller should handle errors inside their async fn if needed
+				console.error('debounce wrapped function threw', e);
+			}
+		}, delay);
 	};
 }
 
@@ -22,15 +30,19 @@ export function debounce<T extends (...args: any[]) => any>(
  * @param limit Time limit in milliseconds
  * @returns Throttled function
  */
-export function throttle<T extends (...args: any[]) => any>(
-	fn: T,
+export function throttle<T extends unknown[]>(
+	fn: (...args: T) => unknown,
 	limit: number
-): (...args: Parameters<T>) => void {
+): (...args: T) => void {
 	let inThrottle: boolean;
 
-	return function (this: any, ...args: Parameters<T>) {
+	return function (this: unknown, ...args: T) {
 		if (!inThrottle) {
-			fn.apply(this, args);
+			try {
+				(fn as (...a: T) => unknown).apply(this, args);
+			} catch (e) {
+				console.error('throttle wrapped function threw', e);
+			}
 			inThrottle = true;
 			setTimeout(() => (inThrottle = false), limit);
 		}

@@ -9,22 +9,23 @@
 </script>
 
 {#if recipient}
-	<div class="border-b border-gray-200 bg-white p-3 md:p-4">
+	<div class="p-3 md:p-4" style="background: var(--bg-primary); border-bottom: 1px solid rgba(255,255,255,0.06);">
 		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-3">
+			<div class="flex items-center gap-3" style="animation: fadeIn 0.3s ease-out;">
 				<!-- Avatar -->
 				<div
-					class="flex h-10 w-10 items-center justify-center rounded-full bg-linear-to-br from-blue-400 to-purple-500 font-semibold text-white"
+					class="flex h-10 w-10 items-center justify-center rounded-full font-semibold text-white"
+					style="background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);"
 				>
 					{(recipient.username?.[0] ?? '').toUpperCase()}
 				</div>
 
 				<div>
-					<h3 class="text-base font-semibold text-gray-900 md:text-lg">{recipient.username}</h3>
+					<h3 class="text-base font-semibold md:text-lg" style="color: var(--text-primary);">{recipient.username}</h3>
 					{#if typingUsers.has(recipient.userId)}
-						<p class="text-sm text-green-600">typing...</p>
+						<p class="text-sm" style="color: #6366f1; animation: fadeIn 0.2s ease-out;">typing...</p>
 					{:else}
-						<p class="text-sm text-gray-500">Online</p>
+						<p class="text-sm" style="color: var(--text-tertiary);">Online</p>
 					{/if}
 				</div>
 			</div>
@@ -33,7 +34,16 @@
 			<div class="flex items-center gap-2">
 				<button
 					onclick={() => dispatch('call')}
-					class="rounded-full p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+					class="rounded-full p-2 transition-all"
+					style="color: var(--text-secondary); background: transparent;"
+					onmouseenter={(e) => {
+						e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)';
+						e.currentTarget.style.color = '#6366f1';
+					}}
+					onmouseleave={(e) => {
+						e.currentTarget.style.background = 'transparent';
+						e.currentTarget.style.color = 'var(--text-secondary)';
+					}}
 					title="Video call"
 				>
 					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -47,7 +57,16 @@
 				</button>
 				<button
 					onclick={() => dispatch('info')}
-					class="rounded-full p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+					class="rounded-full p-2 transition-all"
+					style="color: var(--text-secondary); background: transparent;"
+					onmouseenter={(e) => {
+						e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)';
+						e.currentTarget.style.color = '#6366f1';
+					}}
+					onmouseleave={(e) => {
+						e.currentTarget.style.background = 'transparent';
+						e.currentTarget.style.color = 'var(--text-secondary)';
+					}}
 					title="User info"
 				>
 					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -63,7 +82,7 @@
 		</div>
 	</div>
 {:else}
-	<div class="border-b border-gray-200 bg-white p-4">
-		<div class="text-center text-gray-500">Select a conversation</div>
+	<div class="p-4" style="background: var(--bg-primary); border-bottom: 1px solid rgba(255,255,255,0.06);">
+		<div class="text-center" style="color: var(--text-secondary);">Select a conversation</div>
 	</div>
 {/if}
