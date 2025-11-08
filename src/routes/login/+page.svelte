@@ -43,9 +43,12 @@
 			// Handle validation errors from backend
 			if (apiError.errors && Array.isArray(apiError.errors)) {
 				// Convert array of errors to field-specific errors
-				fieldErrors = apiError.errors.reduce((acc: Record<string, string>, error: any) => {
-					if (error.field && error.message) {
-						acc[error.field] = error.message;
+				fieldErrors = apiError.errors.reduce((acc: Record<string, string>, errItem: unknown) => {
+					const e = errItem as Record<string, unknown>;
+					const field = typeof e.field === 'string' ? e.field : undefined;
+					const msg = typeof e.message === 'string' ? e.message : undefined;
+					if (field && msg) {
+						acc[field] = msg;
 					}
 					return acc;
 				}, {});

@@ -209,16 +209,17 @@
 		}
 	}
 
-
 	/**
 	 * Create a new conversation with a selected user (from ChatList create event).
 	 * If a conversation already exists, select it. Otherwise, optimistically open a new thread
 	 * and refresh the conversations list in the background.
 	 */
-	async function createConversation(user: any) {
-		if (!user || !user.userId) return;
+	async function createConversation(user: unknown) {
+		const u = user as Record<string, unknown>;
+		const userId = String(u.userId ?? '');
+		if (!userId) return;
 
-		const existing = conversations.find((c) => c.userId === user.userId);
+		const existing = conversations.find((c) => c.userId === userId);
 		if (existing) {
 			await selectConversation(existing.userId);
 			return;
@@ -226,8 +227,8 @@
 
 		// Optimistically open a conversation UI for this user
 		selectedConversation = {
-			userId: user.userId,
-			username: user.username
+			userId,
+			username: String(u.username ?? '')
 		};
 		messages = [];
 

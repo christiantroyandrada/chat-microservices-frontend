@@ -42,19 +42,20 @@ class WebSocketService {
 				reconnectionDelay: 3000
 			});
 
-		this.socket.on('connect', () => {
-			this.notifyStatus('connected');
+			this.socket.on('connect', () => {
+				this.notifyStatus('connected');
 
-			// Clear any pending reconnect timer
-			if (this.reconnectTimer) {
-				clearTimeout(this.reconnectTimer);
-				this.reconnectTimer = null;
-			}
+				// Clear any pending reconnect timer
+				if (this.reconnectTimer) {
+					clearTimeout(this.reconnectTimer);
+					this.reconnectTimer = null;
+				}
 
-			// JWT authentication happens on handshake (io.use middleware on server)
-			// The server automatically joins the user to their room based on authenticated JWT
-			// No need to emit 'identify' event anymore
-		});			this.socket.on('disconnect', () => {
+				// JWT authentication happens on handshake (io.use middleware on server)
+				// The server automatically joins the user to their room based on authenticated JWT
+				// No need to emit 'identify' event anymore
+			});
+			this.socket.on('disconnect', () => {
 				this.notifyStatus('disconnected');
 			});
 
@@ -67,18 +68,20 @@ class WebSocketService {
 			});
 
 			// Listen for incoming messages
-			this.socket.on('receiveMessage', (data: any) => {
+			this.socket.on('receiveMessage', (payload: unknown) => {
+				const data = payload as Record<string, unknown>;
+
 				// Normalize server message shape to frontend `Message`
 				const normalized = {
-					_id: data._id || data.id || String(data._id || data.id || ''),
-					senderId: data.senderId,
-					senderUsername: data.senderUsername || data.senderName || undefined,
-					receiverId: data.receiverId,
-					content: data.content ?? data.message ?? '',
-					timestamp: data.timestamp ?? data.createdAt ?? new Date().toISOString(),
-					read: data.read ?? data.isRead ?? false,
-					createdAt: data.createdAt,
-					updatedAt: data.updatedAt,
+					_id: String(data._id ?? data.id ?? ''),
+					senderId: String(data.senderId ?? ''),
+					senderUsername: String(data.senderUsername ?? data.senderName ?? '') || undefined,
+					receiverId: String(data.receiverId ?? ''),
+					content: String(data.content ?? data.message ?? ''),
+					timestamp: String(data.timestamp ?? data.createdAt ?? new Date().toISOString()),
+					read: Boolean(data.read ?? data.isRead ?? false),
+					createdAt: data.createdAt as string | undefined,
+					updatedAt: data.updatedAt as string | undefined
 				} as Message;
 
 				this.messageCallbacks.forEach((callback) => {
@@ -91,10 +94,11 @@ class WebSocketService {
 			});
 
 			// Listen for typing indicators
-			this.socket.on('typing', (data: { userId: string; isTyping: boolean }) => {
+			this.socket.on('typing', (payload: unknown) => {
+				const d = payload as { userId?: string; isTyping?: boolean };
 				this.typingCallbacks.forEach((callback) => {
 					try {
-						callback(data.userId, data.isTyping);
+						callback(String(d.userId ?? ''), Boolean(d.isTyping ?? false));
 					} catch (error) {
 						console.error('Error in typing callback:', error);
 					}
@@ -136,8 +140,8 @@ class WebSocketService {
 			let authenticatedUserId: string | null = null;
 			if (this.token) {
 				try {
-					const payload = JSON.parse(atob(this.token.split('.')[1]));
-					authenticatedUserId = payload.id;
+					const parsed = JSON.parse(atob(this.token.split('.')[1])) as Record<string, unknown>;
+					authenticatedUserId = String(parsed.id ?? '');
 				} catch (e) {
 					console.error('Failed to decode token:', e);
 				}
@@ -145,8 +149,9 @@ class WebSocketService {
 
 			// Normalize message content (server expects `message` field)
 			// Accept either `content` (frontend) or `message` (server) field
-			const msgContent = (message as any).content ?? (message as any).message ?? '';
-			
+			const m = message as unknown as Record<string, unknown>;
+			const msgContent = String(m.content ?? m.message ?? '');
+
 			if (!msgContent || typeof msgContent !== 'string' || msgContent.trim().length === 0) {
 				console.error('Failed to send message: Invalid message content (empty or non-string)');
 				return;

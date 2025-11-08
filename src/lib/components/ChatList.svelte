@@ -37,14 +37,17 @@
 		try {
 			// backend search may return full User objects; normalize to ChatConversation shape
 			const users = await chatService.searchUsers(q.trim());
-			searchResults = users
-				.map((u: any) => ({
-					userId: String(u._id ?? u.userId ?? u.id),
-					username: u.username ?? u.name ?? 'Unknown',
-					lastMessage: undefined,
-					lastMessageTime: undefined,
-					unreadCount: 0
-				}))
+			searchResults = (users as unknown[])
+				.map((u: unknown) => {
+					const uu = u as Record<string, unknown>;
+					return {
+						userId: String(uu._id ?? uu.userId ?? uu.id ?? ''),
+						username: String(uu.username ?? uu.name ?? 'Unknown'),
+						lastMessage: undefined,
+						lastMessageTime: undefined,
+						unreadCount: 0
+					} as ChatConversation;
+				})
 				.filter((u) => u.userId !== currentUserId);
 		} catch (err: unknown) {
 			const message = err instanceof Error ? err.message : 'Failed to search users';
@@ -117,7 +120,12 @@
 					aria-label="Close sidebar"
 				>
 					<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M6 18L18 6M6 6l12 12"
+						/>
 					</svg>
 				</button>
 			{/if}
@@ -134,7 +142,12 @@
 				aria-label="Start new conversation"
 			>
 				<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M12 4v16m8-8H4"
+					/>
 				</svg>
 			</button>
 		</div>
@@ -142,7 +155,7 @@
 
 	{#if showCreate}
 		<!-- Create conversation modal / panel -->
-		<div class="absolute left-0 right-0 top-16 z-50 flex justify-center">
+		<div class="absolute top-16 right-0 left-0 z-50 flex justify-center">
 			<div class="w-full max-w-md rounded-lg bg-white p-4 shadow-lg">
 				<div class="flex items-center gap-2">
 					<input
@@ -151,7 +164,9 @@
 						bind:value={searchQuery}
 						oninput={() => performSearch(searchQuery)}
 					/>
-					<button onclick={closeCreate} class="rounded p-2 text-gray-600 hover:bg-gray-100">✕</button>
+					<button onclick={closeCreate} class="rounded p-2 text-gray-600 hover:bg-gray-100"
+						>✕</button
+					>
 				</div>
 				<div class="mt-3 max-h-64 overflow-y-auto">
 					{#if isSearching}
@@ -160,14 +175,16 @@
 						<div class="text-sm text-gray-500">No users found</div>
 					{:else}
 						<ul class="divide-y">
-							{#each searchResults as user}
+							{#each searchResults as user (user.userId)}
 								<li class="p-2">
 									<button
 										class="flex w-full items-center justify-between gap-3 rounded p-2 hover:bg-gray-50"
 										onclick={() => (selectedUser = user)}
 									>
 										<div class="flex items-center gap-3">
-											<div class="h-8 w-8 items-center justify-center rounded-full bg-linear-to-br from-blue-400 to-purple-500 font-semibold text-white">
+											<div
+												class="h-8 w-8 items-center justify-center rounded-full bg-linear-to-br from-blue-400 to-purple-500 font-semibold text-white"
+											>
 												{(user.username?.[0] ?? '').toUpperCase()}
 											</div>
 											<div class="text-left">
