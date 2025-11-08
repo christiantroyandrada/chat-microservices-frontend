@@ -88,6 +88,12 @@
 		if (days < 7) return `${days}d ago`;
 		return date.toLocaleDateString();
 	}
+
+	function truncateMessage(message?: string, maxLength = 40): string {
+		if (!message) return 'No messages yet';
+		if (message.length <= maxLength) return message;
+		return message.substring(0, maxLength) + '...';
+	}
 </script>
 
 <div class="flex h-full flex-col border-r border-gray-200 bg-white">
@@ -207,7 +213,7 @@
 										</span>
 									</div>
 									<p class="truncate text-sm text-gray-600">
-										{conversation.lastMessage || 'No messages yet'}
+										{truncateMessage(conversation.lastMessage, 40)}
 									</p>
 								</div>
 
