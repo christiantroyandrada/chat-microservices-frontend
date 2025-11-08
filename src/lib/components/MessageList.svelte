@@ -71,7 +71,7 @@
 <div
 	bind:this={messagesContainer}
 	onscroll={handleScroll}
-	class="flex-1 space-y-4 overflow-y-auto bg-gray-50 p-4"
+	class="flex-1 space-y-4 overflow-y-auto bg-gray-50 p-4 pb-24 md:pb-4"
 >
 	{#if loading}
 		<div class="flex h-full items-center justify-center">
@@ -96,7 +96,7 @@
 
 			<div class="flex {message.senderId === currentUserId ? 'justify-end' : 'justify-start'}">
 				<div
-					class="max-w-[70%] {message.senderId === currentUserId
+					class="max-w-[85%] md:max-w-[70%] {message.senderId === currentUserId
 						? 'bg-blue-600 text-white'
 						: 'bg-white text-gray-900'} rounded-lg px-4 py-2 shadow-sm"
 				>

@@ -9,7 +9,7 @@
 </script>
 
 {#if recipient}
-	<div class="border-b border-gray-200 bg-white p-4">
+	<div class="border-b border-gray-200 bg-white p-3 md:p-4">
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3">
 				<!-- Avatar -->
@@ -20,7 +20,7 @@
 				</div>
 
 				<div>
-					<h3 class="text-lg font-semibold text-gray-900">{recipient.username}</h3>
+					<h3 class="text-base font-semibold text-gray-900 md:text-lg">{recipient.username}</h3>
 					{#if typingUsers.has(recipient.userId)}
 						<p class="text-sm text-green-600">typing...</p>
 					{:else}

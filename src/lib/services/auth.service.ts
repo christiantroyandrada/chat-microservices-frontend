@@ -6,9 +6,23 @@ export const authService = {
 	 * Register a new user
 	 */
 	async register(credentials: RegisterCredentials): Promise<AuthUser> {
+		// Backend expects 'name' field, frontend uses 'username'
+		// Normalize and sanitize to remove any hidden unicode characters
+		const rawName = (credentials as any).name ?? (credentials as any).username ?? '';
+		const normalizedName = String(rawName)
+			.replace(/\u00A0/g, ' ')  // Replace non-breaking spaces
+			.replace(/[\s\uFEFF\xA0]+/g, ' ')  // Collapse whitespace
+			.trim();
+
+		const payload = {
+			name: normalizedName,
+			email: credentials.email,
+			password: credentials.password,
+		};
+
 		// backend exposes registration at /register on the user router which is mounted
 		// under /api/user by the gateway/nginx. Use the full path here.
-		const response = await apiClient.post<AuthUser>('/user/register', credentials);
+		const response = await apiClient.post<AuthUser>('/user/register', payload);
 		if (response.data) {
 			if ((response.data as AuthUser).token) {
 				this.setToken((response.data as AuthUser).token);

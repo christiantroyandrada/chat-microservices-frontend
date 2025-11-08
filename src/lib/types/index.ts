@@ -82,7 +82,7 @@ export interface ApiResponse<T = unknown> {
 export interface ApiError {
 	message: string;
 	status?: number;
-	errors?: Record<string, string[]>;
+	errors?: Record<string, string[]> | Array<{ field: string; message: string }>;
 }
 
 // Toast/Alert Types

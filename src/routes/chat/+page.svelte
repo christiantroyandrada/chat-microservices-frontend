@@ -26,6 +26,7 @@
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
 	let unsubscribeWsStatus: (() => void) | null = null;
+	let showSidebar = false;
 
 	onMount(async () => {
 		// Check authentication
@@ -214,6 +215,21 @@
 	<nav class="border-b border-gray-200 bg-white px-4 py-3">
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3">
+				<!-- Mobile: toggle sidebar -->
+				<button
+					class="mr-2 inline-flex items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 md:hidden"
+					onclick={() => (showSidebar = !showSidebar)}
+					aria-label="Toggle conversations"
+				>
+					<svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M4 6h16M4 12h16M4 18h16"
+						/>
+					</svg>
+				</button>
 				<h1 class="text-xl font-bold text-gray-900">Chat App</h1>
 			</div>
 
@@ -262,8 +278,8 @@
 
 	<!-- Main Chat Interface -->
 	<div class="flex flex-1 overflow-hidden">
-		<!-- Sidebar - Conversations List -->
-		<div class="w-80 shrink-0">
+		<!-- Sidebar - Conversations List (desktop) -->
+		<div class="hidden w-80 shrink-0 md:block">
 			<ChatList
 				{conversations}
 				selectedUserId={selectedConversation?.userId || null}
@@ -271,6 +287,39 @@
 				on:select={(e) => selectConversation(e.detail)}
 			/>
 		</div>
+
+		<!-- Mobile sidebar overlay -->
+		{#if showSidebar}
+			<div class="fixed inset-0 z-40 flex md:hidden">
+				<!-- Backdrop -->
+				<button
+					class="absolute inset-0 bg-black opacity-40"
+					aria-hidden="true"
+					onclick={() => (showSidebar = false)}
+				></button>
+				<!-- Panel -->
+				<div class="relative z-50 w-80 max-w-full bg-white shadow-xl">
+					<div class="p-2 text-right">
+						<button
+							class="rounded-md p-2 text-gray-600 hover:bg-gray-100"
+							onclick={() => (showSidebar = false)}
+							aria-label="Close"
+						>
+							✕
+						</button>
+					</div>
+					<ChatList
+						{conversations}
+						selectedUserId={selectedConversation?.userId || null}
+						loading={loading.conversations}
+						on:select={(e) => {
+							selectConversation(e.detail);
+							showSidebar = false;
+						}}
+					/>
+				</div>
+			</div>
+		{/if}
 
 		<!-- Chat Area -->
 		<div class="flex flex-1 flex-col bg-white">

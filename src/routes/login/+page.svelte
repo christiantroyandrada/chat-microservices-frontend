@@ -3,12 +3,14 @@
 	import { toastStore } from '$lib/stores/toast.store';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import type { ApiError } from '$lib/types';
 
 	let email = '';
 	let password = '';
 	let showPassword = false;
 	let loading = false;
 	let error = '';
+	let fieldErrors: Record<string, string> = {};
 
 	onMount(() => {
 		// Redirect if already authenticated
@@ -23,6 +25,7 @@
 
 	async function handleSubmit() {
 		error = '';
+		fieldErrors = {};
 
 		if (!email || !password) {
 			error = 'Please fill in all fields';
@@ -35,8 +38,32 @@
 			await authStore.login({ email, password });
 			toastStore.success('Login successful!');
 		} catch (err: unknown) {
-			const message = err instanceof Error ? err.message : 'Login failed';
-			toastStore.error(message);
+			const apiError = err as ApiError;
+			
+			// Handle validation errors from backend
+			if (apiError.errors && Array.isArray(apiError.errors)) {
+				// Convert array of errors to field-specific errors
+				fieldErrors = apiError.errors.reduce((acc: Record<string, string>, error: any) => {
+					if (error.field && error.message) {
+						acc[error.field] = error.message;
+					}
+					return acc;
+				}, {});
+				error = apiError.message || 'Please fix the errors below';
+			} else if (apiError.errors && typeof apiError.errors === 'object') {
+				// Handle if backend sends errors as object
+				fieldErrors = Object.entries(apiError.errors).reduce((acc: Record<string, string>, [field, messages]) => {
+					acc[field] = Array.isArray(messages) ? messages[0] : messages as string;
+					return acc;
+				}, {});
+				error = apiError.message || 'Please fix the errors below';
+			} else {
+				// Generic error message
+				const message = apiError.message || 'Login failed';
+				error = message;
+			}
+			
+			toastStore.error(error);
 		} finally {
 			loading = false;
 		}
@@ -76,9 +103,14 @@
 						autocomplete="email"
 						required
 						bind:value={email}
-						class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
+						class="mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none {fieldErrors.email
+							? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+							: 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}"
 						placeholder="you@example.com"
 					/>
+					{#if fieldErrors.email}
+						<p class="mt-1 text-sm text-red-600">{fieldErrors.email}</p>
+					{/if}
 				</div>
 
 				<div>
@@ -91,7 +123,9 @@
 							autocomplete="current-password"
 							required
 							bind:value={password}
-							class="block w-full rounded-md border border-gray-300 px-3 py-2 pr-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
+							class="block w-full rounded-md border px-3 py-2 pr-10 shadow-sm focus:outline-none {fieldErrors.password
+								? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+								: 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}"
 							placeholder="••••••••"
 						/>
 						<button
@@ -107,6 +141,9 @@
 							{/if}
 						</button>
 					</div>
+					{#if fieldErrors.password}
+						<p class="mt-1 text-sm text-red-600">{fieldErrors.password}</p>
+					{/if}
 				</div>
 			</div>
 
