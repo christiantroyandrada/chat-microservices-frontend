@@ -34,91 +34,85 @@ function createAuthStore() {
 				return;
 			}
 
-			update((state) => ({ ...state, loading: true }));
+		update((state) => ({ ...state, loading: true }));
 
-			try {
-				const user = await authService.getCurrentUser();
-				update((state) => ({ ...state, user, loading: false, error: null }));
-			} catch (error) {
-				// Token is invalid, clear it
-				authService.logout();
-				set(initialState);
-			}
-		},
-
-		/**
+		try {
+			const user = await authService.getCurrentUser();
+			update((state) => ({ ...state, user, loading: false, error: null }));
+		} catch {
+			// Token is invalid, clear it
+			authService.logout();
+			set(initialState);
+		}
+	},		/**
 		 * Login user
 		 */
-		async login(credentials: LoginCredentials) {
-			update((state) => ({ ...state, loading: true, error: null }));
+	async login(credentials: LoginCredentials) {
+		update((state) => ({ ...state, loading: true, error: null }));
 
-			try {
-				const authUser = await authService.login(credentials);
-				const { token, ...user } = authUser;
+		try {
+			const authUser = await authService.login(credentials);
+			const { token: _token, ...user } = authUser;
 
-				update((state) => ({ ...state, user, loading: false, error: null }));
+			update((state) => ({ ...state, user, loading: false, error: null }));
 
-				// Store user data
-				if (browser) {
-					localStorage.setItem('user', JSON.stringify(user));
-				}
-
-				goto('/chat');
-				return user;
-			} catch (error) {
-				const apiError = error as ApiError;
-				update((state) => ({
-					...state,
-					loading: false,
-					error: apiError.message
-				}));
-				throw error;
-			}
-		},
-
-		/**
-		 * Register new user
-		 */
-		async register(credentials: RegisterCredentials) {
-			update((state) => ({ ...state, loading: true, error: null }));
-
-			try {
-				const authUser = await authService.register(credentials);
-				const { token, ...user } = authUser;
-
-				update((state) => ({ ...state, user, loading: false, error: null }));
-
-				// Store user data
-				if (browser) {
-					localStorage.setItem('user', JSON.stringify(user));
-				}
-
-				goto('/chat');
-				return user;
-			} catch (error) {
-				const apiError = error as ApiError;
-				update((state) => ({
-					...state,
-					loading: false,
-					error: apiError.message
-				}));
-				throw error;
-			}
-		},
-
-		/**
-		 * Logout user
-		 */
-		logout() {
-			authService.logout();
+			// Store user data
 			if (browser) {
-				localStorage.removeItem('user');
+				localStorage.setItem('user', JSON.stringify(user));
 			}
-			set(initialState);
-			goto('/login');
-		},
 
-		/**
+			void goto('/chat');
+			return user;
+		} catch (error) {
+			const apiError = error as ApiError;
+			update((state) => ({
+				...state,
+				loading: false,
+				error: apiError.message
+			}));
+			throw error;
+		}
+	},		/**
+	 * Register new user
+	 */
+	async register(credentials: RegisterCredentials) {
+		update((state) => ({ ...state, loading: true, error: null }));
+
+		try {
+			const authUser = await authService.register(credentials);
+			const { token: _token, ...user } = authUser;
+
+			update((state) => ({ ...state, user, loading: false, error: null }));
+
+			// Store user data
+			if (browser) {
+				localStorage.setItem('user', JSON.stringify(user));
+			}
+
+			void goto('/chat');
+			return user;
+		} catch (error) {
+			const apiError = error as ApiError;
+			update((state) => ({
+				...state,
+				loading: false,
+				error: apiError.message
+			}));
+			throw error;
+		}
+	},
+
+	/**
+	 * Logout user
+	 */
+	logout() {
+		authService.logout();
+		if (browser) {
+			localStorage.removeItem('user');
+		}
+		set(initialState);
+		void goto('/login');
+	},		/**
 		 * Clear error
 		 */
 		clearError() {

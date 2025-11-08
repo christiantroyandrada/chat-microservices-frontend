@@ -117,7 +117,7 @@
 			);
 
 			// Send via WebSocket for real-time delivery
-			if (wsService.isConnected) {
+			if (wsService.isConnected()) {
 				wsService.sendMessage(message);
 			}
 		} catch (error: any) {
@@ -194,7 +194,7 @@
 	}
 
 	function handleTyping(isTyping: boolean) {
-		if (selectedConversation && wsService.isConnected) {
+		if (selectedConversation && wsService.isConnected()) {
 			wsService.sendTyping(selectedConversation.userId, isTyping);
 		}
 	}
@@ -282,7 +282,7 @@
 				<MessageInput
 					on:send={(e) => sendMessage(e.detail)}
 					on:typing={(e) => handleTyping(e.detail)}
-					disabled={!wsService.isConnected}
+					disabled={!wsService.isConnected()}
 				/>
 			{:else}
 				<div class="flex-1 flex items-center justify-center text-gray-500">
