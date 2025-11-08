@@ -1,6 +1,9 @@
 import { apiClient } from './api';
 import type { Notification, NotificationPayload } from '$lib/types';
 
+/**
+ * Notification service for managing user notifications
+ */
 export const notificationService = {
 	/**
 	 * Get all notifications for current user

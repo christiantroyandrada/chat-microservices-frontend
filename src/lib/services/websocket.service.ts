@@ -42,28 +42,19 @@ class WebSocketService {
 				reconnectionDelay: 3000
 			});
 
-			this.socket.on('connect', () => {
-				this.notifyStatus('connected');
+		this.socket.on('connect', () => {
+			this.notifyStatus('connected');
 
-				// Clear any pending reconnect timer
-				if (this.reconnectTimer) {
-					clearTimeout(this.reconnectTimer);
-					this.reconnectTimer = null;
-				}
+			// Clear any pending reconnect timer
+			if (this.reconnectTimer) {
+				clearTimeout(this.reconnectTimer);
+				this.reconnectTimer = null;
+			}
 
-				// Identify user after connection
-				if (this.token) {
-					// Decode token to get user ID (basic JWT decode)
-					try {
-						const payload = JSON.parse(atob(this.token.split('.')[1]));
-						this.socket?.emit('identify', payload.id);
-					} catch (e) {
-						console.error('Failed to decode token:', e);
-					}
-				}
-			});
-
-			this.socket.on('disconnect', () => {
+			// JWT authentication happens on handshake (io.use middleware on server)
+			// The server automatically joins the user to their room based on authenticated JWT
+			// No need to emit 'identify' event anymore
+		});			this.socket.on('disconnect', () => {
 				this.notifyStatus('disconnected');
 			});
 
@@ -76,10 +67,23 @@ class WebSocketService {
 			});
 
 			// Listen for incoming messages
-			this.socket.on('receiveMessage', (data: Message) => {
+			this.socket.on('receiveMessage', (data: any) => {
+				// Normalize server message shape to frontend `Message`
+				const normalized = {
+					_id: data._id || data.id || String(data._id || data.id || ''),
+					senderId: data.senderId,
+					senderUsername: data.senderUsername || data.senderName || undefined,
+					receiverId: data.receiverId,
+					content: data.content ?? data.message ?? '',
+					timestamp: data.timestamp ?? data.createdAt ?? new Date().toISOString(),
+					read: data.read ?? data.isRead ?? false,
+					createdAt: data.createdAt,
+					updatedAt: data.updatedAt,
+				} as Message;
+
 				this.messageCallbacks.forEach((callback) => {
 					try {
-						callback(data);
+						callback(normalized);
 					} catch (error) {
 						console.error('Error in message callback:', error);
 					}
@@ -128,12 +132,32 @@ class WebSocketService {
 	 */
 	sendMessage(message: Message): void {
 		if (this.socket?.connected) {
+			// Extract authenticated user ID from token to ensure senderId matches JWT
+			let authenticatedUserId: string | null = null;
+			if (this.token) {
+				try {
+					const payload = JSON.parse(atob(this.token.split('.')[1]));
+					authenticatedUserId = payload.id;
+				} catch (e) {
+					console.error('Failed to decode token:', e);
+				}
+			}
+
+			// Normalize message content (server expects `message` field)
+			// Accept either `content` (frontend) or `message` (server) field
+			const msgContent = (message as any).content ?? (message as any).message ?? '';
+			
+			if (!msgContent || typeof msgContent !== 'string' || msgContent.trim().length === 0) {
+				console.error('Failed to send message: Invalid message content (empty or non-string)');
+				return;
+			}
+
 			this.socket.emit(
 				'sendMessage',
 				{
-					senderId: message.senderId,
+					senderId: authenticatedUserId || message.senderId,
 					receiverId: message.receiverId,
-					message: message.content
+					message: msgContent
 				},
 				(response: { ok: boolean; id?: string; error?: string }) => {
 					if (!response.ok) {
