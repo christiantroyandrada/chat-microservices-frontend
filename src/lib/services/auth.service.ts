@@ -6,9 +6,13 @@ export const authService = {
 	 * Register a new user
 	 */
 	async register(credentials: RegisterCredentials): Promise<AuthUser> {
-		const response = await apiClient.post<AuthUser>('/api/user/register', credentials);
+		// backend exposes registration at /register on the user router which is mounted
+		// under /api/user by the gateway/nginx. Use the full path here.
+		const response = await apiClient.post<AuthUser>('/user/register', credentials);
 		if (response.data) {
-			this.setToken(response.data.token);
+			if ((response.data as AuthUser).token) {
+				this.setToken((response.data as AuthUser).token);
+			}
 		}
 		return response.data!;
 	},
@@ -17,9 +21,12 @@ export const authService = {
 	 * Login user
 	 */
 	async login(credentials: LoginCredentials): Promise<AuthUser> {
-		const response = await apiClient.post<AuthUser>('/api/user/login', credentials);
+		// login route on user service
+		const response = await apiClient.post<AuthUser>('/user/login', credentials);
 		if (response.data) {
-			this.setToken(response.data.token);
+			if ((response.data as AuthUser).token) {
+				this.setToken((response.data as AuthUser).token);
+			}
 		}
 		return response.data!;
 	},
@@ -38,7 +45,7 @@ export const authService = {
 	 * Get current user profile
 	 */
 	async getCurrentUser(): Promise<User> {
-		const response = await apiClient.get<User>('/api/user/me');
+		const response = await apiClient.get<User>('/user/me');
 		return response.data!;
 	},
 

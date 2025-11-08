@@ -107,7 +107,7 @@
 							{message.senderUsername}
 						</div>
 					{/if}
-					<p class="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+					<p class="text-sm whitespace-pre-wrap wrap-break-word">{message.content}</p>
 					<div
 						class="text-xs mt-1 {message.senderId === currentUserId
 							? 'text-blue-100'

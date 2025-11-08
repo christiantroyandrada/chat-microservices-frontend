@@ -6,16 +6,23 @@ export const chatService = {
 	 * Get all conversations for the current user
 	 */
 	async getConversations(): Promise<ChatConversation[]> {
-		const response = await apiClient.get<ChatConversation[]>('/api/chat/conversations');
-		return response.data || [];
+		try {
+			const response = await apiClient.get<ChatConversation[]>('/chat/conversations');
+			return response.data || [];
+		} catch (err) {
+			// Backend doesn't expose a conversations list yet; return empty list instead of throwing.
+			console.warn('getConversations: returning empty list due to backend missing endpoint or error', err);
+			return [];
+		}
 	},
 
 	/**
 	 * Get messages between current user and another user
 	 */
 	async getMessages(userId: string, limit = 50, offset = 0): Promise<Message[]> {
+		// backend exposes GET /get/:receiverId on the chat router (mounted under /chat)
 		const response = await apiClient.get<Message[]>(
-			`/api/chat/messages/${userId}?limit=${limit}&offset=${offset}`
+			`/chat/get/${userId}?limit=${limit}&offset=${offset}`
 		);
 		return response.data || [];
 	},
@@ -24,7 +31,8 @@ export const chatService = {
 	 * Send a message to another user
 	 */
 	async sendMessage(payload: SendMessagePayload): Promise<Message> {
-		const response = await apiClient.post<Message>('/api/chat/messages', payload);
+		// backend exposes POST /send on the chat router
+		const response = await apiClient.post<Message>('/chat/send', payload);
 		return response.data!;
 	},
 
@@ -32,14 +40,14 @@ export const chatService = {
 	 * Mark messages as read
 	 */
 	async markAsRead(senderId: string): Promise<void> {
-		await apiClient.put(`/api/chat/messages/read/${senderId}`);
+		await apiClient.put(`/chat/messages/read/${senderId}`);
 	},
 
 	/**
 	 * Delete a message
 	 */
 	async deleteMessage(messageId: string): Promise<void> {
-		await apiClient.delete(`/api/chat/messages/${messageId}`);
+		await apiClient.delete(`/chat/messages/${messageId}`);
 	},
 
 	/**
@@ -47,7 +55,7 @@ export const chatService = {
 	 */
 	async searchUsers(query: string): Promise<ChatConversation[]> {
 		const response = await apiClient.get<ChatConversation[]>(
-			`/api/user/search?q=${encodeURIComponent(query)}`
+			`/user/search?q=${encodeURIComponent(query)}`
 		);
 		return response.data || [];
 	}

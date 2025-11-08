@@ -6,6 +6,7 @@
 
 	let email = '';
 	let password = '';
+	let showPassword = false;
 	let loading = false;
 	let error = '';
 
@@ -86,16 +87,30 @@
 					<label for="password" class="block text-sm font-medium text-gray-700">
 						Password
 					</label>
-					<input
-						id="password"
-						name="password"
-						type="password"
-						autocomplete="current-password"
-						required
-						bind:value={password}
-						class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-						placeholder="••••••••"
-					/>
+					<div class="relative mt-1">
+						<input
+							id="password"
+							name="password"
+							type={showPassword ? 'text' : 'password'}
+							autocomplete="current-password"
+							required
+							bind:value={password}
+							class="block w-full pr-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+							placeholder="••••••••"
+						/>
+						<button
+							type="button"
+							on:click={() => (showPassword = !showPassword)}
+							class="absolute inset-y-0 right-0 pr-2 flex items-center text-sm leading-5"
+							aria-label={showPassword ? 'Hide password' : 'Show password'}
+						>
+							{#if showPassword}
+								<span class="text-gray-600">Hide</span>
+							{:else}
+								<span class="text-gray-600">Show</span>
+							{/if}
+						</button>
+					</div>
 				</div>
 			</div>
 

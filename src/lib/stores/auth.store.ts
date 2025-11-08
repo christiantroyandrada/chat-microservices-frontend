@@ -39,7 +39,7 @@ function createAuthStore() {
 			try {
 				const user = await authService.getCurrentUser();
 				update((state) => ({ ...state, user, loading: false, error: null }));
-			} catch (_error) {
+			} catch (error) {
 				// Token is invalid, clear it
 				authService.logout();
 				set(initialState);

@@ -56,9 +56,9 @@
 							<div class="flex items-start gap-3">
 								<!-- Avatar -->
 								<div
-									class="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold flex-shrink-0"
+									class="w-12 h-12 rounded-full bg-linear-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold shrink-0"
 								>
-									{conversation.username.charAt(0).toUpperCase()}
+									{((conversation.username?.[0] ?? '').toUpperCase())}
 								</div>
 
 								<!-- Content -->

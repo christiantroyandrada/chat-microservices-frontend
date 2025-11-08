@@ -1,120 +1,117 @@
 import { env } from '$env/dynamic/public';
-import type { Message, WebSocketMessage } from '$lib/types';
+import { io, Socket } from 'socket.io-client';
+import type { Message } from '$lib/types';
 
 type MessageCallback = (message: Message) => void;
 type StatusCallback = (status: 'connected' | 'disconnected' | 'reconnecting') => void;
 type TypingCallback = (userId: string, isTyping: boolean) => void;
 
 class WebSocketService {
-	private ws: WebSocket | null = null;
-	private reconnectAttempts = 0;
-	private maxReconnectAttempts = 5;
-	private reconnectDelay = 3000;
+	private socket: Socket | null = null;
 	private messageCallbacks: Set<MessageCallback> = new Set();
 	private statusCallbacks: Set<StatusCallback> = new Set();
 	private typingCallbacks: Set<TypingCallback> = new Set();
 	private wsUrl: string;
 	private token: string | null = null;
-	private shouldReconnect = true;
 
 	constructor(wsUrl?: string) {
-		this.wsUrl = wsUrl || env.PUBLIC_WS_URL || 'ws://localhost:8082';
+		// Use PUBLIC_WS_URL from env or default to nginx gateway
+		this.wsUrl = wsUrl || env.PUBLIC_WS_URL || 'http://localhost:85';
 	}
 
 	/**
-	 * Connect to WebSocket server
+	 * Connect to Socket.IO server
 	 */
 	connect(token: string): void {
-		if (this.ws?.readyState === WebSocket.OPEN) {
-			console.log('WebSocket already connected');
+		if (this.socket?.connected) {
+			console.log('Socket.IO already connected');
 			return;
 		}
 
 		this.token = token;
-		this.shouldReconnect = true;
 
 		try {
-			// Include token in WebSocket URL as query parameter
-			const url = `${this.wsUrl}?token=${encodeURIComponent(token)}`;
-			this.ws = new WebSocket(url);
+			// Connect to Socket.IO server with the /chat/socket.io path
+			this.socket = io(this.wsUrl, {
+				path: '/chat/socket.io',
+				auth: { token },
+				transports: ['websocket', 'polling'],
+				reconnection: true,
+				reconnectionAttempts: 5,
+				reconnectionDelay: 3000
+			});
 
-			this.ws.onopen = () => {
-				console.log('WebSocket connected');
-				this.reconnectAttempts = 0;
+			this.socket.on('connect', () => {
+				console.log('Socket.IO connected');
 				this.notifyStatus('connected');
-			};
-
-			this.ws.onmessage = (event) => {
-				try {
-					const data: WebSocketMessage = JSON.parse(event.data);
-					this.handleMessage(data);
-				} catch (error) {
-					console.error('Failed to parse WebSocket message:', error);
+				
+				// Identify user after connection
+				if (this.token) {
+					// Decode token to get user ID (basic JWT decode)
+					try {
+						const payload = JSON.parse(atob(this.token.split('.')[1]));
+						this.socket?.emit('identify', payload.id);
+					} catch (e) {
+						console.error('Failed to decode token:', e);
+					}
 				}
-			};
+			});
 
-			this.ws.onerror = (error) => {
-				console.error('WebSocket error:', error);
-			};
-
-			this.ws.onclose = () => {
-				console.log('WebSocket disconnected');
+			this.socket.on('disconnect', () => {
+				console.log('Socket.IO disconnected');
 				this.notifyStatus('disconnected');
+			});
 
-				if (this.shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
-					this.reconnect();
-				}
-			};
+			this.socket.on('connect_error', (error) => {
+				console.error('Socket.IO connection error:', error);
+			});
+
+			this.socket.on('reconnect_attempt', () => {
+				console.log('Socket.IO reconnecting...');
+				this.notifyStatus('reconnecting');
+			});
+
+			// Listen for incoming messages
+			this.socket.on('receiveMessage', (data: Message) => {
+				this.messageCallbacks.forEach((callback) => callback(data));
+			});
+
+			// Listen for typing indicators
+			this.socket.on('typing', (data: { userId: string; isTyping: boolean }) => {
+				this.typingCallbacks.forEach((callback) => callback(data.userId, data.isTyping));
+			});
+
 		} catch (error) {
-			console.error('Failed to connect WebSocket:', error);
-			this.reconnect();
+			console.error('Failed to connect Socket.IO:', error);
 		}
 	}
 
 	/**
-	 * Disconnect from WebSocket server
+	 * Disconnect from Socket.IO server
 	 */
 	disconnect(): void {
-		this.shouldReconnect = false;
-		if (this.ws) {
-			this.ws.close();
-			this.ws = null;
+		if (this.socket) {
+			this.socket.disconnect();
+			this.socket = null;
 		}
 	}
 
 	/**
-	 * Reconnect to WebSocket server
-	 */
-	private reconnect(): void {
-		if (!this.token || !this.shouldReconnect) return;
-
-		this.reconnectAttempts++;
-		this.notifyStatus('reconnecting');
-
-		console.log(
-			`Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`
-		);
-
-		setTimeout(() => {
-			if (this.token) {
-				this.connect(this.token);
-			}
-		}, this.reconnectDelay * this.reconnectAttempts);
-	}
-
-	/**
-	 * Send a message through WebSocket
+	 * Send a message through Socket.IO
 	 */
 	sendMessage(message: Message): void {
-		if (this.ws?.readyState === WebSocket.OPEN) {
-			this.ws.send(
-				JSON.stringify({
-					type: 'message',
-					data: message
-				})
-			);
+		if (this.socket?.connected) {
+			this.socket.emit('sendMessage', {
+				senderId: message.senderId,
+				receiverId: message.receiverId,
+				message: message.content
+			}, (response: { ok: boolean; id?: string; error?: string }) => {
+				if (!response.ok) {
+					console.error('Failed to send message:', response.error);
+				}
+			});
 		} else {
-			console.error('WebSocket is not connected');
+			console.error('Socket.IO is not connected');
 		}
 	}
 
@@ -122,44 +119,8 @@ class WebSocketService {
 	 * Send typing indicator
 	 */
 	sendTyping(receiverId: string, isTyping: boolean): void {
-		if (this.ws?.readyState === WebSocket.OPEN) {
-			this.ws.send(
-				JSON.stringify({
-					type: 'typing',
-					data: { receiverId, isTyping }
-				})
-			);
-		}
-	}
-
-	/**
-	 * Handle incoming WebSocket messages
-	 */
-	private handleMessage(data: WebSocketMessage): void {
-		switch (data.type) {
-			case 'message':
-				if ('content' in data.data) {
-					this.messageCallbacks.forEach((callback) => callback(data.data as Message));
-				}
-				break;
-
-			case 'typing':
-				if ('userId' in data.data) {
-					const typingData = data.data as { userId: string; isTyping?: boolean };
-					this.typingCallbacks.forEach((callback) =>
-						callback(typingData.userId, typingData.isTyping || false)
-					);
-				}
-				break;
-
-			case 'online':
-			case 'offline':
-				// Handle user online/offline status
-				console.log(`User ${data.type}:`, data.data);
-				break;
-
-			default:
-				console.log('Unknown WebSocket message type:', data.type);
+		if (this.socket?.connected) {
+			this.socket.emit('typing', { receiverId, isTyping });
 		}
 	}
 
@@ -195,12 +156,11 @@ class WebSocketService {
 	}
 
 	/**
-	 * Get current connection status
+	 * Get connection status
 	 */
-	get isConnected(): boolean {
-		return this.ws?.readyState === WebSocket.OPEN;
+	isConnected(): boolean {
+		return this.socket?.connected || false;
 	}
 }
 
-// Export singleton instance
 export const wsService = new WebSocketService();

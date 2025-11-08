@@ -98,9 +98,11 @@
 	async function sendMessage(content: string) {
 		if (!selectedConversation || !$user) return;
 
+		const receiverId = selectedConversation.userId;
+
 		try {
 			const message = await chatService.sendMessage({
-				receiverId: selectedConversation.userId,
+				receiverId,
 				content
 			});
 
@@ -109,7 +111,7 @@
 
 			// Update conversation list
 			conversations = conversations.map((c) =>
-				c.userId === selectedConversation.userId
+				c.userId === receiverId
 					? { ...c, lastMessage: content, lastMessageTime: message.timestamp }
 					: c
 			);
@@ -241,9 +243,8 @@
 				<!-- User Menu -->
 				<div class="flex items-center gap-2">
 					<div
-						class="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold"
-					>
-						{$user?.username.charAt(0).toUpperCase()}
+						class="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold">
+						{(($user?.username?.[0] ?? '').toUpperCase())}
 					</div>
 					<span class="text-sm font-medium text-gray-900">{$user?.username}</span>
 					<button
@@ -260,7 +261,7 @@
 	<!-- Main Chat Interface -->
 	<div class="flex-1 flex overflow-hidden">
 		<!-- Sidebar - Conversations List -->
-		<div class="w-80 flex-shrink-0">
+		<div class="w-80 shrink-0">
 			<ChatList
 				{conversations}
 				selectedUserId={selectedConversation?.userId || null}

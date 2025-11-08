@@ -8,6 +8,8 @@
 	let email = '';
 	let password = '';
 	let confirmPassword = '';
+	let showPassword = false;
+	let showConfirmPassword = false;
 	let loading = false;
 	let error = '';
 
@@ -114,32 +116,60 @@
 					<label for="password" class="block text-sm font-medium text-gray-700">
 						Password
 					</label>
-					<input
-						id="password"
-						name="password"
-						type="password"
-						autocomplete="new-password"
-						required
-						bind:value={password}
-						class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-						placeholder="••••••••"
-					/>
+					<div class="relative mt-1">
+						<input
+							id="password"
+							name="password"
+							type={showPassword ? 'text' : 'password'}
+							autocomplete="new-password"
+							required
+							bind:value={password}
+							class="block w-full pr-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+							placeholder="••••••••"
+						/>
+						<button
+							type="button"
+							on:click={() => (showPassword = !showPassword)}
+							class="absolute inset-y-0 right-0 pr-2 flex items-center text-sm leading-5"
+							aria-label={showPassword ? 'Hide password' : 'Show password'}
+						>
+							{#if showPassword}
+								<span class="text-gray-600">Hide</span>
+							{:else}
+								<span class="text-gray-600">Show</span>
+							{/if}
+						</button>
+					</div>
 				</div>
 
 				<div>
 					<label for="confirmPassword" class="block text-sm font-medium text-gray-700">
 						Confirm Password
 					</label>
-					<input
-						id="confirmPassword"
-						name="confirmPassword"
-						type="password"
-						autocomplete="new-password"
-						required
-						bind:value={confirmPassword}
-						class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-						placeholder="••••••••"
-					/>
+					<div class="relative mt-1">
+						<input
+							id="confirmPassword"
+							name="confirmPassword"
+							type={showConfirmPassword ? 'text' : 'password'}
+							autocomplete="new-password"
+							required
+							bind:value={confirmPassword}
+							class="block w-full pr-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+							placeholder="••••••••"
+						/>
+						<button
+							type="button"
+							on:click={() => (showConfirmPassword = !showConfirmPassword)}
+							class="absolute inset-y-0 right-0 pr-2 flex items-center text-sm leading-5"
+							aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+						>
+							{#if showConfirmPassword}
+								<span class="text-gray-600">Hide</span>
+							{:else}
+								<span class="text-gray-600">Show</span>
+							{/if}
+						</button>
+					</div>
 				</div>
 			</div>
 

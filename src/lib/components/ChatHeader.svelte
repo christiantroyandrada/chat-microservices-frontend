@@ -14,9 +14,9 @@
 			<div class="flex items-center gap-3">
 				<!-- Avatar -->
 				<div
-					class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold"
+					class="w-10 h-10 rounded-full bg-linear-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold"
 				>
-					{recipient.username.charAt(0).toUpperCase()}
+					{((recipient.username?.[0] ?? '').toUpperCase())}
 				</div>
 
 				<div>
