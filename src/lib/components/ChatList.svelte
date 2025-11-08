@@ -10,7 +10,9 @@
 		conversations = [] as ChatConversation[],
 		selectedUserId = null as string | null,
 		loading = false,
-		currentUserId = null as string | null
+		currentUserId = null as string | null,
+		currentUsername = '' as string,
+		onClose = null as (() => void) | null
 	} = $props();
 
 	const dispatch = createEventDispatcher<{
@@ -97,7 +99,32 @@
 </script>
 
 <div class="flex h-full flex-col border-r border-gray-200 bg-white">
-	<!-- Header -->
+	<!-- User Info Header -->
+	<div class="border-b border-gray-200 p-4">
+		<div class="flex items-center justify-between">
+			<div class="flex items-center gap-3">
+				<div
+					class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-blue-400 to-purple-500 font-semibold text-white"
+				>
+					{(currentUsername?.[0] ?? 'U').toUpperCase()}
+				</div>
+				<span class="text-sm font-semibold text-gray-900">{currentUsername || 'User'}</span>
+			</div>
+			{#if onClose}
+				<button
+					onclick={onClose}
+					class="inline-flex items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 lg:hidden"
+					aria-label="Close sidebar"
+				>
+					<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			{/if}
+		</div>
+	</div>
+
+	<!-- Messages Header -->
 	<div class="border-b border-gray-200 p-4">
 		<div class="flex items-center justify-between">
 			<h2 class="text-xl font-semibold text-gray-800">Messages</h2>

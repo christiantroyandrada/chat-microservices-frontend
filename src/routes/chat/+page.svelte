@@ -293,12 +293,6 @@
 
 				<!-- User Menu -->
 				<div class="flex items-center gap-2">
-					<div
-						class="flex h-8 w-8 items-center justify-center rounded-full bg-linear-to-br from-blue-400 to-purple-500 font-semibold text-white"
-					>
-						{($user?.username?.[0] ?? '').toUpperCase()}
-					</div>
-					<span class="text-sm font-medium text-gray-900">{$user?.username}</span>
 					<button
 						onclick={handleLogout}
 						class="ml-2 rounded-md px-3 py-1 text-sm text-red-600 transition-colors hover:bg-red-50"
@@ -318,6 +312,7 @@
 				{conversations}
 				selectedUserId={selectedConversation?.userId || null}
 				currentUserId={$user?._id || null}
+				currentUsername={$user?.username || ''}
 				loading={loading.conversations}
 				on:select={(e) => selectConversation(e.detail)}
 				on:create={(e) => createConversation(e.detail)}
@@ -335,20 +330,13 @@
 				></button>
 				<!-- Panel -->
 				<div class="relative z-50 w-80 max-w-full bg-white shadow-xl">
-					<div class="p-2 text-right">
-						<button
-							class="rounded-md p-2 text-gray-600 hover:bg-gray-100"
-							onclick={() => (showSidebar = false)}
-							aria-label="Close"
-						>
-							✕
-						</button>
-					</div>
 					<ChatList
 						{conversations}
 						selectedUserId={selectedConversation?.userId || null}
 						currentUserId={$user?._id || null}
+						currentUsername={$user?.username || ''}
 						loading={loading.conversations}
+						onClose={() => (showSidebar = false)}
 						on:select={(e) => {
 							selectConversation(e.detail);
 							showSidebar = false;
