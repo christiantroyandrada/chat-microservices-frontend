@@ -7,6 +7,7 @@
 	import { chatService } from '$lib/services/chat.service';
 	import { wsService } from '$lib/services/websocket.service';
 	import { authService } from '$lib/services/auth.service';
+	import { sanitizeMessage } from '$lib/utils';
 	import type { ChatConversation, Message } from '$lib/types';
 
 	import ChatList from '$lib/components/ChatList.svelte';
@@ -101,12 +102,19 @@
 	async function sendMessage(content: string) {
 		if (!selectedConversation || !$user) return;
 
+		// Sanitize and validate message content
+		const sanitizedContent = sanitizeMessage(content);
+		if (!sanitizedContent) {
+			toastStore.error('Invalid message content');
+			return;
+		}
+
 		const receiverId = selectedConversation.userId;
 
 		try {
 			const message = await chatService.sendMessage({
 				receiverId,
-				content
+				content: sanitizedContent
 			});
 
 			// Add message to local state
@@ -115,7 +123,7 @@
 			// Update conversation list
 			conversations = conversations.map((c) =>
 				c.userId === receiverId
-					? { ...c, lastMessage: content, lastMessageTime: message.timestamp }
+					? { ...c, lastMessage: sanitizedContent, lastMessageTime: message.timestamp }
 					: c
 			);
 

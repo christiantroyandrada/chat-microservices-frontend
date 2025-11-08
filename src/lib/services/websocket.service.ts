@@ -13,6 +13,7 @@ class WebSocketService {
 	private typingCallbacks: Set<TypingCallback> = new Set();
 	private wsUrl: string;
 	private token: string | null = null;
+	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(wsUrl?: string) {
 		// Use PUBLIC_WS_URL from env or default to nginx gateway
@@ -45,6 +46,12 @@ class WebSocketService {
 				console.log('Socket.IO connected');
 				this.notifyStatus('connected');
 
+				// Clear any pending reconnect timer
+				if (this.reconnectTimer) {
+					clearTimeout(this.reconnectTimer);
+					this.reconnectTimer = null;
+				}
+
 				// Identify user after connection
 				if (this.token) {
 					// Decode token to get user ID (basic JWT decode)
@@ -73,12 +80,24 @@ class WebSocketService {
 
 			// Listen for incoming messages
 			this.socket.on('receiveMessage', (data: Message) => {
-				this.messageCallbacks.forEach((callback) => callback(data));
+				this.messageCallbacks.forEach((callback) => {
+					try {
+						callback(data);
+					} catch (error) {
+						console.error('Error in message callback:', error);
+					}
+				});
 			});
 
 			// Listen for typing indicators
 			this.socket.on('typing', (data: { userId: string; isTyping: boolean }) => {
-				this.typingCallbacks.forEach((callback) => callback(data.userId, data.isTyping));
+				this.typingCallbacks.forEach((callback) => {
+					try {
+						callback(data.userId, data.isTyping);
+					} catch (error) {
+						console.error('Error in typing callback:', error);
+					}
+				});
 			});
 		} catch (error) {
 			console.error('Failed to connect Socket.IO:', error);
@@ -89,10 +108,22 @@ class WebSocketService {
 	 * Disconnect from Socket.IO server
 	 */
 	disconnect(): void {
+		if (this.reconnectTimer) {
+			clearTimeout(this.reconnectTimer);
+			this.reconnectTimer = null;
+		}
+
 		if (this.socket) {
+			// Remove all listeners before disconnecting
+			this.socket.removeAllListeners();
 			this.socket.disconnect();
 			this.socket = null;
 		}
+
+		// Clear all callbacks
+		this.messageCallbacks.clear();
+		this.statusCallbacks.clear();
+		this.typingCallbacks.clear();
 	}
 
 	/**
@@ -131,31 +162,46 @@ class WebSocketService {
 	 * Notify status change
 	 */
 	private notifyStatus(status: 'connected' | 'disconnected' | 'reconnecting'): void {
-		this.statusCallbacks.forEach((callback) => callback(status));
+		this.statusCallbacks.forEach((callback) => {
+			try {
+				callback(status);
+			} catch (error) {
+				console.error('Error in status callback:', error);
+			}
+		});
 	}
 
 	/**
 	 * Subscribe to incoming messages
+	 * Returns unsubscribe function that MUST be called to prevent memory leaks
 	 */
 	onMessage(callback: MessageCallback): () => void {
 		this.messageCallbacks.add(callback);
-		return () => this.messageCallbacks.delete(callback);
+		return () => {
+			this.messageCallbacks.delete(callback);
+		};
 	}
 
 	/**
 	 * Subscribe to connection status changes
+	 * Returns unsubscribe function that MUST be called to prevent memory leaks
 	 */
 	onStatusChange(callback: StatusCallback): () => void {
 		this.statusCallbacks.add(callback);
-		return () => this.statusCallbacks.delete(callback);
+		return () => {
+			this.statusCallbacks.delete(callback);
+		};
 	}
 
 	/**
 	 * Subscribe to typing indicators
+	 * Returns unsubscribe function that MUST be called to prevent memory leaks
 	 */
 	onTyping(callback: TypingCallback): () => void {
 		this.typingCallbacks.add(callback);
-		return () => this.typingCallbacks.delete(callback);
+		return () => {
+			this.typingCallbacks.delete(callback);
+		};
 	}
 
 	/**

@@ -18,15 +18,22 @@ const initialState: AuthState = {
 
 function createAuthStore() {
 	const { subscribe, set, update } = writable<AuthState>(initialState);
+	let initPromise: Promise<void> | null = null;
 
 	return {
 		subscribe,
 
 		/**
 		 * Initialize auth state from stored token
+		 * Prevents race conditions by ensuring only one init runs at a time
 		 */
 		async init() {
 			if (!browser) return;
+
+			// If already initializing, wait for existing init to complete
+			if (initPromise) {
+				return initPromise;
+			}
 
 			const token = authService.getToken();
 			if (!token) {
@@ -34,6 +41,15 @@ function createAuthStore() {
 				return;
 			}
 
+			initPromise = this._performInit();
+			await initPromise;
+			initPromise = null;
+		},
+
+		/**
+		 * Internal initialization logic
+		 */
+		async _performInit() {
 			update((state) => ({ ...state, loading: true }));
 
 			try {
@@ -44,9 +60,11 @@ function createAuthStore() {
 				authService.logout();
 				set(initialState);
 			}
-		} /**
+		},
+
+		/**
 		 * Login user
-		 */,
+		 */
 		async login(credentials: LoginCredentials) {
 			update((state) => ({ ...state, loading: true, error: null }));
 

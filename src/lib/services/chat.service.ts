@@ -1,22 +1,18 @@
 import { apiClient } from './api';
 import type { Message, SendMessagePayload, ChatConversation } from '$lib/types';
 
+/**
+ * Result type for better error handling
+ */
+export type ServiceResult<T> = { success: true; data: T } | { success: false; error: string };
+
 export const chatService = {
 	/**
 	 * Get all conversations for the current user
 	 */
 	async getConversations(): Promise<ChatConversation[]> {
-		try {
-			const response = await apiClient.get<ChatConversation[]>('/chat/conversations');
-			return response.data || [];
-		} catch (err) {
-			// Backend doesn't expose a conversations list yet; return empty list instead of throwing.
-			console.warn(
-				'getConversations: returning empty list due to backend missing endpoint or error',
-				err
-			);
-			return [];
-		}
+		const response = await apiClient.get<ChatConversation[]>('/chat/conversations');
+		return response.data || [];
 	},
 
 	/**
@@ -34,9 +30,23 @@ export const chatService = {
 	 * Send a message to another user
 	 */
 	async sendMessage(payload: SendMessagePayload): Promise<Message> {
+		// Validate payload before sending
+		if (!payload.receiverId || !payload.content) {
+			throw new Error('Invalid message payload');
+		}
+
+		if (payload.content.length > 5000) {
+			throw new Error('Message too long');
+		}
+
 		// backend exposes POST /send on the chat router
 		const response = await apiClient.post<Message>('/chat/send', payload);
-		return response.data!;
+
+		if (!response.data) {
+			throw new Error('Failed to send message');
+		}
+
+		return response.data;
 	},
 
 	/**

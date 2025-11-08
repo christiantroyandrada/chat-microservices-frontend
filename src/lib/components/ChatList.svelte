@@ -2,9 +2,12 @@
 	import type { ChatConversation } from '$lib/types';
 	import { createEventDispatcher } from 'svelte';
 
-	export let conversations: ChatConversation[] = [];
-	export let selectedUserId: string | null = null;
-	export let loading = false;
+	// Props for runes mode
+	let {
+		conversations = [] as ChatConversation[],
+		selectedUserId = null as string | null,
+		loading = false
+	} = $props();
 
 	const dispatch = createEventDispatcher<{
 		select: string;
@@ -43,12 +46,16 @@
 				<p class="mt-1 text-xs">Start a new chat to begin messaging</p>
 			</div>
 		{:else}
-			<ul class="divide-y divide-gray-200">
+			<ul class="divide-y divide-gray-200" role="list" aria-label="Conversations">
 				{#each conversations as conversation (conversation.userId)}
-					<li>
+					<li role="listitem">
 						<button
 							onclick={() => dispatch('select', conversation.userId)}
-							class="w-full p-4 text-left transition-colors hover:bg-gray-50 {selectedUserId ===
+							aria-label="Chat with {conversation.username}{conversation.unreadCount
+								? `, ${conversation.unreadCount} unread messages`
+								: ''}"
+							aria-current={selectedUserId === conversation.userId ? 'true' : 'false'}
+							class="w-full p-4 text-left transition-colors hover:bg-gray-50 focus:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:outline-none focus:ring-inset {selectedUserId ===
 							conversation.userId
 								? 'bg-blue-50'
 								: ''}"

@@ -2,8 +2,8 @@
 	import type { ChatConversation } from '$lib/types';
 	import { createEventDispatcher } from 'svelte';
 
-	export let recipient: ChatConversation | null = null;
-	export let typingUsers: Set<string> = new Set();
+	// Props (runes mode)
+	let { recipient = null as ChatConversation | null, typingUsers = new Set<string>() } = $props();
 
 	const dispatch = createEventDispatcher();
 </script>

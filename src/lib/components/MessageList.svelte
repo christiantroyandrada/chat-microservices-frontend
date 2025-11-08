@@ -1,22 +1,30 @@
 <script lang="ts">
 	import type { Message } from '$lib/types';
-	import { onMount, afterUpdate } from 'svelte';
+	import { onMount, tick } from 'svelte';
 
-	export let messages: Message[] = [];
-	export let currentUserId: string;
-	export let loading = false;
+	// Use Svelte 5 runes props API instead of `export let` in runes mode
+	let {
+		messages = [] as Message[],
+		currentUserId = undefined as string | undefined,
+		loading = false
+	} = $props();
 
 	let messagesContainer: HTMLDivElement;
 	let shouldAutoScroll = true;
+	let previousMessageCount = 0;
+
+	// Optimize: Only scroll when messages actually change
+	$effect(() => {
+		if (messages.length > previousMessageCount) {
+			previousMessageCount = messages.length;
+			if (shouldAutoScroll) {
+				tick().then(() => scrollToBottom());
+			}
+		}
+	});
 
 	onMount(() => {
 		scrollToBottom();
-	});
-
-	afterUpdate(() => {
-		if (shouldAutoScroll) {
-			scrollToBottom();
-		}
 	});
 
 	function scrollToBottom() {

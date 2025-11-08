@@ -5,6 +5,7 @@ const API_URL = env.PUBLIC_API_URL || 'http://localhost:8080';
 
 class ApiClient {
 	private baseURL: string;
+	private activeRequests: Map<string, AbortController> = new Map();
 
 	constructor(baseURL: string) {
 		this.baseURL = baseURL;
@@ -23,15 +24,38 @@ class ApiClient {
 		return localStorage.getItem('auth_token');
 	}
 
-	async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+	/**
+	 * Make an HTTP request with automatic cancellation support
+	 */
+	async request<T>(
+		endpoint: string,
+		options: RequestInit = {},
+		requestId?: string
+	): Promise<ApiResponse<T>> {
+		// Create abort controller for this request
+		const abortController = new AbortController();
+
+		// Store with unique ID for cancellation
+		if (requestId) {
+			// Cancel any existing request with same ID
+			this.cancelRequest(requestId);
+			this.activeRequests.set(requestId, abortController);
+		}
+
 		try {
 			const response = await fetch(`${this.baseURL}${endpoint}`, {
 				...options,
 				headers: {
 					...this.getAuthHeaders(),
 					...options.headers
-				}
+				},
+				signal: abortController.signal
 			});
+
+			// Clean up active request
+			if (requestId) {
+				this.activeRequests.delete(requestId);
+			}
 
 			const data = await response.json();
 
@@ -49,6 +73,19 @@ class ApiClient {
 				message: data.message
 			};
 		} catch (error) {
+			// Clean up active request
+			if (requestId) {
+				this.activeRequests.delete(requestId);
+			}
+
+			// Handle abort errors
+			if (error instanceof Error && error.name === 'AbortError') {
+				throw {
+					message: 'Request cancelled',
+					status: 0
+				} as ApiError;
+			}
+
 			if ((error as ApiError).status) {
 				throw error;
 			}
@@ -59,26 +96,53 @@ class ApiClient {
 		}
 	}
 
-	async get<T>(endpoint: string): Promise<ApiResponse<T>> {
-		return this.request<T>(endpoint, { method: 'GET' });
+	/**
+	 * Cancel a specific request by ID
+	 */
+	cancelRequest(requestId: string): void {
+		const controller = this.activeRequests.get(requestId);
+		if (controller) {
+			controller.abort();
+			this.activeRequests.delete(requestId);
+		}
 	}
 
-	async post<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
-		return this.request<T>(endpoint, {
-			method: 'POST',
-			body: JSON.stringify(body)
-		});
+	/**
+	 * Cancel all active requests
+	 */
+	cancelAllRequests(): void {
+		this.activeRequests.forEach((controller) => controller.abort());
+		this.activeRequests.clear();
 	}
 
-	async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
-		return this.request<T>(endpoint, {
-			method: 'PUT',
-			body: JSON.stringify(body)
-		});
+	async get<T>(endpoint: string, requestId?: string): Promise<ApiResponse<T>> {
+		return this.request<T>(endpoint, { method: 'GET' }, requestId);
 	}
 
-	async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
-		return this.request<T>(endpoint, { method: 'DELETE' });
+	async post<T>(endpoint: string, body?: unknown, requestId?: string): Promise<ApiResponse<T>> {
+		return this.request<T>(
+			endpoint,
+			{
+				method: 'POST',
+				body: JSON.stringify(body)
+			},
+			requestId
+		);
+	}
+
+	async put<T>(endpoint: string, body?: unknown, requestId?: string): Promise<ApiResponse<T>> {
+		return this.request<T>(
+			endpoint,
+			{
+				method: 'PUT',
+				body: JSON.stringify(body)
+			},
+			requestId
+		);
+	}
+
+	async delete<T>(endpoint: string, requestId?: string): Promise<ApiResponse<T>> {
+		return this.request<T>(endpoint, { method: 'DELETE' }, requestId);
 	}
 }
 

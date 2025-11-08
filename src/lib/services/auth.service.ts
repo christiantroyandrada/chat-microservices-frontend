@@ -10,14 +10,14 @@ export const authService = {
 		// Normalize and sanitize to remove any hidden unicode characters
 		const rawName = (credentials as any).name ?? (credentials as any).username ?? '';
 		const normalizedName = String(rawName)
-			.replace(/\u00A0/g, ' ')  // Replace non-breaking spaces
-			.replace(/[\s\uFEFF\xA0]+/g, ' ')  // Collapse whitespace
+			.replace(/\u00A0/g, ' ') // Replace non-breaking spaces
+			.replace(/[\s\uFEFF\xA0]+/g, ' ') // Collapse whitespace
 			.trim();
 
 		const payload = {
 			name: normalizedName,
 			email: credentials.email,
-			password: credentials.password,
+			password: credentials.password
 		};
 
 		// backend exposes registration at /register on the user router which is mounted

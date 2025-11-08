@@ -54,7 +54,7 @@
 			toastStore.success('Registration successful!');
 		} catch (err: unknown) {
 			const apiError = err as ApiError;
-			
+
 			// Handle validation errors from backend
 			if (apiError.errors && Array.isArray(apiError.errors)) {
 				// Convert array of errors to field-specific errors
@@ -67,17 +67,20 @@
 				error = apiError.message || 'Please fix the errors below';
 			} else if (apiError.errors && typeof apiError.errors === 'object') {
 				// Handle if backend sends errors as object
-				fieldErrors = Object.entries(apiError.errors).reduce((acc: Record<string, string>, [field, messages]) => {
-					acc[field] = Array.isArray(messages) ? messages[0] : messages as string;
-					return acc;
-				}, {});
+				fieldErrors = Object.entries(apiError.errors).reduce(
+					(acc: Record<string, string>, [field, messages]) => {
+						acc[field] = Array.isArray(messages) ? messages[0] : (messages as string);
+						return acc;
+					},
+					{}
+				);
 				error = apiError.message || 'Please fix the errors below';
 			} else {
 				// Generic error message
 				const message = apiError.message || 'Registration failed';
 				error = message;
 			}
-			
+
 			toastStore.error(error);
 		} finally {
 			loading = false;
@@ -116,7 +119,8 @@
 						autocomplete="username"
 						required
 						bind:value={username}
-						class="mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none {fieldErrors.username || fieldErrors.name
+						class="mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none {fieldErrors.username ||
+						fieldErrors.name
 							? 'border-red-500 focus:border-red-500 focus:ring-red-500'
 							: 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}"
 						placeholder="johndoe"

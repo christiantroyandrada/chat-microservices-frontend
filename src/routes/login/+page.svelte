@@ -39,7 +39,7 @@
 			toastStore.success('Login successful!');
 		} catch (err: unknown) {
 			const apiError = err as ApiError;
-			
+
 			// Handle validation errors from backend
 			if (apiError.errors && Array.isArray(apiError.errors)) {
 				// Convert array of errors to field-specific errors
@@ -52,17 +52,20 @@
 				error = apiError.message || 'Please fix the errors below';
 			} else if (apiError.errors && typeof apiError.errors === 'object') {
 				// Handle if backend sends errors as object
-				fieldErrors = Object.entries(apiError.errors).reduce((acc: Record<string, string>, [field, messages]) => {
-					acc[field] = Array.isArray(messages) ? messages[0] : messages as string;
-					return acc;
-				}, {});
+				fieldErrors = Object.entries(apiError.errors).reduce(
+					(acc: Record<string, string>, [field, messages]) => {
+						acc[field] = Array.isArray(messages) ? messages[0] : (messages as string);
+						return acc;
+					},
+					{}
+				);
 				error = apiError.message || 'Please fix the errors below';
 			} else {
 				// Generic error message
 				const message = apiError.message || 'Login failed';
 				error = message;
 			}
-			
+
 			toastStore.error(error);
 		} finally {
 			loading = false;

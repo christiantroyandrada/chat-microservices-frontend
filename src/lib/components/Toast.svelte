@@ -34,7 +34,7 @@
 </script>
 
 <div class="fixed top-4 right-4 z-50 flex max-w-md flex-col gap-2">
-	{#each $toastStore as toast (toast.id)}
+	{#each toastStore.items as toast (toast.id)}
 		<div
 			transition:fly={{ y: -20, duration: 300 }}
 			class="flex items-center gap-3 rounded-lg px-4 py-3 shadow-lg {getColorClasses(toast.type)}"
