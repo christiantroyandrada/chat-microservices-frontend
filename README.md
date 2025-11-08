@@ -7,7 +7,7 @@ This is the frontend application for the [Chat Microservices](https://github.com
 - **Framework**: [SvelteKit](https://kit.svelte.dev/) (v2.47.1)
 - **Language**: TypeScript (v5.9.3)
 - **Styling**: [Tailwind CSS](https://tailwindcss.com/) (v4.1.14)
-- **Testing**: 
+- **Testing**:
   - Unit tests: Vitest (v3.2.4)
   - E2E tests: Playwright (v1.56.1)
 - **Package Manager**: pnpm (recommended)
@@ -33,11 +33,13 @@ This is the frontend application for the [Chat Microservices](https://github.com
 This frontend connects to the following backend services:
 
 ### Via Gateway (Recommended - port 8080)
+
 - **Auth/User API**: `http://localhost:8080/api/user`
 - **Chat API**: `http://localhost:8080/api/chat`
 - **Notifications API**: `http://localhost:8080/api/notifications`
 
 ### Direct Service Access (Alternative - via nginx on port 85)
+
 - **User Service**: `http://localhost:85/api/user` (port 8081)
 - **Chat Service**: `http://localhost:85/api/chat` (port 8082)
 - **Notification Service**: `http://localhost:85/api/notifications` (port 8083)
@@ -53,6 +55,7 @@ pnpm install
 ```
 
 Or with npm:
+
 ```bash
 npm install
 ```
@@ -150,6 +153,7 @@ cd gateway && npm run dev
 ```
 
 Verify backend health:
+
 ```bash
 curl -I http://localhost:85/api/health || true
 # or
@@ -177,17 +181,20 @@ pnpm test:e2e
 The frontend communicates with the backend through RESTful APIs and WebSocket connections:
 
 ### Authentication Flow
+
 1. User registers via `/api/user/register`
 2. User logs in via `/api/user/login`
 3. JWT token is stored (localStorage/sessionStorage)
 4. Token is included in subsequent API requests
 
 ### Chat Flow
+
 1. Establish WebSocket connection to chat service
 2. Send/receive messages in real-time
 3. Messages are persisted via `/api/chat/messages` endpoint
 
 ### Notifications
+
 - Listen to notification events from `/api/notifications`
 - Display in-app notifications
 - Handle push notifications (if enabled)
@@ -221,18 +228,20 @@ The app can be deployed to various platforms:
 Install the appropriate [SvelteKit adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
 
 Example for Node.js:
+
 ```bash
 pnpm add -D @sveltejs/adapter-node
 ```
 
 Then update `svelte.config.js`:
+
 ```js
 import adapter from '@sveltejs/adapter-node';
 
 export default {
-  kit: {
-    adapter: adapter()
-  }
+	kit: {
+		adapter: adapter()
+	}
 };
 ```
 
@@ -271,6 +280,7 @@ pnpm test:e2e --project=chromium
 **Problem**: Cannot connect to backend API
 
 **Solution**:
+
 1. Verify backend services are running: `docker-compose ps`
 2. Check backend health endpoints:
    ```bash
@@ -285,6 +295,7 @@ pnpm test:e2e --project=chromium
 **Problem**: Real-time chat not working
 
 **Solution**:
+
 1. Ensure chat service is running on port 8082
 2. Verify `PUBLIC_WS_URL` in `.env`
 3. Check browser console for WebSocket errors
@@ -295,6 +306,7 @@ pnpm test:e2e --project=chromium
 **Problem**: Development server won't start
 
 **Solution**:
+
 1. Clear node_modules and reinstall: `rm -rf node_modules && pnpm install`
 2. Check if port 5173 is already in use
 3. Clear Vite cache: `rm -rf .svelte-kit`
@@ -305,6 +317,7 @@ pnpm test:e2e --project=chromium
 **Problem**: Production build fails
 
 **Solution**:
+
 1. Run type checking: `pnpm check`
 2. Fix ESLint errors: `pnpm lint`
 3. Clear build artifacts: `rm -rf build .svelte-kit`

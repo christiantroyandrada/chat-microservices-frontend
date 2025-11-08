@@ -23,7 +23,7 @@
 
 	async function handleSubmit() {
 		error = '';
-		
+
 		if (!email || !password) {
 			error = 'Please fill in all fields';
 			return;
@@ -34,9 +34,9 @@
 		try {
 			await authStore.login({ email, password });
 			toastStore.success('Login successful!');
-		} catch (err: any) {
-			error = err.message || 'Login failed';
-			toastStore.error(error);
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : 'Login failed';
+			toastStore.error(message);
 		} finally {
 			loading = false;
 		}
@@ -47,8 +47,8 @@
 	<title>Login - Chat App</title>
 </svelte:head>
 
-<div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-	<div class="max-w-md w-full space-y-8">
+<div class="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+	<div class="w-full max-w-md space-y-8">
 		<div class="text-center">
 			<h2 class="text-3xl font-bold text-gray-900">Sign in to your account</h2>
 			<p class="mt-2 text-sm text-gray-600">
@@ -61,16 +61,14 @@
 
 		<form class="mt-8 space-y-6" on:submit|preventDefault={handleSubmit}>
 			{#if error}
-				<div class="bg-red-50 border border-red-400 text-red-700 px-4 py-3 rounded">
+				<div class="rounded border border-red-400 bg-red-50 px-4 py-3 text-red-700">
 					{error}
 				</div>
 			{/if}
 
 			<div class="space-y-4">
 				<div>
-					<label for="email" class="block text-sm font-medium text-gray-700">
-						Email address
-					</label>
+					<label for="email" class="block text-sm font-medium text-gray-700"> Email address </label>
 					<input
 						id="email"
 						name="email"
@@ -78,15 +76,13 @@
 						autocomplete="email"
 						required
 						bind:value={email}
-						class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+						class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
 						placeholder="you@example.com"
 					/>
 				</div>
 
 				<div>
-					<label for="password" class="block text-sm font-medium text-gray-700">
-						Password
-					</label>
+					<label for="password" class="block text-sm font-medium text-gray-700"> Password </label>
 					<div class="relative mt-1">
 						<input
 							id="password"
@@ -95,13 +91,13 @@
 							autocomplete="current-password"
 							required
 							bind:value={password}
-							class="block w-full pr-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+							class="block w-full rounded-md border border-gray-300 px-3 py-2 pr-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
 							placeholder="••••••••"
 						/>
 						<button
 							type="button"
 							on:click={() => (showPassword = !showPassword)}
-							class="absolute inset-y-0 right-0 pr-2 flex items-center text-sm leading-5"
+							class="absolute inset-y-0 right-0 flex items-center pr-2 text-sm leading-5"
 							aria-label={showPassword ? 'Hide password' : 'Show password'}
 						>
 							{#if showPassword}
@@ -118,7 +114,7 @@
 				<button
 					type="submit"
 					disabled={loading}
-					class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+					class="flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{loading ? 'Signing in...' : 'Sign in'}
 				</button>

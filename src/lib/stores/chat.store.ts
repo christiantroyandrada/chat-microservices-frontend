@@ -118,11 +118,9 @@ export const chatStore = createChatStore();
 // Derived stores
 export const selectedConversation = derived(
 	chatStore,
-	($chat) =>
-		$chat.conversations.find((c) => c.userId === $chat.selectedUserId) || null
+	($chat) => $chat.conversations.find((c) => c.userId === $chat.selectedUserId) || null
 );
 
-export const selectedMessages = derived(
-	chatStore,
-	($chat) => ($chat.selectedUserId ? $chat.messages[$chat.selectedUserId] || [] : [])
+export const selectedMessages = derived(chatStore, ($chat) =>
+	$chat.selectedUserId ? $chat.messages[$chat.selectedUserId] || [] : []
 );

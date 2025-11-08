@@ -14,9 +14,9 @@
 			<div class="flex items-center gap-3">
 				<!-- Avatar -->
 				<div
-					class="w-10 h-10 rounded-full bg-linear-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold"
+					class="flex h-10 w-10 items-center justify-center rounded-full bg-linear-to-br from-blue-400 to-purple-500 font-semibold text-white"
 				>
-					{((recipient.username?.[0] ?? '').toUpperCase())}
+					{(recipient.username?.[0] ?? '').toUpperCase()}
 				</div>
 
 				<div>
@@ -33,10 +33,10 @@
 			<div class="flex items-center gap-2">
 				<button
 					onclick={() => dispatch('call')}
-					class="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
+					class="rounded-full p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
 					title="Video call"
 				>
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -47,10 +47,10 @@
 				</button>
 				<button
 					onclick={() => dispatch('info')}
-					class="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
+					class="rounded-full p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
 					title="User info"
 				>
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -64,6 +64,6 @@
 	</div>
 {:else}
 	<div class="border-b border-gray-200 bg-white p-4">
-		<div class="text-gray-500 text-center">Select a conversation</div>
+		<div class="text-center text-gray-500">Select a conversation</div>
 	</div>
 {/if}

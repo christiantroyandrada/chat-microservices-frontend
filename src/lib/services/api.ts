@@ -23,10 +23,7 @@ class ApiClient {
 		return localStorage.getItem('auth_token');
 	}
 
-	async request<T>(
-		endpoint: string,
-		options: RequestInit = {}
-	): Promise<ApiResponse<T>> {
+	async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
 		try {
 			const response = await fetch(`${this.baseURL}${endpoint}`, {
 				...options,

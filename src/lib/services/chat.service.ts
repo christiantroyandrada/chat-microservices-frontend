@@ -11,7 +11,10 @@ export const chatService = {
 			return response.data || [];
 		} catch (err) {
 			// Backend doesn't expose a conversations list yet; return empty list instead of throwing.
-			console.warn('getConversations: returning empty list due to backend missing endpoint or error', err);
+			console.warn(
+				'getConversations: returning empty list due to backend missing endpoint or error',
+				err
+			);
 			return [];
 		}
 	},

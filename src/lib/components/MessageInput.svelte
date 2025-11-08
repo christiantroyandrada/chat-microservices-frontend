@@ -42,7 +42,7 @@
 
 		dispatch('send', trimmedMessage);
 		message = '';
-		
+
 		// Reset textarea height
 		if (textarea) {
 			textarea.style.height = 'auto';
@@ -64,16 +64,16 @@
 				{disabled}
 				{placeholder}
 				rows="1"
-				class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+				class="w-full resize-none rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 			></textarea>
 		</div>
 		<button
 			onclick={handleSend}
 			disabled={!message.trim() || disabled}
-			class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+			class="rounded-lg bg-blue-600 px-6 py-2 text-white transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 		>
 			Send
 		</button>
 	</div>
-	<p class="text-xs text-gray-500 mt-2">Press Enter to send, Shift+Enter for new line</p>
+	<p class="mt-2 text-xs text-gray-500">Press Enter to send, Shift+Enter for new line</p>
 </div>

@@ -101,9 +101,10 @@ function createNotificationStore() {
 					return {
 						...state,
 						notifications: state.notifications.filter((n) => n._id !== notificationId),
-						unreadCount: notification && !notification.read
-							? Math.max(0, state.unreadCount - 1)
-							: state.unreadCount
+						unreadCount:
+							notification && !notification.read
+								? Math.max(0, state.unreadCount - 1)
+								: state.unreadCount
 					};
 				});
 			} catch (error) {

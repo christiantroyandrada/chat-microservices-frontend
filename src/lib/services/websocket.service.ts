@@ -44,7 +44,7 @@ class WebSocketService {
 			this.socket.on('connect', () => {
 				console.log('Socket.IO connected');
 				this.notifyStatus('connected');
-				
+
 				// Identify user after connection
 				if (this.token) {
 					// Decode token to get user ID (basic JWT decode)
@@ -80,7 +80,6 @@ class WebSocketService {
 			this.socket.on('typing', (data: { userId: string; isTyping: boolean }) => {
 				this.typingCallbacks.forEach((callback) => callback(data.userId, data.isTyping));
 			});
-
 		} catch (error) {
 			console.error('Failed to connect Socket.IO:', error);
 		}
@@ -101,15 +100,19 @@ class WebSocketService {
 	 */
 	sendMessage(message: Message): void {
 		if (this.socket?.connected) {
-			this.socket.emit('sendMessage', {
-				senderId: message.senderId,
-				receiverId: message.receiverId,
-				message: message.content
-			}, (response: { ok: boolean; id?: string; error?: string }) => {
-				if (!response.ok) {
-					console.error('Failed to send message:', response.error);
+			this.socket.emit(
+				'sendMessage',
+				{
+					senderId: message.senderId,
+					receiverId: message.receiverId,
+					message: message.content
+				},
+				(response: { ok: boolean; id?: string; error?: string }) => {
+					if (!response.ok) {
+						console.error('Failed to send message:', response.error);
+					}
 				}
-			});
+			);
 		} else {
 			console.error('Socket.IO is not connected');
 		}

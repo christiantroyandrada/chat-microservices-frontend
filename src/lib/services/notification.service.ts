@@ -8,7 +8,9 @@ export const notificationService = {
 	async getNotifications(limit = 20, offset = 0): Promise<Notification[]> {
 		try {
 			// include trailing slash so nginx location /notifications/ matches and doesn't redirect
-			const response = await apiClient.get<Notification[]>(`/notifications/?limit=${limit}&offset=${offset}`);
+			const response = await apiClient.get<Notification[]>(
+				`/notifications/?limit=${limit}&offset=${offset}`
+			);
 			return response.data || [];
 		} catch (err) {
 			console.warn('notificationService.getNotifications failed, returning empty list', err);

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { toastStore } from '$lib/stores/toast.store';
-	import { fly, fade } from 'svelte/transition';
+	import { fly } from 'svelte/transition';
 
 	const getIcon = (type: string) => {
 		switch (type) {
@@ -33,17 +33,17 @@
 	};
 </script>
 
-<div class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-md">
+<div class="fixed top-4 right-4 z-50 flex max-w-md flex-col gap-2">
 	{#each $toastStore as toast (toast.id)}
 		<div
 			transition:fly={{ y: -20, duration: 300 }}
-			class="flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg {getColorClasses(toast.type)}"
+			class="flex items-center gap-3 rounded-lg px-4 py-3 shadow-lg {getColorClasses(toast.type)}"
 		>
 			<span class="text-xl font-bold">{getIcon(toast.type)}</span>
 			<p class="flex-1 text-sm">{toast.message}</p>
 			<button
 				onclick={() => toastStore.dismiss(toast.id)}
-				class="text-white hover:opacity-80 transition-opacity"
+				class="text-white transition-opacity hover:opacity-80"
 				aria-label="Close"
 			>
 				✕

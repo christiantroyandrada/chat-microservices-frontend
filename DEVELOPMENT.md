@@ -7,12 +7,14 @@ This is a full-featured **real-time chat application** built with SvelteKit, Typ
 ### ✨ Features Implemented
 
 ✅ **Authentication**
+
 - User registration and login
 - JWT token management
 - Protected routes
 - Auto-redirect based on auth status
 
 ✅ **Real-time Chat**
+
 - WebSocket connections for instant messaging
 - Typing indicators
 - Connection status monitoring
@@ -20,11 +22,13 @@ This is a full-featured **real-time chat application** built with SvelteKit, Typ
 - Message history
 
 ✅ **Notifications**
+
 - Toast notifications for user feedback
 - Notification center integration
 - Unread count tracking
 
 ✅ **Modern UI**
+
 - Responsive design (mobile & desktop)
 - Tailwind CSS styling
 - Loading states
@@ -88,6 +92,7 @@ PUBLIC_WS_URL=ws://localhost:8082
 ```
 
 **Backend Connection Options:**
+
 - **Gateway (port 8080)**: Recommended for development
 - **Nginx (port 85)**: Alternative reverse proxy
 
@@ -104,6 +109,7 @@ cd gateway && npm run dev
 ```
 
 Verify backend health:
+
 ```bash
 curl http://localhost:85/api/health
 # or
@@ -168,6 +174,7 @@ pnpm format
 4. If not → redirect to `/login`
 
 **Login/Register Pages:**
+
 - Form validation
 - Error handling
 - Loading states
@@ -176,12 +183,14 @@ pnpm format
 ### Chat Interface (`/chat`)
 
 **Main features:**
+
 - **Sidebar**: List of conversations with unread badges
 - **Header**: Current conversation info, typing indicator
 - **Messages**: Scrollable message history with date separators
 - **Input**: Message compose with Enter to send, Shift+Enter for newline
 
 **Real-time features:**
+
 - WebSocket connection for instant messages
 - Typing indicators
 - Auto-scroll to bottom
@@ -190,6 +199,7 @@ pnpm format
 ### WebSocket Service
 
 Manages real-time communication:
+
 - Auto-connect on login
 - Auto-reconnect on disconnect (5 attempts)
 - Message delivery
@@ -199,6 +209,7 @@ Manages real-time communication:
 ### State Management
 
 **Stores:**
+
 - `authStore`: User authentication state
 - `chatStore`: Conversations and messages
 - `notificationStore`: Notifications and unread count
@@ -210,28 +221,31 @@ Manages real-time communication:
 
 ### Backend Services
 
-| Service | Port | Endpoint Prefix | Purpose |
-|---------|------|----------------|---------|
-| User Service | 8081 | `/api/user` | Auth, registration, profiles |
-| Chat Service | 8082 | `/api/chat` | Messages, conversations |
-| Notification Service | 8083 | `/api/notifications` | Notifications |
-| Nginx Proxy | 85 | `/api/*` | Reverse proxy to services |
-| Gateway | 8080 | `/api/*` | Alternative gateway |
+| Service              | Port | Endpoint Prefix      | Purpose                      |
+| -------------------- | ---- | -------------------- | ---------------------------- |
+| User Service         | 8081 | `/api/user`          | Auth, registration, profiles |
+| Chat Service         | 8082 | `/api/chat`          | Messages, conversations      |
+| Notification Service | 8083 | `/api/notifications` | Notifications                |
+| Nginx Proxy          | 85   | `/api/*`             | Reverse proxy to services    |
+| Gateway              | 8080 | `/api/*`             | Alternative gateway          |
 
 ### API Endpoints Used
 
 **Authentication:**
+
 - `POST /api/user/register` - Register new user
 - `POST /api/user/login` - Login user
 - `GET /api/user/me` - Get current user
 
 **Chat:**
+
 - `GET /api/chat/conversations` - Get all conversations
 - `GET /api/chat/messages/:userId` - Get messages with user
 - `POST /api/chat/messages` - Send message
 - `PUT /api/chat/messages/read/:senderId` - Mark as read
 
 **Notifications:**
+
 - `GET /api/notifications` - Get notifications
 - `GET /api/notifications/unread/count` - Get unread count
 - `PUT /api/notifications/:id/read` - Mark as read
@@ -245,6 +259,7 @@ Manages real-time communication:
 **Problem:** Cannot connect to API
 
 **Solutions:**
+
 1. Verify backend is running: `docker-compose ps`
 2. Check health endpoint: `curl http://localhost:85/api/health`
 3. Verify `.env` file has correct API URL
@@ -255,6 +270,7 @@ Manages real-time communication:
 **Problem:** Real-time messages not working
 
 **Solutions:**
+
 1. Verify chat service is running on port 8082
 2. Check `PUBLIC_WS_URL` in `.env`
 3. Open browser DevTools → Network → WS tab
@@ -265,6 +281,7 @@ Manages real-time communication:
 **Problem:** Login/register not working
 
 **Solutions:**
+
 1. Check backend user service on port 8081
 2. Verify MongoDB is running
 3. Check browser localStorage for `auth_token`
@@ -275,6 +292,7 @@ Manages real-time communication:
 **Problem:** TypeScript/Lint errors
 
 **Solutions:**
+
 ```bash
 # Clear and reinstall
 rm -rf node_modules .svelte-kit
@@ -298,6 +316,7 @@ pnpm format
 - CORS handled by backend
 
 **Production Checklist:**
+
 - [ ] Use HTTPS for all connections
 - [ ] Use WSS for WebSocket
 - [ ] Implement token refresh

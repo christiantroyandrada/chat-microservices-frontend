@@ -37,14 +37,22 @@ export default defineConfig(
 				svelteConfig
 			}
 		}
-	}
-	,
+	},
 	// Disable floating-promise checks for client-side navigation calls (goto)
 	// These are false positives for SvelteKit client code where `void goto()` is intentional.
 	{
 		files: ['src/**/stores/**', 'src/**/routes/**', 'src/**/*.svelte'],
 		rules: {
-			'@typescript-eslint/no-floating-promises': 'off'
+			// allow un-awaited client-side navigation calls like `void goto('/path')`
+			'@typescript-eslint/no-floating-promises': 'off',
+			// some svelte-specific rules are noisy for this project in client files
+			'svelte/no-navigation-without-resolve': 'off',
+			'svelte/prefer-svelte-reactivity': 'off',
+			// allow unused bindings that start with underscore in client stores
+			'@typescript-eslint/no-unused-vars': [
+				'warn',
+				{ argsIgnorePattern: '^_', varsIgnorePattern: '^_' }
+			]
 		}
 	}
 );

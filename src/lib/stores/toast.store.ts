@@ -12,11 +12,7 @@ function createToastStore() {
 		/**
 		 * Show a toast notification
 		 */
-		show(
-			type: Toast['type'],
-			message: string,
-			duration: number = 5000
-		): string {
+		show(type: Toast['type'], message: string, duration: number = 5000): string {
 			const id = `toast-${nextId++}`;
 			const toast: Toast = { id, type, message, duration };
 

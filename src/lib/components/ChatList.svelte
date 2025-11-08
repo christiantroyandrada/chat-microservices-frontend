@@ -27,9 +27,9 @@
 	}
 </script>
 
-<div class="flex flex-col h-full bg-white border-r border-gray-200">
+<div class="flex h-full flex-col border-r border-gray-200 bg-white">
 	<!-- Header -->
-	<div class="p-4 border-b border-gray-200">
+	<div class="border-b border-gray-200 p-4">
 		<h2 class="text-xl font-semibold text-gray-800">Messages</h2>
 	</div>
 
@@ -40,7 +40,7 @@
 		{:else if conversations.length === 0}
 			<div class="p-4 text-center text-gray-500">
 				<p class="text-sm">No conversations yet</p>
-				<p class="text-xs mt-1">Start a new chat to begin messaging</p>
+				<p class="mt-1 text-xs">Start a new chat to begin messaging</p>
 			</div>
 		{:else}
 			<ul class="divide-y divide-gray-200">
@@ -48,7 +48,7 @@
 					<li>
 						<button
 							onclick={() => dispatch('select', conversation.userId)}
-							class="w-full p-4 hover:bg-gray-50 transition-colors text-left {selectedUserId ===
+							class="w-full p-4 text-left transition-colors hover:bg-gray-50 {selectedUserId ===
 							conversation.userId
 								? 'bg-blue-50'
 								: ''}"
@@ -56,22 +56,22 @@
 							<div class="flex items-start gap-3">
 								<!-- Avatar -->
 								<div
-									class="w-12 h-12 rounded-full bg-linear-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold shrink-0"
+									class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-blue-400 to-purple-500 font-semibold text-white"
 								>
-									{((conversation.username?.[0] ?? '').toUpperCase())}
+									{(conversation.username?.[0] ?? '').toUpperCase()}
 								</div>
 
 								<!-- Content -->
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center justify-between mb-1">
-										<h3 class="text-sm font-semibold text-gray-900 truncate">
+								<div class="min-w-0 flex-1">
+									<div class="mb-1 flex items-center justify-between">
+										<h3 class="truncate text-sm font-semibold text-gray-900">
 											{conversation.username}
 										</h3>
 										<span class="text-xs text-gray-500">
 											{formatTime(conversation.lastMessageTime)}
 										</span>
 									</div>
-									<p class="text-sm text-gray-600 truncate">
+									<p class="truncate text-sm text-gray-600">
 										{conversation.lastMessage || 'No messages yet'}
 									</p>
 								</div>
@@ -79,7 +79,7 @@
 								<!-- Unread Badge -->
 								{#if conversation.unreadCount && conversation.unreadCount > 0}
 									<div
-										class="bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold"
+										class="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white"
 									>
 										{conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
 									</div>
