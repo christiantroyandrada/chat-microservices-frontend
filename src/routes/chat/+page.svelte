@@ -209,6 +209,32 @@
 		}
 	}
 
+
+	/**
+	 * Create a new conversation with a selected user (from ChatList create event).
+	 * If a conversation already exists, select it. Otherwise, optimistically open a new thread
+	 * and refresh the conversations list in the background.
+	 */
+	async function createConversation(user: any) {
+		if (!user || !user.userId) return;
+
+		const existing = conversations.find((c) => c.userId === user.userId);
+		if (existing) {
+			await selectConversation(existing.userId);
+			return;
+		}
+
+		// Optimistically open a conversation UI for this user
+		selectedConversation = {
+			userId: user.userId,
+			username: user.username
+		};
+		messages = [];
+
+		// Refresh conversations list in background to pick up server-side created threads
+		void loadConversations();
+	}
+
 	function handleLogout() {
 		authStore.logout();
 	}
@@ -291,8 +317,10 @@
 			<ChatList
 				{conversations}
 				selectedUserId={selectedConversation?.userId || null}
+				currentUserId={$user?._id || null}
 				loading={loading.conversations}
 				on:select={(e) => selectConversation(e.detail)}
+				on:create={(e) => createConversation(e.detail)}
 			/>
 		</div>
 
@@ -319,9 +347,14 @@
 					<ChatList
 						{conversations}
 						selectedUserId={selectedConversation?.userId || null}
+						currentUserId={$user?._id || null}
 						loading={loading.conversations}
 						on:select={(e) => {
 							selectConversation(e.detail);
+							showSidebar = false;
+						}}
+						on:create={(e) => {
+							createConversation(e.detail);
 							showSidebar = false;
 						}}
 					/>

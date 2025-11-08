@@ -59,8 +59,16 @@ export const authService = {
 	 * Get current user profile
 	 */
 	async getCurrentUser(): Promise<User> {
-		const response = await apiClient.get<User>('/user/me');
-		return response.data!;
+		const response = await apiClient.get<any>('/user/me');
+		const d = response.data;
+		// Normalize backend shape { id, name, email } -> frontend User { _id, username, email }
+		const user: User = {
+			_id: d?.id ?? d?._id,
+			username: d?.name ?? d?.username ?? '',
+			email: d?.email ?? ''
+		};
+
+		return user;
 	},
 
 	/**

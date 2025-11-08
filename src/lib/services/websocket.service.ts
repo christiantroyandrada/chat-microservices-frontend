@@ -25,7 +25,7 @@ class WebSocketService {
 	 */
 	connect(token: string): void {
 		if (this.socket?.connected) {
-			console.log('Socket.IO already connected');
+			// already connected - nothing to do
 			return;
 		}
 
@@ -43,7 +43,6 @@ class WebSocketService {
 			});
 
 			this.socket.on('connect', () => {
-				console.log('Socket.IO connected');
 				this.notifyStatus('connected');
 
 				// Clear any pending reconnect timer
@@ -65,7 +64,6 @@ class WebSocketService {
 			});
 
 			this.socket.on('disconnect', () => {
-				console.log('Socket.IO disconnected');
 				this.notifyStatus('disconnected');
 			});
 
@@ -74,7 +72,6 @@ class WebSocketService {
 			});
 
 			this.socket.on('reconnect_attempt', () => {
-				console.log('Socket.IO reconnecting...');
 				this.notifyStatus('reconnecting');
 			});
 
