@@ -96,28 +96,56 @@
 	<title>Register - Chat App</title>
 </svelte:head>
 
-<div class="flex min-h-screen items-center justify-center px-4 py-12 animate-fade-in" style="background: var(--bg-primary);">
+<div
+	class="animate-fade-in flex min-h-screen items-center justify-center px-4 py-12"
+	style="background: var(--bg-primary);"
+>
 	<div class="w-full max-w-md">
 		<!-- Logo/Brand -->
-		<div class="text-center mb-10">
-			<div class="inline-flex h-14 w-14 items-center justify-center rounded-2xl mb-4" style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);">
+		<div class="mb-10 text-center">
+			<div
+				class="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl"
+				style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);"
+			>
 				<svg class="h-7 w-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+					/>
 				</svg>
 			</div>
-			<h2 class="text-3xl font-bold mb-2" style="color: var(--text-primary);">Create account</h2>
+			<h2 class="mb-2 text-3xl font-bold" style="color: var(--text-primary);">Create account</h2>
 			<p class="text-sm" style="color: var(--text-secondary);">
 				Start chatting with your team today
 			</p>
 		</div>
 
 		<!-- Register Form -->
-		<form class="glass-strong rounded-2xl p-8 space-y-6" style="box-shadow: var(--shadow-medium);" onsubmit={handleSubmit}>
+		<form
+			class="glass-strong space-y-6 rounded-2xl p-8"
+			style="box-shadow: var(--shadow-medium);"
+			onsubmit={handleSubmit}
+		>
 			{#if error}
-				<div class="rounded-xl px-4 py-3 animate-slide-in" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444;">
+				<div
+					class="animate-slide-in rounded-xl px-4 py-3"
+					style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444;"
+				>
 					<div class="flex items-start gap-2">
-						<svg class="h-5 w-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						<svg
+							class="mt-0.5 h-5 w-5 shrink-0"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+							/>
 						</svg>
 						<span class="text-sm">{error}</span>
 					</div>
@@ -126,7 +154,11 @@
 
 			<div class="space-y-5">
 				<div>
-					<label for="username" class="block text-sm font-medium mb-2" style="color: var(--text-secondary);">
+					<label
+						for="username"
+						class="mb-2 block text-sm font-medium"
+						style="color: var(--text-secondary);"
+					>
 						Username
 					</label>
 					<input
@@ -137,16 +169,25 @@
 						required
 						bind:value={username}
 						class="w-full rounded-xl px-4 py-3 transition-all duration-200"
-						style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.username || fieldErrors.name ? '#ef4444' : 'var(--border-subtle)'}; color: var(--text-primary);"
+						style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.username ||
+						fieldErrors.name
+							? '#ef4444'
+							: 'var(--border-subtle)'}; color: var(--text-primary);"
 						placeholder="johndoe"
 					/>
 					{#if fieldErrors.username || fieldErrors.name}
-						<p class="mt-2 text-sm" style="color: #ef4444;">{fieldErrors.username || fieldErrors.name}</p>
+						<p class="mt-2 text-sm" style="color: #ef4444;">
+							{fieldErrors.username || fieldErrors.name}
+						</p>
 					{/if}
 				</div>
 
 				<div>
-					<label for="email" class="block text-sm font-medium mb-2" style="color: var(--text-secondary);">
+					<label
+						for="email"
+						class="mb-2 block text-sm font-medium"
+						style="color: var(--text-secondary);"
+					>
 						Email address
 					</label>
 					<input
@@ -157,7 +198,9 @@
 						required
 						bind:value={email}
 						class="w-full rounded-xl px-4 py-3 transition-all duration-200"
-						style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.email ? '#ef4444' : 'var(--border-subtle)'}; color: var(--text-primary);"
+						style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.email
+							? '#ef4444'
+							: 'var(--border-subtle)'}; color: var(--text-primary);"
 						placeholder="you@example.com"
 					/>
 					{#if fieldErrors.email}
@@ -166,7 +209,11 @@
 				</div>
 
 				<div>
-					<label for="password" class="block text-sm font-medium mb-2" style="color: var(--text-secondary);">
+					<label
+						for="password"
+						class="mb-2 block text-sm font-medium"
+						style="color: var(--text-secondary);"
+					>
 						Password
 					</label>
 					<div class="relative">
@@ -178,7 +225,9 @@
 							required
 							bind:value={password}
 							class="w-full rounded-xl px-4 py-3 pr-12 transition-all duration-200"
-							style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.password ? '#ef4444' : 'var(--border-subtle)'}; color: var(--text-primary);"
+							style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.password
+								? '#ef4444'
+								: 'var(--border-subtle)'}; color: var(--text-primary);"
 							placeholder="••••••••"
 						/>
 						<button
@@ -197,7 +246,11 @@
 				</div>
 
 				<div>
-					<label for="confirmPassword" class="block text-sm font-medium mb-2" style="color: var(--text-secondary);">
+					<label
+						for="confirmPassword"
+						class="mb-2 block text-sm font-medium"
+						style="color: var(--text-secondary);"
+					>
 						Confirm Password
 					</label>
 					<div class="relative">
@@ -209,7 +262,9 @@
 							required
 							bind:value={confirmPassword}
 							class="w-full rounded-xl px-4 py-3 pr-12 transition-all duration-200"
-							style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.confirmPassword ? '#ef4444' : 'var(--border-subtle)'}; color: var(--text-primary);"
+							style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.confirmPassword
+								? '#ef4444'
+								: 'var(--border-subtle)'}; color: var(--text-primary);"
 							placeholder="••••••••"
 						/>
 						<button
@@ -231,15 +286,19 @@
 			<button
 				type="submit"
 				disabled={loading}
-				class="btn-primary w-full py-3.5 rounded-xl font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 hover-lift"
+				class="btn-primary hover-lift w-full rounded-xl py-3.5 font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50"
 			>
 				{loading ? 'Creating account...' : 'Create account'}
 			</button>
 
-			<div class="text-center pt-4" style="border-top: 1px solid var(--border-subtle);">
+			<div class="pt-4 text-center" style="border-top: 1px solid var(--border-subtle);">
 				<p class="text-sm" style="color: var(--text-secondary);">
 					Already have an account?
-					<a href="/login" class="font-medium transition-colors duration-200" style="color: var(--accent-secondary);">
+					<a
+						href="/login"
+						class="font-medium transition-colors duration-200"
+						style="color: var(--accent-secondary);"
+					>
 						Sign in
 					</a>
 				</p>

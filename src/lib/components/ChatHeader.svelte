@@ -9,7 +9,10 @@
 </script>
 
 {#if recipient}
-	<div class="p-3 md:p-4" style="background: var(--bg-primary); border-bottom: 1px solid rgba(255,255,255,0.06);">
+	<div
+		class="p-3 md:p-4"
+		style="background: var(--bg-primary); border-bottom: 1px solid rgba(255,255,255,0.06);"
+	>
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3" style="animation: fadeIn 0.3s ease-out;">
 				<!-- Avatar -->
@@ -21,9 +24,13 @@
 				</div>
 
 				<div>
-					<h3 class="text-base font-semibold md:text-lg" style="color: var(--text-primary);">{recipient.username}</h3>
+					<h3 class="text-base font-semibold md:text-lg" style="color: var(--text-primary);">
+						{recipient.username}
+					</h3>
 					{#if typingUsers.has(recipient.userId)}
-						<p class="text-sm" style="color: #6366f1; animation: fadeIn 0.2s ease-out;">typing...</p>
+						<p class="text-sm" style="color: #6366f1; animation: fadeIn 0.2s ease-out;">
+							typing...
+						</p>
 					{:else}
 						<p class="text-sm" style="color: var(--text-tertiary);">Online</p>
 					{/if}
@@ -82,7 +89,10 @@
 		</div>
 	</div>
 {:else}
-	<div class="p-4" style="background: var(--bg-primary); border-bottom: 1px solid rgba(255,255,255,0.06);">
+	<div
+		class="p-4"
+		style="background: var(--bg-primary); border-bottom: 1px solid rgba(255,255,255,0.06);"
+	>
 		<div class="text-center" style="color: var(--text-secondary);">Select a conversation</div>
 	</div>
 {/if}

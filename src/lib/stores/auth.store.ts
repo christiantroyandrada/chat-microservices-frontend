@@ -1,14 +1,8 @@
 import { writable, derived } from 'svelte/store';
 import { authService } from '$lib/services/auth.service';
-import type { User, LoginCredentials, RegisterCredentials, ApiError } from '$lib/types';
+import type { LoginCredentials, RegisterCredentials, ApiError, AuthState } from '$lib/types';
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
-
-interface AuthState {
-	user: User | null;
-	loading: boolean;
-	error: string | null;
-}
 
 const initialState: AuthState = {
 	user: null,

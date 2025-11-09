@@ -37,7 +37,7 @@
 				? `${messages[messages.length - 1]._id}:${messages.length}`
 				: null;
 			lastMessageKey = latestKey;
-			
+
 			// Wait for DOM updates and then scroll
 			tick().then(() => {
 				// Use double RAF to ensure layout is complete
@@ -72,24 +72,32 @@
 
 	function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
 		if (!messagesContainer) return;
-		
+
 		// Try using scrollTo first (modern approach)
 		if (typeof messagesContainer.scrollTo === 'function') {
-			messagesContainer.scrollTo({ 
-				top: messagesContainer.scrollHeight, 
-				behavior 
+			messagesContainer.scrollTo({
+				top: messagesContainer.scrollHeight,
+				behavior
 			});
 		} else {
 			// Fallback for older browsers
 			messagesContainer.scrollTop = messagesContainer.scrollHeight;
 		}
-		
+
 		// Additional fallback: if scroll didn't work, try scrollIntoView on last message
 		setTimeout(() => {
-			if (messagesContainer && messagesContainer.scrollTop < messagesContainer.scrollHeight - messagesContainer.clientHeight - 50) {
+			if (
+				messagesContainer &&
+				messagesContainer.scrollTop <
+					messagesContainer.scrollHeight - messagesContainer.clientHeight - 50
+			) {
 				const lastMessage = messagesContainer.querySelector('.flex:last-of-type');
 				if (lastMessage && typeof (lastMessage as HTMLElement).scrollIntoView === 'function') {
-					(lastMessage as HTMLElement).scrollIntoView({ behavior, block: 'end', inline: 'nearest' });
+					(lastMessage as HTMLElement).scrollIntoView({
+						behavior,
+						block: 'end',
+						inline: 'nearest'
+					});
 				}
 			}
 		}, 50);
@@ -97,8 +105,8 @@
 
 	export async function scrollToLatest(options?: { behavior?: ScrollBehavior }) {
 		// Ensure the component has rendered and the browser has laid out the new content
-	 	shouldAutoScroll = true;
-	 	pendingConversationScroll = false;
+		shouldAutoScroll = true;
+		pendingConversationScroll = false;
 
 		// Wait for Svelte to flush DOM updates
 		await tick();
@@ -117,10 +125,16 @@
 			if (messagesContainer && messagesContainer.scrollTop === prevScroll) {
 				const lastEl = messagesContainer.querySelector('li:last-child, div:last-child');
 				if (lastEl && typeof (lastEl as HTMLElement).scrollIntoView === 'function') {
-					(lastEl as HTMLElement).scrollIntoView({ behavior: options?.behavior ?? 'auto', block: 'end' });
+					(lastEl as HTMLElement).scrollIntoView({
+						behavior: options?.behavior ?? 'auto',
+						block: 'end'
+					});
 				}
 			}
-			console.debug('[MessageList] scrollToLatest performed, behavior=', options?.behavior ?? 'auto');
+			console.debug(
+				'[MessageList] scrollToLatest performed, behavior=',
+				options?.behavior ?? 'auto'
+			);
 		} catch (e) {
 			// ignore errors in environments without console or DOM
 		}
@@ -177,11 +191,16 @@
 >
 	{#if loading}
 		<div class="flex h-full items-center justify-center">
-			<div style="color: var(--text-secondary); animation: fadeIn 0.3s ease-out;">Loading messages...</div>
+			<div style="color: var(--text-secondary); animation: fadeIn 0.3s ease-out;">
+				Loading messages...
+			</div>
 		</div>
 	{:else if messages.length === 0}
 		<div class="flex h-full items-center justify-center">
-			<div class="text-center" style="color: var(--text-secondary); animation: fadeIn 0.4s ease-out;">
+			<div
+				class="text-center"
+				style="color: var(--text-secondary); animation: fadeIn 0.4s ease-out;"
+			>
 				<p class="mb-2 text-lg">No messages yet</p>
 				<p class="text-sm" style="color: var(--text-tertiary);">Start the conversation!</p>
 			</div>
@@ -190,18 +209,26 @@
 		{#each messages as message, index (message._id)}
 			{#if shouldShowDateSeparator(index)}
 				<div class="my-4 flex items-center justify-center" style="animation: fadeIn 0.3s ease-out;">
-					<div class="rounded-full px-3 py-1 text-xs" style="background: rgba(255,255,255,0.05); color: var(--text-tertiary);">
+					<div
+						class="rounded-full px-3 py-1 text-xs"
+						style="background: rgba(255,255,255,0.05); color: var(--text-tertiary);"
+					>
 						{formatDate(message.timestamp)}
 					</div>
 				</div>
 			{/if}
 
-			<div class="flex {message.senderId === currentUserId ? 'justify-end' : 'justify-start'}" style="animation: slideIn{message.senderId === currentUserId ? 'Right' : 'Left'} 0.3s ease-out;">
+			<div
+				class="flex {message.senderId === currentUserId ? 'justify-end' : 'justify-start'}"
+				style="animation: slideIn{message.senderId === currentUserId
+					? 'Right'
+					: 'Left'} 0.3s ease-out;"
+			>
 				<div
-					class="max-w-[85%] md:max-w-[70%] rounded-lg px-4 py-2"
-					style="{message.senderId === currentUserId
+					class="max-w-[85%] rounded-lg px-4 py-2 md:max-w-[70%]"
+					style={message.senderId === currentUserId
 						? 'background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%); color: white;'
-						: 'background: rgba(255,255,255,0.05); color: var(--text-primary); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.06);'}"
+						: 'background: rgba(255,255,255,0.05); color: var(--text-primary); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.06);'}
 				>
 					{#if message.senderId !== currentUserId && message.senderUsername}
 						<div class="mb-1 text-xs font-semibold opacity-70">
@@ -211,9 +238,9 @@
 					<p class="text-sm wrap-break-word whitespace-pre-wrap">{message.content}</p>
 					<div
 						class="mt-1 text-xs"
-						style="{message.senderId === currentUserId
+						style={message.senderId === currentUserId
 							? 'color: rgba(255,255,255,0.7);'
-							: 'color: var(--text-tertiary);'}"
+							: 'color: var(--text-tertiary);'}
 					>
 						{formatTime(message.timestamp)}
 					</div>

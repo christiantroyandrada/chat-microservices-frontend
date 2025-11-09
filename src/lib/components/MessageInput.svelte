@@ -86,7 +86,10 @@
 	});
 </script>
 
-<div class="fixed right-0 bottom-0 left-0 z-30 p-4 md:static" style="background: var(--bg-primary); border-top: 1px solid rgba(255,255,255,0.06);">
+<div
+	class="fixed right-0 bottom-0 left-0 z-30 p-4 md:static"
+	style="background: var(--bg-primary); border-top: 1px solid rgba(255,255,255,0.06);"
+>
 	<div class="flex items-end gap-2">
 		<div class="flex-1">
 			<textarea
@@ -99,9 +102,12 @@
 				maxlength={maxLength}
 				rows="1"
 				class="w-full resize-none rounded-lg px-4 py-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-				style="background: rgba(255,255,255,0.05); border: 1px solid {isOverLimit ? '#ef4444' : 'rgba(255,255,255,0.1)'}; color: var(--text-primary); transition: all 150ms;"
+				style="background: rgba(255,255,255,0.05); border: 1px solid {isOverLimit
+					? '#ef4444'
+					: 'rgba(255,255,255,0.1)'}; color: var(--text-primary); transition: all 150ms;"
 				onfocus={(e) => (e.currentTarget.style.borderColor = isOverLimit ? '#ef4444' : '#6366f1')}
-				onblur={(e) => (e.currentTarget.style.borderColor = isOverLimit ? '#ef4444' : 'rgba(255,255,255,0.1)')}
+				onblur={(e) =>
+					(e.currentTarget.style.borderColor = isOverLimit ? '#ef4444' : 'rgba(255,255,255,0.1)')}
 				aria-label="Message input"
 			></textarea>
 			{#if isNearLimit}
@@ -125,5 +131,7 @@
 			Send
 		</button>
 	</div>
-	<p class="mt-2 text-xs" style="color: var(--text-tertiary);">Press Enter to send, Shift+Enter for new line</p>
+	<p class="mt-2 text-xs" style="color: var(--text-tertiary);">
+		Press Enter to send, Shift+Enter for new line
+	</p>
 </div>

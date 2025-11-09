@@ -1,10 +1,6 @@
 import { env } from '$env/dynamic/public';
 import { io, Socket } from 'socket.io-client';
-import type { Message } from '$lib/types';
-
-type MessageCallback = (message: Message) => void;
-type StatusCallback = (status: 'connected' | 'disconnected' | 'reconnecting') => void;
-type TypingCallback = (userId: string, isTyping: boolean) => void;
+import type { Message, MessageCallback, StatusCallback, TypingCallback } from '$lib/types';
 
 class WebSocketService {
 	private socket: Socket | null = null;

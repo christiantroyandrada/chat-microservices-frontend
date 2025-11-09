@@ -101,9 +101,15 @@
 	}
 </script>
 
-<div class="flex h-full flex-col" style="background: var(--bg-primary); border-right: 1px solid rgba(255,255,255,0.06);">
+<div
+	class="flex h-full flex-col"
+	style="background: var(--bg-primary); border-right: 1px solid rgba(255,255,255,0.06);"
+>
 	<!-- User Info Header -->
-	<div class="p-4" style="border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02);">
+	<div
+		class="p-4"
+		style="border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02);"
+	>
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3" style="animation: fadeIn 0.3s ease-out;">
 				<div
@@ -112,7 +118,9 @@
 				>
 					{(currentUsername?.[0] ?? 'U').toUpperCase()}
 				</div>
-				<span class="text-sm font-semibold" style="color: var(--text-primary);">{currentUsername || 'User'}</span>
+				<span class="text-sm font-semibold" style="color: var(--text-primary);"
+					>{currentUsername || 'User'}</span
+				>
 			</div>
 			{#if onClose}
 				<button
@@ -162,8 +170,14 @@
 
 	{#if showCreate}
 		<!-- Create conversation modal / panel -->
-		<div class="absolute top-16 right-0 left-0 z-50 flex justify-center p-4" style="animation: fadeIn 0.2s ease-out;">
-			<div class="w-full max-w-md rounded-lg p-4 shadow-lg" style="background: rgba(26, 26, 36, 0.98); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1);">
+		<div
+			class="absolute top-16 right-0 left-0 z-50 flex justify-center p-4"
+			style="animation: fadeIn 0.2s ease-out;"
+		>
+			<div
+				class="w-full max-w-md rounded-lg p-4 shadow-lg"
+				style="background: rgba(26, 26, 36, 0.98); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1);"
+			>
 				<div class="flex items-center gap-2">
 					<input
 						class="flex-1 rounded px-3 py-2"
@@ -174,13 +188,13 @@
 						bind:value={searchQuery}
 						oninput={() => performSearch(searchQuery)}
 					/>
-					<button 
-						onclick={closeCreate} 
+					<button
+						onclick={closeCreate}
 						class="rounded p-2"
 						style="color: var(--text-secondary); transition: all 150ms; background: transparent;"
 						onmouseenter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-						onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-					>✕</button>
+						onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}>✕</button
+					>
 				</div>
 				<div class="mt-3 max-h-64 overflow-y-auto">
 					{#if isSearching}
@@ -194,19 +208,22 @@
 									<button
 										class="flex w-full items-center justify-between gap-3 rounded p-2"
 										style="transition: all 150ms; background: transparent;"
-										onmouseenter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+										onmouseenter={(e) =>
+											(e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
 										onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
 										onclick={() => (selectedUser = user)}
 									>
 										<div class="flex items-center gap-3">
 											<div
-												class="h-8 w-8 flex items-center justify-center rounded-full font-semibold text-white"
+												class="flex h-8 w-8 items-center justify-center rounded-full font-semibold text-white"
 												style="background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);"
 											>
 												{(user.username?.[0] ?? '').toUpperCase()}
 											</div>
 											<div class="text-left">
-												<div class="text-sm font-semibold" style="color: var(--text-primary);">{user.username}</div>
+												<div class="text-sm font-semibold" style="color: var(--text-primary);">
+													{user.username}
+												</div>
 											</div>
 										</div>
 										{#if selectedUser && selectedUser.userId === user.userId}
@@ -219,18 +236,20 @@
 					{/if}
 				</div>
 				<div class="mt-3 flex justify-end gap-2">
-					<button 
-						onclick={closeCreate} 
+					<button
+						onclick={closeCreate}
 						class="rounded px-3 py-1"
 						style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); transition: all 150ms;"
 						onmouseenter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
 						onmouseleave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-					>Cancel</button>
+						>Cancel</button
+					>
 					<button
 						onclick={confirmCreate}
 						class="rounded px-3 py-1 text-white disabled:opacity-50"
 						style="background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%); transition: all 150ms;"
-						onmouseenter={(e) => !selectedUser ? null : (e.currentTarget.style.transform = 'translateY(-1px)')}
+						onmouseenter={(e) =>
+							!selectedUser ? null : (e.currentTarget.style.transform = 'translateY(-1px)')}
 						onmouseleave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
 						disabled={!selectedUser}
 					>
@@ -244,16 +263,32 @@
 	<!-- Conversations List -->
 	<div class="flex-1 overflow-y-auto">
 		{#if loading}
-			<div class="p-4 text-center" style="color: var(--text-secondary);">Loading conversations...</div>
+			<div class="p-4 text-center" style="color: var(--text-secondary);">
+				Loading conversations...
+			</div>
 		{:else if conversations.length === 0}
-			<div class="p-4 text-center" style="color: var(--text-secondary); animation: fadeIn 0.4s ease-out;">
+			<div
+				class="p-4 text-center"
+				style="color: var(--text-secondary); animation: fadeIn 0.4s ease-out;"
+			>
 				<p class="text-sm">No conversations yet</p>
-				<p class="mt-1 text-xs" style="color: var(--text-tertiary);">Start a new chat to begin messaging</p>
+				<p class="mt-1 text-xs" style="color: var(--text-tertiary);">
+					Start a new chat to begin messaging
+				</p>
 			</div>
 		{:else}
-			<ul class="divide-y" style="border-color: rgba(255,255,255,0.06);" role="list" aria-label="Conversations">
+			<ul
+				class="divide-y"
+				style="border-color: rgba(255,255,255,0.06);"
+				role="list"
+				aria-label="Conversations"
+			>
 				{#each conversations as conversation, index (conversation.userId)}
-					<li role="listitem" style="animation: fadeIn 0.3s ease-out; animation-delay: {index * 0.05}s; animation-fill-mode: both;">
+					<li
+						role="listitem"
+						style="animation: fadeIn 0.3s ease-out; animation-delay: {index *
+							0.05}s; animation-fill-mode: both;"
+					>
 						<button
 							onclick={() => dispatch('select', conversation.userId)}
 							aria-label="Chat with {conversation.username}{conversation.unreadCount
@@ -261,7 +296,9 @@
 								: ''}"
 							aria-current={selectedUserId === conversation.userId ? 'true' : 'false'}
 							class="w-full p-4 text-left focus:outline-none"
-							style="transition: all 150ms; background: {selectedUserId === conversation.userId ? 'rgba(99, 102, 241, 0.1)' : 'transparent'};"
+							style="transition: all 150ms; background: {selectedUserId === conversation.userId
+								? 'rgba(99, 102, 241, 0.1)'
+								: 'transparent'};"
 							onmouseenter={(e) => {
 								if (selectedUserId !== conversation.userId) {
 									e.currentTarget.style.background = 'rgba(255,255,255,0.03)';

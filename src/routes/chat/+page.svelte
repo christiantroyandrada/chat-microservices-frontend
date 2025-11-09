@@ -4,12 +4,12 @@
 	import { authStore, user } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { notificationStore } from '$lib/stores/notification.store';
-    import { themeStore } from '$lib/stores/theme.store';
+	import { themeStore } from '$lib/stores/theme.store';
 	import { chatService } from '$lib/services/chat.service';
 	import { wsService } from '$lib/services/websocket.service';
 	import { authService } from '$lib/services/auth.service';
 	import { sanitizeMessage } from '$lib/utils';
-	import type { ChatConversation, Message } from '$lib/types';
+	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
 
 	import ChatList from '$lib/components/ChatList.svelte';
 	import ChatHeader from '$lib/components/ChatHeader.svelte';
@@ -27,8 +27,8 @@
 	};
 	let showNotificationModal = false;
 
-	// Reference to MessageList component for programmatic scrolling
-	let messageListComponent: any = null;
+	// Strongly-typed reference to MessageList component for programmatic scrolling
+	let messageListComponent: MessageListHandle | null = null;
 
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
@@ -269,7 +269,7 @@
 			<div class="flex items-center gap-4">
 				<!-- Mobile: toggle sidebar -->
 				<button
-					class="inline-flex items-center justify-center rounded-lg p-2 transition-all duration-200 md:hidden hover-lift"
+					class="hover-lift inline-flex items-center justify-center rounded-lg p-2 transition-all duration-200 md:hidden"
 					style="color: var(--text-secondary);"
 					onclick={() => (showSidebar = !showSidebar)}
 					aria-label="Toggle conversations"
@@ -284,9 +284,16 @@
 					</svg>
 				</button>
 				<div class="flex items-center gap-3">
-					<div class="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-purple-600">
+					<div
+						class="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-purple-600"
+					>
 						<svg class="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+							/>
 						</svg>
 					</div>
 					<div>
@@ -300,7 +307,7 @@
 				<!-- Notifications with modern badge -->
 				<button
 					onclick={toggleNotificationModal}
-					class="relative rounded-xl p-2.5 transition-all duration-200 hover-lift"
+					class="hover-lift relative rounded-xl p-2.5 transition-all duration-200"
 					style="color: var(--text-secondary); background: var(--bg-hover);"
 					title="Notifications"
 					aria-label="Open notifications"
@@ -315,7 +322,7 @@
 					</svg>
 					{#if $notificationStore.unreadCount > 0}
 						<span
-							class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold text-white animate-scale-in"
+							class="animate-scale-in absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold text-white"
 							style="background: linear-gradient(135deg, #ec4899, #ef4444); box-shadow: 0 2px 8px rgba(236, 72, 153, 0.4);"
 						>
 							{$notificationStore.unreadCount > 9 ? '9+' : $notificationStore.unreadCount}
@@ -326,7 +333,7 @@
 				<!-- Theme toggle -->
 				<button
 					onclick={() => themeStore.toggle()}
-					class="rounded-xl p-2.5 transition-all duration-200 hover-lift ml-1 btn"
+					class="hover-lift btn ml-1 rounded-xl p-2.5 transition-all duration-200"
 					class:btn-primary={$themeStore === 'light'}
 					style="color: var(--text-secondary); background: var(--bg-hover);"
 					title="Toggle theme"
@@ -336,26 +343,50 @@
 					<span class="sr-only">Toggle light/dark theme</span>
 					{#if $themeStore === 'dark'}
 						<!-- Sun icon for switching to light -->
-						<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364-6.364l-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0l-1.414-1.414M7.05 7.05L5.636 5.636" />
+						<svg
+							class="h-5 w-5"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							aria-hidden="true"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364-6.364l-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0l-1.414-1.414M7.05 7.05L5.636 5.636"
+							/>
 						</svg>
 					{:else}
 						<!-- Moon icon for switching to dark -->
-						<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+						<svg
+							class="h-5 w-5"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							aria-hidden="true"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"
+							/>
 						</svg>
 					{/if}
 				</button>
 
 				<!-- User Menu with modern styling -->
-				<div class="flex items-center gap-3 ml-2">
-					<div class="hidden sm:flex flex-col items-end">
-						<span class="text-sm font-medium" style="color: var(--text-primary);">{$user?.username || 'User'}</span>
+				<div class="ml-2 flex items-center gap-3">
+					<div class="hidden flex-col items-end sm:flex">
+						<span class="text-sm font-medium" style="color: var(--text-primary);"
+							>{$user?.username || 'User'}</span
+						>
 						<span class="text-xs" style="color: var(--text-tertiary);">Online</span>
 					</div>
 					<button
 						onclick={handleLogout}
-						class="rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 hover-lift"
+						class="hover-lift rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200"
 						style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);"
 					>
 						Logout
@@ -368,7 +399,10 @@
 	<!-- Main Chat Interface with Modern Design -->
 	<div class="flex flex-1 overflow-hidden">
 		<!-- Sidebar - Conversations List (desktop) with glass effect -->
-		<div class="hidden w-80 shrink-0 md:block" style="background: var(--bg-secondary); border-right: 1px solid var(--border-subtle);">
+		<div
+			class="hidden w-80 shrink-0 md:block"
+			style="background: var(--bg-secondary); border-right: 1px solid var(--border-subtle);"
+		>
 			<ChatList
 				{conversations}
 				selectedUserId={selectedConversation?.userId || null}
@@ -391,7 +425,10 @@
 					onclick={() => (showSidebar = false)}
 				></button>
 				<!-- Sliding Panel with animation -->
-				<div class="relative z-50 w-80 max-w-full glass-strong animate-slide-in" style="box-shadow: var(--shadow-strong);">
+				<div
+					class="glass-strong animate-slide-in relative z-50 w-80 max-w-full"
+					style="box-shadow: var(--shadow-strong);"
+				>
 					<ChatList
 						{conversations}
 						selectedUserId={selectedConversation?.userId || null}
@@ -416,11 +453,11 @@
 		<div class="flex flex-1 flex-col" style="background: var(--bg-primary);">
 			{#if selectedConversation}
 				<ChatHeader recipient={selectedConversation} {typingUsers} />
-				<MessageList 
+				<MessageList
 					bind:this={messageListComponent}
-					{messages} 
-					currentUserId={$user?._id || ''} 
-					loading={loading.messages} 
+					{messages}
+					currentUserId={$user?._id || ''}
+					loading={loading.messages}
 					conversationId={selectedConversation.userId}
 				/>
 				<MessageInput
@@ -429,9 +466,15 @@
 					disabled={!wsService.isConnected()}
 				/>
 			{:else}
-				<div class="flex flex-1 items-center justify-center animate-fade-in" style="color: var(--text-secondary);">
+				<div
+					class="animate-fade-in flex flex-1 items-center justify-center"
+					style="color: var(--text-secondary);"
+				>
 					<div class="text-center">
-						<div class="mb-6 mx-auto flex h-24 w-24 items-center justify-center rounded-2xl" style="background: var(--bg-tertiary); border: 1px solid var(--border-subtle);">
+						<div
+							class="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-2xl"
+							style="background: var(--bg-tertiary); border: 1px solid var(--border-subtle);"
+						>
 							<svg
 								class="h-12 w-12"
 								style="color: var(--text-tertiary);"
@@ -447,8 +490,12 @@
 								/>
 							</svg>
 						</div>
-						<h3 class="mb-2 text-xl font-semibold" style="color: var(--text-primary);">No conversation selected</h3>
-						<p class="text-sm" style="color: var(--text-tertiary);">Choose a conversation from the sidebar to start chatting</p>
+						<h3 class="mb-2 text-xl font-semibold" style="color: var(--text-primary);">
+							No conversation selected
+						</h3>
+						<p class="text-sm" style="color: var(--text-tertiary);">
+							Choose a conversation from the sidebar to start chatting
+						</p>
 					</div>
 				</div>
 			{/if}
@@ -457,4 +504,4 @@
 </div>
 
 <!-- Notification Modal -->
-<NotificationModal isOpen={showNotificationModal} onClose={() => showNotificationModal = false} />
+<NotificationModal isOpen={showNotificationModal} onClose={() => (showNotificationModal = false)} />

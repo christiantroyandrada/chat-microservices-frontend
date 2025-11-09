@@ -1,12 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { notificationService } from '$lib/services/notification.service';
-import type { Notification } from '$lib/types';
-
-interface NotificationState {
-	notifications: Notification[];
-	unreadCount: number;
-	loading: boolean;
-}
+import type { Notification, NotificationState } from '$lib/types';
 
 const initialState: NotificationState = {
 	notifications: [],

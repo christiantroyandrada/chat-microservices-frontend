@@ -9,23 +9,24 @@
 	--text-secondary: #cbd5e1; /* brighter for contrast */
 	--text-tertiary: #9aa0b2;
 	/* UI tokens */
-	--bg-hover: rgba(255,255,255,0.02);
-	--border-subtle: rgba(255,255,255,0.06);
-	--shadow-strong: 0 8px 30px rgba(2,6,23,0.6);
+	--bg-hover: rgba(255, 255, 255, 0.02);
+	--border-subtle: rgba(255, 255, 255, 0.06);
+	--shadow-strong: 0 8px 30px rgba(2, 6, 23, 0.6);
 	/* Accents & modal */
 	--accent-primary: #6366f1;
 	--accent-secondary: #818cf8;
 	--modal-backdrop: rgba(0, 0, 0, 0.6);
-	--modal-bg: rgba(10,10,15,0.72);
-	--modal-border: rgba(255,255,255,0.06);
-	--scrollbar-thumb: rgba(255,255,255,0.12);
-	--scrollbar-thumb-hover: rgba(255,255,255,0.22);
+	--modal-bg: rgba(10, 10, 15, 0.72);
+	--modal-border: rgba(255, 255, 255, 0.06);
+	--scrollbar-thumb: rgba(255, 255, 255, 0.12);
+	--scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
 }
 
 /* Utility: visually hidden (screen-reader only) */
 .sr-only {
 	position: absolute !important;
-	height: 1px; width: 1px;
+	height: 1px;
+	width: 1px;
 	overflow: hidden;
 	clip: rect(1px, 1px, 1px, 1px);
 	white-space: nowrap;
@@ -33,12 +34,14 @@
 
 /* Interactive affordances */
 .hover-lift {
-	transition: transform 180ms ease, box-shadow 180ms ease;
+	transition:
+		transform 180ms ease,
+		box-shadow 180ms ease;
 }
 .hover-lift:hover,
 .hover-lift:focus {
 	transform: translateY(-3px);
-	box-shadow: 0 6px 20px rgba(2,6,23,0.45);
+	box-shadow: 0 6px 20px rgba(2, 6, 23, 0.45);
 }
 
 .btn {
@@ -49,25 +52,30 @@
 	border-radius: 10px;
 	padding: 8px 12px;
 	cursor: pointer;
-	transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+	transition:
+		background 150ms ease,
+		color 150ms ease,
+		transform 150ms ease;
 	border: 1px solid transparent;
 }
 
 .btn-primary {
 	background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
 	color: white;
-	box-shadow: 0 6px 18px rgba(99,102,241,0.18);
+	box-shadow: 0 6px 18px rgba(99, 102, 241, 0.18);
 }
 
 /* High-visibility focus for keyboard users */
-button:focus-visible, .btn:focus-visible, a:focus-visible {
-	outline: 3px solid rgba(99,102,241,0.9);
+button:focus-visible,
+.btn:focus-visible,
+a:focus-visible {
+	outline: 3px solid rgba(99, 102, 241, 0.9);
 	outline-offset: 3px;
 }
 
 /* Small entrance for badges */
 .animate-scale-in {
-	animation: scaleIn 220ms cubic-bezier(.2,.9,.2,1) both;
+	animation: scaleIn 220ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
 }
 
 /* Respect reduced motion preference */
@@ -85,8 +93,8 @@ button:focus-visible, .btn:focus-visible, a:focus-visible {
 	:root {
 		--text-primary: #ffffff;
 		--text-secondary: #e6eefc;
-		--bg-hover: rgba(255,255,255,0.06);
-		--border-subtle: rgba(255,255,255,0.12);
+		--bg-hover: rgba(255, 255, 255, 0.06);
+		--border-subtle: rgba(255, 255, 255, 0.12);
 	}
 }
 
@@ -95,15 +103,18 @@ button:focus-visible, .btn:focus-visible, a:focus-visible {
 }
 
 body {
-	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
-		'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+	font-family:
+		-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',
+		'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 	background: var(--bg-primary);
 	color: var(--text-primary);
 	margin: 0;
 	padding: 0;
-	transition: background 220ms ease, color 220ms ease;
+	transition:
+		background 220ms ease,
+		color 220ms ease;
 }
 
 /* Smooth Scrollbar */
@@ -195,17 +206,17 @@ html.light {
 	--text-secondary: #4b5563;
 	--text-tertiary: #6b7280;
 	/* Light UI tokens */
-	--bg-hover: rgba(11,11,13,0.04);
-	--border-subtle: rgba(11,11,13,0.06);
-	--shadow-strong: 0 8px 30px rgba(2,6,23,0.08);
+	--bg-hover: rgba(11, 11, 13, 0.04);
+	--border-subtle: rgba(11, 11, 13, 0.06);
+	--shadow-strong: 0 8px 30px rgba(2, 6, 23, 0.08);
 	/* Light-mode accents & modal */
 	--accent-primary: #4f46e5;
 	--accent-secondary: #7c83ff;
-	--modal-backdrop: rgba(11,11,13,0.12);
+	--modal-backdrop: rgba(11, 11, 13, 0.12);
 	--modal-bg: #ffffff;
-	--modal-border: rgba(11,11,13,0.06);
-	--scrollbar-thumb: rgba(11,11,13,0.12);
-	--scrollbar-thumb-hover: rgba(11,11,13,0.18);
+	--modal-border: rgba(11, 11, 13, 0.06);
+	--scrollbar-thumb: rgba(11, 11, 13, 0.12);
+	--scrollbar-thumb-hover: rgba(11, 11, 13, 0.18);
 }
 
 /* Ensure system color-scheme is set for form controls and native widgets */
@@ -215,5 +226,3 @@ html.dark {
 html.light {
 	color-scheme: light;
 }
-
-
