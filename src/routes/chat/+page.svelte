@@ -27,6 +27,9 @@
 	};
 	let showNotificationModal = false;
 
+	// Reference to MessageList component for programmatic scrolling
+	let messageListComponent: any = null;
+
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
 	let unsubscribeWsStatus: (() => void) | null = null;
@@ -281,7 +284,7 @@
 					</svg>
 				</button>
 				<div class="flex items-center gap-3">
-					<div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600">
+					<div class="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-purple-600">
 						<svg class="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
 						</svg>
@@ -413,7 +416,13 @@
 		<div class="flex flex-1 flex-col" style="background: var(--bg-primary);">
 			{#if selectedConversation}
 				<ChatHeader recipient={selectedConversation} {typingUsers} />
-				<MessageList {messages} currentUserId={$user?._id || ''} loading={loading.messages} />
+				<MessageList 
+					bind:this={messageListComponent}
+					{messages} 
+					currentUserId={$user?._id || ''} 
+					loading={loading.messages} 
+					conversationId={selectedConversation.userId}
+				/>
 				<MessageInput
 					on:send={(e) => sendMessage(e.detail)}
 					on:typing={(e) => handleTyping(e.detail)}

@@ -6,30 +6,123 @@
 	let {
 		messages = [] as Message[],
 		currentUserId = undefined as string | undefined,
-		loading = false
+		loading = false,
+		conversationId = '' as string
 	} = $props();
 
 	let messagesContainer: HTMLDivElement;
 	let shouldAutoScroll = true;
-	let previousMessageCount = 0;
+	let lastConversationId = '';
+	let lastMessageKey: string | null = null;
+	let pendingConversationScroll = false;
 
-	// Optimize: Only scroll when messages actually change
 	$effect(() => {
-		if (messages.length > previousMessageCount) {
-			previousMessageCount = messages.length;
-			if (shouldAutoScroll) {
-				tick().then(() => scrollToBottom());
+		conversationId;
+		if (conversationId && conversationId !== lastConversationId) {
+			lastConversationId = conversationId;
+			shouldAutoScroll = true;
+			lastMessageKey = null;
+			pendingConversationScroll = true;
+		}
+	});
+
+	$effect(() => {
+		messages;
+		loading;
+		if (!messagesContainer) return;
+
+		if (pendingConversationScroll && !loading) {
+			pendingConversationScroll = false;
+			const latestKey = messages.length
+				? `${messages[messages.length - 1]._id}:${messages.length}`
+				: null;
+			lastMessageKey = latestKey;
+			
+			// Wait for DOM updates and then scroll
+			tick().then(() => {
+				// Use double RAF to ensure layout is complete
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => {
+						scrollToBottom('auto');
+					});
+				});
+			});
+			return;
+		}
+
+		const currentKey = messages.length
+			? `${messages[messages.length - 1]._id}:${messages.length}`
+			: null;
+
+		if (currentKey !== lastMessageKey) {
+			lastMessageKey = currentKey;
+			if (shouldAutoScroll && !loading && currentKey) {
+				tick().then(() => scrollToBottom(messages.length > 1 ? 'smooth' : 'auto'));
 			}
+		}
+
+		if (!messages.length && shouldAutoScroll && !loading) {
+			tick().then(() => scrollToBottom('auto'));
 		}
 	});
 
 	onMount(() => {
-		scrollToBottom();
+		scrollToBottom('auto');
 	});
 
-	function scrollToBottom() {
-		if (messagesContainer) {
+	function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
+		if (!messagesContainer) return;
+		
+		// Try using scrollTo first (modern approach)
+		if (typeof messagesContainer.scrollTo === 'function') {
+			messagesContainer.scrollTo({ 
+				top: messagesContainer.scrollHeight, 
+				behavior 
+			});
+		} else {
+			// Fallback for older browsers
 			messagesContainer.scrollTop = messagesContainer.scrollHeight;
+		}
+		
+		// Additional fallback: if scroll didn't work, try scrollIntoView on last message
+		setTimeout(() => {
+			if (messagesContainer && messagesContainer.scrollTop < messagesContainer.scrollHeight - messagesContainer.clientHeight - 50) {
+				const lastMessage = messagesContainer.querySelector('.flex:last-of-type');
+				if (lastMessage && typeof (lastMessage as HTMLElement).scrollIntoView === 'function') {
+					(lastMessage as HTMLElement).scrollIntoView({ behavior, block: 'end', inline: 'nearest' });
+				}
+			}
+		}, 50);
+	}
+
+	export async function scrollToLatest(options?: { behavior?: ScrollBehavior }) {
+		// Ensure the component has rendered and the browser has laid out the new content
+	 	shouldAutoScroll = true;
+	 	pendingConversationScroll = false;
+
+		// Wait for Svelte to flush DOM updates
+		await tick();
+
+		// Wait a couple of animation frames to ensure layout (safer for fonts/images/complex content)
+		await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+		await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+
+		// Perform the scroll. Default to 'auto' for conversation switches (instant).
+		const prevScroll = messagesContainer ? messagesContainer.scrollTop : 0;
+		scrollToBottom(options?.behavior ?? 'auto');
+
+		// If the scroll didn't move (some layouts/reporting may not update), fallback to scrollIntoView on the last message element
+		try {
+			await tick();
+			if (messagesContainer && messagesContainer.scrollTop === prevScroll) {
+				const lastEl = messagesContainer.querySelector('li:last-child, div:last-child');
+				if (lastEl && typeof (lastEl as HTMLElement).scrollIntoView === 'function') {
+					(lastEl as HTMLElement).scrollIntoView({ behavior: options?.behavior ?? 'auto', block: 'end' });
+				}
+			}
+			console.debug('[MessageList] scrollToLatest performed, behavior=', options?.behavior ?? 'auto');
+		} catch (e) {
+			// ignore errors in environments without console or DOM
 		}
 	}
 
