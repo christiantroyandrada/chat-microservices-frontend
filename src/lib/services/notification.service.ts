@@ -1,5 +1,6 @@
 import { apiClient } from './api';
 import type { Notification, NotificationPayload } from '$lib/types';
+import { normalizeNotification } from '$lib/utils';
 
 /**
  * Notification service for managing user notifications
@@ -11,10 +12,14 @@ export const notificationService = {
 	async getNotifications(limit = 20, offset = 0): Promise<Notification[]> {
 		try {
 			// Use canonical `/notifications` prefix
-			const response = await apiClient.get<Notification[]>(
-				`/notifications/?limit=${limit}&offset=${offset}`
-			);
-			return response.data || [];
+			const response = await apiClient.get<unknown>(
+					`/notifications/?limit=${limit}&offset=${offset}`
+				);
+
+			const raw = (response.data as unknown) as Array<unknown>;
+
+			// Normalize backend shape to frontend `Notification` type
+			return (raw || []).map((n: unknown, idx: number) => normalizeNotification(n, idx));
 		} catch (err) {
 			console.warn('notificationService.getNotifications failed, returning empty list', err);
 			return [];
@@ -72,8 +77,10 @@ export const notificationService = {
 	 */
 	async sendNotification(payload: NotificationPayload): Promise<Notification> {
 		try {
-			const response = await apiClient.post<Notification>('/notifications', payload);
-			return response.data!;
+			const response = await apiClient.post<unknown>('/notifications', payload);
+			const raw = response.data as unknown;
+			// reuse normalization logic (recreate same inline logic)
+			return normalizeNotification(raw);
 		} catch (err) {
 			console.warn('notificationService.sendNotification failed', err);
 			throw err;

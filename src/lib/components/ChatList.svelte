@@ -176,12 +176,12 @@
 		>
 			<div
 				class="w-full max-w-md rounded-lg p-4 shadow-lg"
-				style="background: rgba(26, 26, 36, 0.98); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1);"
+				style="background: var(--modal-bg); backdrop-filter: blur(12px); border: 1px solid var(--modal-border); color: var(--text-primary);"
 			>
 				<div class="flex items-center gap-2">
-					<input
+						<input
 						class="flex-1 rounded px-3 py-2"
-						style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); transition: all 150ms;"
+						style="background: var(--bg-tertiary); border: 1px solid var(--modal-border); color: var(--text-primary); transition: all 150ms;"
 						onfocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
 						onblur={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)')}
 						placeholder="Search users by name or email"
@@ -202,12 +202,12 @@
 					{:else if searchResults.length === 0}
 						<div class="text-sm" style="color: var(--text-secondary);">No users found</div>
 					{:else}
-						<ul class="divide-y" style="border-color: rgba(255,255,255,0.06);">
+						<ul class="divide-y" style="border-color: var(--modal-border);">
 							{#each searchResults as user (user.userId)}
 								<li class="p-2">
 									<button
 										class="hover-bg-subtle flex w-full items-center justify-between gap-3 rounded p-2"
-										style="transition: all 150ms; background: transparent;"
+										style="transition: all 150ms; background: transparent; color: var(--text-primary);"
 										onclick={() => (selectedUser = user)}
 									>
 										<div class="flex items-center gap-3">
@@ -232,19 +232,19 @@
 						</ul>
 					{/if}
 				</div>
-				<div class="mt-3 flex justify-end gap-2">
-					<button
-						onclick={closeCreate}
-						class="rounded px-3 py-1"
-						style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); transition: all 150ms;"
-						onmouseenter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-						onmouseleave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-						>Cancel</button
-					>
-					<button
-						onclick={confirmCreate}
-						class="rounded px-3 py-1 text-white disabled:opacity-50"
-						style="background: var(--gradient-accent); transition: all 150ms;"
+					<div class="mt-3 flex justify-end gap-2">
+						<button
+							onclick={closeCreate}
+							class="rounded px-3 py-1"
+							style="background: var(--bg-tertiary); border: 1px solid var(--modal-border); color: var(--text-primary); transition: all 150ms;"
+							onmouseenter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+							onmouseleave={(e) => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
+							>Cancel</button
+						>
+						<button
+							onclick={confirmCreate}
+							class="rounded px-3 py-1 text-white disabled:opacity-50"
+							style="background: var(--gradient-accent); transition: all 150ms; box-shadow: var(--shadow-cta);"
 						onmouseenter={(e) =>
 							!selectedUser ? null : (e.currentTarget.style.transform = 'translateY(-1px)')}
 						onmouseleave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
