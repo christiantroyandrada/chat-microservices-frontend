@@ -160,6 +160,7 @@ class WebSocketService {
 			this.socket.emit(
 				'sendMessage',
 				{
+					_id: m._id || m.id, // Include message ID if it exists
 					senderId: authenticatedUserId || message.senderId,
 					receiverId: message.receiverId,
 					message: msgContent

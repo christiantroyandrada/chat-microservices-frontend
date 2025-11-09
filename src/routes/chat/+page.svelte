@@ -14,6 +14,7 @@
 	import ChatHeader from '$lib/components/ChatHeader.svelte';
 	import MessageList from '$lib/components/MessageList.svelte';
 	import MessageInput from '$lib/components/MessageInput.svelte';
+	import NotificationModal from '$lib/components/NotificationModal.svelte';
 
 	let conversations: ChatConversation[] = [];
 	let messages: Message[] = [];
@@ -23,6 +24,7 @@
 		conversations: false,
 		messages: false
 	};
+	let showNotificationModal = false;
 
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
@@ -127,9 +129,13 @@
 					: c
 			);
 
-			// Send via WebSocket for real-time delivery
+			// Broadcast via WebSocket for real-time delivery to receiver
+			// Pass the message ID so backend knows it's already saved
 			if (wsService.isConnected()) {
-				wsService.sendMessage(message);
+				wsService.sendMessage({
+					...message,
+					_id: message._id // Include ID to prevent duplicate save
+				});
 			}
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to send message';
@@ -239,6 +245,13 @@
 	function handleLogout() {
 		authStore.logout();
 	}
+
+	function toggleNotificationModal() {
+		showNotificationModal = !showNotificationModal;
+		if (showNotificationModal) {
+			void notificationStore.fetch();
+		}
+	}
 </script>
 
 <svelte:head>
@@ -271,9 +284,10 @@
 			<div class="flex items-center gap-4">
 				<!-- Notifications -->
 				<button
-					onclick={() => notificationStore.fetch()}
+					onclick={toggleNotificationModal}
 					class="relative rounded-full p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
 					title="Notifications"
+					aria-label="Open notifications"
 				>
 					<svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
@@ -385,3 +399,6 @@
 		</div>
 	</div>
 </div>
+
+<!-- Notification Modal -->
+<NotificationModal isOpen={showNotificationModal} onClose={() => showNotificationModal = false} />
