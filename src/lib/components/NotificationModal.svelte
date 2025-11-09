@@ -2,11 +2,12 @@
 	import { notificationStore } from '$lib/stores/notification.store';
 	import type { Notification } from '$lib/types';
 
-	export let isOpen = false;
-	export let onClose: () => void = () => {};
+	// Svelte 5 runes: use $props() instead of export let
+	let { isOpen = false, onClose = () => {} }: { isOpen?: boolean; onClose?: () => void } = $props();
 
-	$: notifications = $notificationStore.notifications;
-	$: loading = $notificationStore.loading;
+	// Derive reactive values from store
+	let notifications = $derived.by(() => $notificationStore.notifications);
+	let loading = $derived.by(() => $notificationStore.loading);
 
 	async function handleMarkAsRead(notificationId: string) {
 		await notificationStore.markAsRead(notificationId);
@@ -228,8 +229,9 @@
 											<button
 												onclick={() => handleDelete(notification._id)}
 												class="hover-lift btn rounded-lg p-2 transition-all duration-200"
-												style="background: rgba(239, 68, 68, 0.06); color: #ef4444; border: 1px solid rgba(239,68,68,0.08);"
+												style="background: var(--color-error-bg); color: var(--color-error); border: 1px solid var(--color-error-border);"
 												title="Delete"
+												aria-label="Delete notification"
 											>
 												<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 													<path

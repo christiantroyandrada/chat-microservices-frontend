@@ -387,7 +387,8 @@
 					<button
 						onclick={handleLogout}
 						class="hover-lift rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200"
-						style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);"
+						style="background: var(--color-error-bg); color: var(--color-error); border: 1px solid var(--color-error-border);"
+						aria-label="Logout"
 					>
 						Logout
 					</button>

@@ -18,7 +18,7 @@
 				<!-- Avatar -->
 				<div
 					class="flex h-10 w-10 items-center justify-center rounded-full font-semibold text-white"
-					style="background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);"
+					style="background: var(--gradient-accent);"
 				>
 					{(recipient.username?.[0] ?? '').toUpperCase()}
 				</div>
@@ -28,7 +28,10 @@
 						{recipient.username}
 					</h3>
 					{#if typingUsers.has(recipient.userId)}
-						<p class="text-sm" style="color: #6366f1; animation: fadeIn 0.2s ease-out;">
+						<p
+							class="text-sm"
+							style="color: var(--accent-primary); animation: fadeIn 0.2s ease-out;"
+						>
 							typing...
 						</p>
 					{:else}
@@ -37,21 +40,13 @@
 				</div>
 			</div>
 
-			<!-- Actions -->
 			<div class="flex items-center gap-2">
 				<button
 					onclick={() => dispatch('call')}
-					class="rounded-full p-2 transition-all"
+					class="hover-bg-accent rounded-full p-2 transition-all"
 					style="color: var(--text-secondary); background: transparent;"
-					onmouseenter={(e) => {
-						e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)';
-						e.currentTarget.style.color = '#6366f1';
-					}}
-					onmouseleave={(e) => {
-						e.currentTarget.style.background = 'transparent';
-						e.currentTarget.style.color = 'var(--text-secondary)';
-					}}
 					title="Video call"
+					aria-label="Start video call"
 				>
 					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
@@ -64,17 +59,10 @@
 				</button>
 				<button
 					onclick={() => dispatch('info')}
-					class="rounded-full p-2 transition-all"
+					class="hover-bg-accent rounded-full p-2 transition-all"
 					style="color: var(--text-secondary); background: transparent;"
-					onmouseenter={(e) => {
-						e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)';
-						e.currentTarget.style.color = '#6366f1';
-					}}
-					onmouseleave={(e) => {
-						e.currentTarget.style.background = 'transparent';
-						e.currentTarget.style.color = 'var(--text-secondary)';
-					}}
 					title="User info"
+					aria-label="View user information"
 				>
 					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path

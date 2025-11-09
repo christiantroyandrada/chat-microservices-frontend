@@ -103,15 +103,23 @@
 				rows="1"
 				class="w-full resize-none rounded-lg px-4 py-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				style="background: var(--input-bg); border: 1px solid {isOverLimit
-					? '#ef4444'
+					? 'var(--color-error)'
 					: 'var(--input-border)'}; color: var(--input-text); transition: all 150ms;"
-				onfocus={(e) => (e.currentTarget.style.borderColor = isOverLimit ? '#ef4444' : '#6366f1')}
+				onfocus={(e) =>
+					(e.currentTarget.style.borderColor = isOverLimit
+						? 'var(--color-error)'
+						: 'var(--accent-primary)')}
 				onblur={(e) =>
-					(e.currentTarget.style.borderColor = isOverLimit ? '#ef4444' : 'var(--input-border)')}
+					(e.currentTarget.style.borderColor = isOverLimit
+						? 'var(--color-error)'
+						: 'var(--input-border)')}
 				aria-label="Message input"
 			></textarea>
 			{#if isNearLimit}
-				<p class="mt-1 text-xs" style="color: {isOverLimit ? '#ef4444' : 'var(--text-tertiary)'};">
+				<p
+					class="mt-1 text-xs"
+					style="color: {isOverLimit ? 'var(--color-error)' : 'var(--text-tertiary)'};"
+				>
 					{characterCount}/{maxLength} characters
 				</p>
 			{/if}
@@ -120,7 +128,7 @@
 			onclick={handleSend}
 			disabled={!message.trim() || disabled || isOverLimit}
 			class="rounded-lg px-4 py-2 text-white transition-all disabled:cursor-not-allowed disabled:opacity-50 md:px-6"
-			style="background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);"
+			style="background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);"
 			onmouseenter={(e) => {
 				if (!message.trim() || disabled || isOverLimit) return;
 				e.currentTarget.style.transform = 'translateY(-2px)';

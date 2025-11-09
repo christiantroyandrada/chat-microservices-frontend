@@ -8,13 +8,16 @@
 	--text-primary: #ffffff;
 	--text-secondary: #cbd5e1; /* brighter for contrast */
 	--text-tertiary: #9aa0b2;
+
 	/* UI tokens */
 	--bg-hover: rgba(255, 255, 255, 0.02);
 	--border-subtle: rgba(255, 255, 255, 0.06);
 	--shadow-strong: 0 8px 30px rgba(2, 6, 23, 0.6);
+
 	/* Accents & modal */
 	--accent-primary: #6366f1;
 	--accent-secondary: #818cf8;
+	--gradient-accent: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
 	--modal-backdrop: rgba(0, 0, 0, 0.6);
 	--modal-bg: rgba(10, 10, 15, 0.72);
 	--modal-border: rgba(255, 255, 255, 0.06);
@@ -27,6 +30,14 @@
 	--input-text: var(--text-primary);
 	--bubble-bg: rgba(255, 255, 255, 0.05);
 	--bubble-border: rgba(255, 255, 255, 0.06);
+
+	/* Status colors */
+	--color-success: #10b981;
+	--color-error: #ef4444;
+	--color-warning: #f59e0b;
+	--color-info: #3b82f6;
+	--color-error-bg: rgba(239, 68, 68, 0.1);
+	--color-error-border: rgba(239, 68, 68, 0.2);
 }
 
 /* Utility: visually hidden (screen-reader only) */
@@ -67,9 +78,57 @@
 }
 
 .btn-primary {
-	background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+	background: var(--gradient-accent);
 	color: white;
 	box-shadow: 0 6px 18px rgba(99, 102, 241, 0.18);
+}
+
+.btn-secondary {
+	background: var(--bg-tertiary);
+	color: var(--text-secondary);
+	border: 1px solid var(--border-subtle);
+}
+
+/* Glass morphism effect */
+.glass-strong {
+	background: var(--modal-bg);
+	backdrop-filter: blur(12px);
+	border: 1px solid var(--modal-border);
+}
+
+/* Avatar gradient */
+.avatar-gradient {
+	background: var(--gradient-accent);
+}
+
+/* Error styles */
+.error-box {
+	background: var(--color-error-bg);
+	border: 1px solid var(--color-error-border);
+	color: var(--color-error);
+}
+
+/* Interactive hover effects */
+.hover-bg-accent {
+	transition: all 150ms ease;
+}
+.hover-bg-accent:hover {
+	background: rgba(99, 102, 241, 0.1);
+	color: var(--accent-primary);
+}
+
+.hover-bg-subtle {
+	transition: all 150ms ease;
+}
+.hover-bg-subtle:hover {
+	background: var(--bg-hover);
+}
+
+.hover-translate {
+	transition: transform 150ms ease;
+}
+.hover-translate:hover {
+	transform: translateY(-2px);
 }
 
 /* High-visibility focus for keyboard users */
@@ -231,6 +290,17 @@ html.light {
 	--input-text: var(--text-primary);
 	--bubble-bg: rgba(11, 11, 13, 0.04);
 	--bubble-border: rgba(11, 11, 13, 0.06);
+
+	/* Status colors (same in light mode for consistency) */
+	--color-success: #10b981;
+	--color-error: #ef4444;
+	--color-warning: #f59e0b;
+	--color-info: #3b82f6;
+	--color-error-bg: rgba(239, 68, 68, 0.1);
+	--color-error-border: rgba(239, 68, 68, 0.2);
+
+	/* Gradient overrides for light mode */
+	--gradient-accent: linear-gradient(135deg, #4f46e5 0%, #7c83ff 100%);
 }
 
 /* Ensure system color-scheme is set for form controls and native widgets */

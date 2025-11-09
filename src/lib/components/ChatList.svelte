@@ -114,7 +114,7 @@
 			<div class="flex items-center gap-3" style="animation: fadeIn 0.3s ease-out;">
 				<div
 					class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-semibold text-white"
-					style="background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);"
+					style="background: var(--gradient-accent);"
 				>
 					{(currentUsername?.[0] ?? 'U').toUpperCase()}
 				</div>
@@ -182,7 +182,7 @@
 					<input
 						class="flex-1 rounded px-3 py-2"
 						style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); transition: all 150ms;"
-						onfocus={(e) => (e.currentTarget.style.borderColor = '#6366f1')}
+						onfocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
 						onblur={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)')}
 						placeholder="Search users by name or email"
 						bind:value={searchQuery}
@@ -190,11 +190,11 @@
 					/>
 					<button
 						onclick={closeCreate}
-						class="rounded p-2"
+						class="hover-bg-subtle rounded p-2"
 						style="color: var(--text-secondary); transition: all 150ms; background: transparent;"
-						onmouseenter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-						onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}>✕</button
 					>
+						✕
+					</button>
 				</div>
 				<div class="mt-3 max-h-64 overflow-y-auto">
 					{#if isSearching}
@@ -206,17 +206,14 @@
 							{#each searchResults as user (user.userId)}
 								<li class="p-2">
 									<button
-										class="flex w-full items-center justify-between gap-3 rounded p-2"
+										class="hover-bg-subtle flex w-full items-center justify-between gap-3 rounded p-2"
 										style="transition: all 150ms; background: transparent;"
-										onmouseenter={(e) =>
-											(e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-										onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
 										onclick={() => (selectedUser = user)}
 									>
 										<div class="flex items-center gap-3">
 											<div
 												class="flex h-8 w-8 items-center justify-center rounded-full font-semibold text-white"
-												style="background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);"
+												style="background: var(--gradient-accent);"
 											>
 												{(user.username?.[0] ?? '').toUpperCase()}
 											</div>
@@ -227,7 +224,7 @@
 											</div>
 										</div>
 										{#if selectedUser && selectedUser.userId === user.userId}
-											<span class="text-sm" style="color: #6366f1;">Selected</span>
+											<span class="text-sm" style="color: var(--accent-primary);">Selected</span>
 										{/if}
 									</button>
 								</li>
@@ -247,7 +244,7 @@
 					<button
 						onclick={confirmCreate}
 						class="rounded px-3 py-1 text-white disabled:opacity-50"
-						style="background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%); transition: all 150ms;"
+						style="background: var(--gradient-accent); transition: all 150ms;"
 						onmouseenter={(e) =>
 							!selectedUser ? null : (e.currentTarget.style.transform = 'translateY(-1px)')}
 						onmouseleave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
@@ -314,7 +311,7 @@
 								<!-- Avatar -->
 								<div
 									class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-semibold text-white"
-									style="background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);"
+									style="background: var(--gradient-accent);"
 								>
 									{(conversation.username?.[0] ?? '').toUpperCase()}
 								</div>
@@ -338,7 +335,7 @@
 								{#if conversation.unreadCount && conversation.unreadCount > 0}
 									<div
 										class="flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold text-white"
-										style="background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%); animation: scaleIn 0.2s ease-out;"
+										style="background: var(--gradient-accent); animation: scaleIn 0.2s ease-out;"
 									>
 										{conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
 									</div>

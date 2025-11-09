@@ -16,8 +16,13 @@
 	let lastMessageKey: string | null = null;
 	let pendingConversationScroll = false;
 
+	// Optimize: Use $derived for computed values instead of reactive statements
+	let messageKey = $derived.by(() =>
+		messages.length ? `${messages[messages.length - 1]._id}:${messages.length}` : null
+	);
+
+	// Effect 1: Handle conversation changes
 	$effect(() => {
-		void conversationId;
 		if (conversationId && conversationId !== lastConversationId) {
 			lastConversationId = conversationId;
 			shouldAutoScroll = true;
@@ -26,17 +31,13 @@
 		}
 	});
 
+	// Effect 2: Handle message updates and scrolling
 	$effect(() => {
-		void messages;
-		void loading;
 		if (!messagesContainer) return;
 
 		if (pendingConversationScroll && !loading) {
 			pendingConversationScroll = false;
-			const latestKey = messages.length
-				? `${messages[messages.length - 1]._id}:${messages.length}`
-				: null;
-			lastMessageKey = latestKey;
+			lastMessageKey = messageKey;
 
 			// Wait for DOM updates and then scroll
 			tick().then(() => {
@@ -50,13 +51,9 @@
 			return;
 		}
 
-		const currentKey = messages.length
-			? `${messages[messages.length - 1]._id}:${messages.length}`
-			: null;
-
-		if (currentKey !== lastMessageKey) {
-			lastMessageKey = currentKey;
-			if (shouldAutoScroll && !loading && currentKey) {
+		if (messageKey !== lastMessageKey) {
+			lastMessageKey = messageKey;
+			if (shouldAutoScroll && !loading && messageKey) {
 				tick().then(() => scrollToBottom(messages.length > 1 ? 'smooth' : 'auto'));
 			}
 		}
@@ -227,7 +224,7 @@
 				<div
 					class="max-w-[85%] rounded-lg px-4 py-2 md:max-w-[70%]"
 					style={message.senderId === currentUserId
-						? 'background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%); color: white;'
+						? 'background: var(--gradient-accent); color: white;'
 						: `background: var(--bubble-bg); color: var(--text-primary); backdrop-filter: blur(8px); border: 1px solid var(--bubble-border);`}
 				>
 					{#if message.senderId !== currentUserId && message.senderUsername}

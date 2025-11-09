@@ -16,7 +16,7 @@
 
 	// Show theme toggle only on unauthenticated routes (login, register)
 	// Hide it on /chat since there's already a toggle in the title bar
-	let showThemeToggle = $derived(!$page.url.pathname.startsWith('/chat'));
+	let showThemeToggle = $derived.by(() => !$page.url.pathname.startsWith('/chat'));
 </script>
 
 <svelte:head>

@@ -131,7 +131,7 @@
 			{#if error}
 				<div
 					class="animate-slide-in rounded-xl px-4 py-3"
-					style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444;"
+					style="background: var(--color-error-bg); border: 1px solid var(--color-error-border); color: var(--color-error);"
 				>
 					<div class="flex items-start gap-2">
 						<svg
@@ -171,12 +171,12 @@
 						class="w-full rounded-xl px-4 py-3 transition-all duration-200"
 						style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.username ||
 						fieldErrors.name
-							? '#ef4444'
+							? 'var(--color-error)'
 							: 'var(--border-subtle)'}; color: var(--text-primary);"
 						placeholder="johndoe"
 					/>
 					{#if fieldErrors.username || fieldErrors.name}
-						<p class="mt-2 text-sm" style="color: #ef4444;">
+						<p class="mt-2 text-sm" style="color: var(--color-error);">
 							{fieldErrors.username || fieldErrors.name}
 						</p>
 					{/if}
@@ -199,12 +199,12 @@
 						bind:value={email}
 						class="w-full rounded-xl px-4 py-3 transition-all duration-200"
 						style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.email
-							? '#ef4444'
+							? 'var(--color-error)'
 							: 'var(--border-subtle)'}; color: var(--text-primary);"
 						placeholder="you@example.com"
 					/>
 					{#if fieldErrors.email}
-						<p class="mt-2 text-sm" style="color: #ef4444;">{fieldErrors.email}</p>
+						<p class="mt-2 text-sm" style="color: var(--color-error);">{fieldErrors.email}</p>
 					{/if}
 				</div>
 
@@ -226,7 +226,7 @@
 							bind:value={password}
 							class="w-full rounded-xl px-4 py-3 pr-12 transition-all duration-200"
 							style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.password
-								? '#ef4444'
+								? 'var(--color-error)'
 								: 'var(--border-subtle)'}; color: var(--text-primary);"
 							placeholder="••••••••"
 						/>
@@ -241,7 +241,7 @@
 						</button>
 					</div>
 					{#if fieldErrors.password}
-						<p class="mt-2 text-sm" style="color: #ef4444;">{fieldErrors.password}</p>
+						<p class="mt-2 text-sm" style="color: var(--color-error);">{fieldErrors.password}</p>
 					{/if}
 				</div>
 
@@ -263,7 +263,7 @@
 							bind:value={confirmPassword}
 							class="w-full rounded-xl px-4 py-3 pr-12 transition-all duration-200"
 							style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.confirmPassword
-								? '#ef4444'
+								? 'var(--color-error)'
 								: 'var(--border-subtle)'}; color: var(--text-primary);"
 							placeholder="••••••••"
 						/>
@@ -278,7 +278,9 @@
 						</button>
 					</div>
 					{#if fieldErrors.confirmPassword}
-						<p class="mt-2 text-sm" style="color: #ef4444;">{fieldErrors.confirmPassword}</p>
+						<p class="mt-2 text-sm" style="color: var(--color-error);">
+							{fieldErrors.confirmPassword}
+						</p>
 					{/if}
 				</div>
 			</div>
