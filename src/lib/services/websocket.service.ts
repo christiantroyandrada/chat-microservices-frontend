@@ -1,7 +1,14 @@
 import { env } from '$env/dynamic/public';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
-import type { Message, MessageCallback, StatusCallback, TypingCallback } from '$lib/types';
+import type {
+	Message,
+	MessageCallback,
+	StatusCallback,
+	TypingCallback,
+	ReceiveMessagePayload,
+	TypingPayload
+} from '$lib/types';
 
 class WebSocketService {
 	private socket: Socket | null = null;
@@ -67,7 +74,7 @@ class WebSocketService {
 
 			// Listen for incoming messages
 			this.socket.on('receiveMessage', (payload: unknown) => {
-				const data = payload as Record<string, unknown>;
+				const data = payload as ReceiveMessagePayload;
 
 				// Normalize server message shape to frontend `Message`
 				const normalized = {
@@ -93,7 +100,7 @@ class WebSocketService {
 
 			// Listen for typing indicators
 			this.socket.on('typing', (payload: unknown) => {
-				const d = payload as { userId?: string; isTyping?: boolean };
+				const d = payload as TypingPayload;
 				this.typingCallbacks.forEach((callback) => {
 					try {
 						callback(String(d.userId ?? ''), Boolean(d.isTyping ?? false));

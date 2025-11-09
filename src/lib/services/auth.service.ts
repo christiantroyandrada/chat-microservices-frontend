@@ -49,11 +49,17 @@ export const authService = {
 	 * Logout user
 	 */
 	logout(): void {
-		// Token is in httpOnly cookie, managed by backend
-		// Clear any client-side data if needed
-		if (typeof window !== 'undefined') {
-			localStorage.removeItem('user');
-		}
+		// Call backend logout to clear httpOnly cookie, then clear any UI state
+		return apiClient.post('/user/logout').then(() => {
+			if (typeof window !== 'undefined') {
+				// remove any temporary client-side caches
+				try {
+					localStorage.removeItem('user')
+				} catch (e) {
+					console.warn('Failed to remove user from localStorage', e)
+				}
+			}
+		}) as unknown as void;
 	},
 
 	/**

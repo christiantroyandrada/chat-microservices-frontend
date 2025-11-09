@@ -47,7 +47,11 @@ function createAuthStore() {
 				update((state) => ({ ...state, user, loading: false, error: null }));
 			} catch {
 				// Token is invalid, clear it
-				authService.logout();
+				try {
+					await authService.logout();
+				} catch (e) {
+					console.warn('Logout during init failed', e);
+				}
 				set(initialState);
 			}
 		},
@@ -105,9 +109,15 @@ function createAuthStore() {
 		/**
 		 * Logout user
 		 */
-		logout() {
-			authService.logout();
-			// Do not persist user data in localStorage; session is cookie-based.
+		async logout() {
+			// Ensure backend clears the httpOnly cookie, wait for it before redirecting
+			try {
+				await authService.logout();
+			} catch (e) {
+				// still proceed with clearing client state even if logout call fails
+				console.warn('Logout API failed', e)
+			}
+			// Clear local auth state and navigate to login
 			set(initialState);
 			void goto('/login');
 		} /**

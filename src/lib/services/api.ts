@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/public';
-import type { ApiResponse, ApiError } from '$lib/types';
+import type { ApiResponse, ApiError, ResponseShape } from '$lib/types';
 
 const API_URL = env.PUBLIC_API_URL || 'http://localhost:85';
 
@@ -66,13 +66,6 @@ class ApiClient {
 			}
 
 			// Normalize parsed response to a safe object shape
-			type ResponseShape = {
-				data?: unknown;
-				message?: string;
-				error?: string;
-				errors?: unknown;
-				[k: string]: unknown;
-			};
 			const normalized: ResponseShape = ((): ResponseShape => {
 				if (data && typeof data === 'object') {
 					return data as ResponseShape;

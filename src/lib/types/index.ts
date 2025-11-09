@@ -90,6 +90,19 @@ export interface ApiResponse<T = unknown> {
 	error?: string;
 }
 
+// Shape of normalized responses parsed by the frontend API client
+export type ResponseShape = {
+	data?: unknown;
+	message?: string;
+	error?: string;
+	errors?: unknown;
+	[k: string]: unknown;
+};
+
+// WebSocket payload shapes
+export type ReceiveMessagePayload = Record<string, unknown>;
+export type TypingPayload = { userId?: string; isTyping?: boolean };
+
 export interface ApiError {
 	message: string;
 	status?: number;
