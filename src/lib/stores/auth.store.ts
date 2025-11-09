@@ -1,14 +1,8 @@
 import { writable, derived } from 'svelte/store';
 import { authService } from '$lib/services/auth.service';
-import type { User, LoginCredentials, RegisterCredentials, ApiError } from '$lib/types';
+import type { LoginCredentials, RegisterCredentials, ApiError, AuthState } from '$lib/types';
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
-
-interface AuthState {
-	user: User | null;
-	loading: boolean;
-	error: string | null;
-}
 
 const initialState: AuthState = {
 	user: null,
@@ -24,7 +18,7 @@ function createAuthStore() {
 		subscribe,
 
 		/**
-		 * Initialize auth state from stored token
+		 * Initialize auth state from httpOnly cookie
 		 * Prevents race conditions by ensuring only one init runs at a time
 		 */
 		async init() {
@@ -35,12 +29,8 @@ function createAuthStore() {
 				return initPromise;
 			}
 
-			const token = authService.getToken();
-			if (!token) {
-				set(initialState);
-				return;
-			}
-
+			// With httpOnly cookies, we can't check token client-side
+			// Try to fetch current user to verify authentication
 			initPromise = this._performInit();
 			await initPromise;
 			initPromise = null;
@@ -57,7 +47,11 @@ function createAuthStore() {
 				update((state) => ({ ...state, user, loading: false, error: null }));
 			} catch {
 				// Token is invalid, clear it
-				authService.logout();
+				try {
+					await authService.logout();
+				} catch (e) {
+					console.warn('Logout during init failed', e);
+				}
 				set(initialState);
 			}
 		},
@@ -74,11 +68,6 @@ function createAuthStore() {
 				const user = await authService.getCurrentUser();
 
 				update((state) => ({ ...state, user, loading: false, error: null }));
-
-				// Store user data
-				if (browser) {
-					localStorage.setItem('user', JSON.stringify(user));
-				}
 
 				void goto('/chat');
 				return user;
@@ -104,11 +93,6 @@ function createAuthStore() {
 
 				update((state) => ({ ...state, user, loading: false, error: null }));
 
-				// Store user data
-				if (browser) {
-					localStorage.setItem('user', JSON.stringify(user));
-				}
-
 				void goto('/chat');
 				return user;
 			} catch (error) {
@@ -125,11 +109,15 @@ function createAuthStore() {
 		/**
 		 * Logout user
 		 */
-		logout() {
-			authService.logout();
-			if (browser) {
-				localStorage.removeItem('user');
+		async logout() {
+			// Ensure backend clears the httpOnly cookie, wait for it before redirecting
+			try {
+				await authService.logout();
+			} catch (e) {
+				// still proceed with clearing client state even if logout call fails
+				console.warn('Logout API failed', e)
 			}
+			// Clear local auth state and navigate to login
 			set(initialState);
 			void goto('/login');
 		} /**

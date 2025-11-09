@@ -1,27 +1,9 @@
 import { apiClient } from './api';
-import type { Message, SendMessagePayload, ChatConversation } from '$lib/types';
-
-// Shape of message object returned by the backend
-interface ServerMessage {
-	_id?: string;
-	id?: string;
-	senderId: string;
-	senderUsername?: string;
-	senderName?: string;
-	receiverId: string;
-	message?: string;
-	content?: string;
-	timestamp?: string;
-	createdAt?: string;
-	read?: boolean;
-	isRead?: boolean;
-	updatedAt?: string;
-}
+import type { Message, SendMessagePayload, ChatConversation, ServerMessage } from '$lib/types';
 
 /**
- * Result type for better error handling
+ * ServiceResult is imported from central types file.
  */
-export type ServiceResult<T> = { success: true; data: T } | { success: false; error: string };
 
 /**
  * Helper to normalize server message shape -> frontend Message

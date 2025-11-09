@@ -1,16 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { chatService } from '$lib/services/chat.service';
-import type { ChatConversation, Message } from '$lib/types';
-
-interface ChatState {
-	conversations: ChatConversation[];
-	messages: Record<string, Message[]>;
-	selectedUserId: string | null;
-	loading: {
-		conversations: boolean;
-		messages: boolean;
-	};
-}
+import type { ChatConversation, Message, ChatState } from '$lib/types';
 
 const initialState: ChatState = {
 	conversations: [],

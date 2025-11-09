@@ -1,10 +1,14 @@
 import { env } from '$env/dynamic/public';
-import { io, Socket } from 'socket.io-client';
-import type { Message } from '$lib/types';
-
-type MessageCallback = (message: Message) => void;
-type StatusCallback = (status: 'connected' | 'disconnected' | 'reconnecting') => void;
-type TypingCallback = (userId: string, isTyping: boolean) => void;
+import { io } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
+import type {
+	Message,
+	MessageCallback,
+	StatusCallback,
+	TypingCallback,
+	ReceiveMessagePayload,
+	TypingPayload
+} from '$lib/types';
 
 class WebSocketService {
 	private socket: Socket | null = null;
@@ -12,7 +16,6 @@ class WebSocketService {
 	private statusCallbacks: Set<StatusCallback> = new Set();
 	private typingCallbacks: Set<TypingCallback> = new Set();
 	private wsUrl: string;
-	private token: string | null = null;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(wsUrl?: string) {
@@ -22,20 +25,20 @@ class WebSocketService {
 
 	/**
 	 * Connect to Socket.IO server
+	 * Token is sent via httpOnly cookie, no need to pass it explicitly
 	 */
-	connect(token: string): void {
+	connect(): void {
 		if (this.socket?.connected) {
 			// already connected - nothing to do
 			return;
 		}
 
-		this.token = token;
-
 		try {
 			// Connect to Socket.IO server with the /chat/socket.io path
+			// Authentication is handled via httpOnly cookie sent with the request
 			this.socket = io(this.wsUrl, {
 				path: '/chat/socket.io',
-				auth: { token },
+				withCredentials: true, // Send cookies with requests
 				transports: ['websocket', 'polling'],
 				reconnection: true,
 				reconnectionAttempts: 5,
@@ -60,7 +63,9 @@ class WebSocketService {
 			});
 
 			this.socket.on('connect_error', (error) => {
-				console.error('Socket.IO connection error:', error);
+				// Socket.IO may surface Error objects or plain strings; prefer a concise message
+				const msg = error instanceof Error ? error.message : String(error);
+				console.warn('Socket.IO connection error:', msg);
 			});
 
 			this.socket.on('reconnect_attempt', () => {
@@ -69,7 +74,7 @@ class WebSocketService {
 
 			// Listen for incoming messages
 			this.socket.on('receiveMessage', (payload: unknown) => {
-				const data = payload as Record<string, unknown>;
+				const data = payload as ReceiveMessagePayload;
 
 				// Normalize server message shape to frontend `Message`
 				const normalized = {
@@ -95,7 +100,7 @@ class WebSocketService {
 
 			// Listen for typing indicators
 			this.socket.on('typing', (payload: unknown) => {
-				const d = payload as { userId?: string; isTyping?: boolean };
+				const d = payload as TypingPayload;
 				this.typingCallbacks.forEach((callback) => {
 					try {
 						callback(String(d.userId ?? ''), Boolean(d.isTyping ?? false));
@@ -136,16 +141,8 @@ class WebSocketService {
 	 */
 	sendMessage(message: Message): void {
 		if (this.socket?.connected) {
-			// Extract authenticated user ID from token to ensure senderId matches JWT
-			let authenticatedUserId: string | null = null;
-			if (this.token) {
-				try {
-					const parsed = JSON.parse(atob(this.token.split('.')[1])) as Record<string, unknown>;
-					authenticatedUserId = String(parsed.id ?? '');
-				} catch (e) {
-					console.error('Failed to decode token:', e);
-				}
-			}
+			// Authentication is handled via httpOnly cookie on the backend
+			// No need to extract user ID from token client-side
 
 			// Normalize message content (server expects `message` field)
 			// Accept either `content` (frontend) or `message` (server) field
@@ -161,7 +158,7 @@ class WebSocketService {
 				'sendMessage',
 				{
 					_id: m._id || m.id, // Include message ID if it exists
-					senderId: authenticatedUserId || message.senderId,
+					senderId: message.senderId, // Use senderId from message (or backend will set from JWT)
 					receiverId: message.receiverId,
 					message: msgContent
 				},

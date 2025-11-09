@@ -1,12 +1,7 @@
 import { writable, derived } from 'svelte/store';
 import { notificationService } from '$lib/services/notification.service';
-import type { Notification } from '$lib/types';
-
-interface NotificationState {
-	notifications: Notification[];
-	unreadCount: number;
-	loading: boolean;
-}
+import { normalizeNotification } from '$lib/utils';
+import type { Notification, NotificationState } from '$lib/types';
 
 const initialState: NotificationState = {
 	notifications: [],
@@ -46,11 +41,16 @@ function createNotificationStore() {
 		 * Add a new notification
 		 */
 		add(notification: Notification) {
-			update((state) => ({
-				...state,
-				notifications: [notification, ...state.notifications],
-				unreadCount: notification.read ? state.unreadCount : state.unreadCount + 1
-			}));
+			update((state) => {
+				// Normalize using centralized helper (should not throw)
+				const norm = normalizeNotification(notification as unknown);
+
+				return {
+					...state,
+					notifications: [norm, ...state.notifications],
+					unreadCount: norm.read ? state.unreadCount : state.unreadCount + 1
+				};
+			});
 		},
 
 		/**

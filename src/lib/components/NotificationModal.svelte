@@ -2,11 +2,12 @@
 	import { notificationStore } from '$lib/stores/notification.store';
 	import type { Notification } from '$lib/types';
 
-	export let isOpen = false;
-	export let onClose: () => void = () => {};
+	// Svelte 5 runes: use $props() instead of export let
+	let { isOpen = false, onClose = () => {} }: { isOpen?: boolean; onClose?: () => void } = $props();
 
-	$: notifications = $notificationStore.notifications;
-	$: loading = $notificationStore.loading;
+	// Derive reactive values from store
+	let notifications = $derived.by(() => $notificationStore.notifications);
+	let loading = $derived.by(() => $notificationStore.loading);
 
 	async function handleMarkAsRead(notificationId: string) {
 		await notificationStore.markAsRead(notificationId);
@@ -53,42 +54,42 @@
 			onClose();
 		}
 	}
+
+	function handleBackdropKeydown(e: KeyboardEvent) {
+		// Close on Escape
+		if (e.key === 'Escape') onClose();
+	}
 </script>
 
 {#if isOpen}
-	<!-- svelte-ignore a11y-click-events-have-key-events -->
-	<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
 	<div
-		class="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 animate-fade-in"
-		style="background: var(--modal-backdrop); backdrop-filter: blur(8px);"
+		class="notification-backdrop animate-fade-in fixed inset-0 z-50 flex items-start justify-center px-4 pt-16"
 		onclick={handleBackdropClick}
+		onkeydown={handleBackdropKeydown}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="notification-modal-title"
 		tabindex="-1"
 	>
-		<!-- svelte-ignore a11y-click-events-have-key-events -->
-		<!-- svelte-ignore a11y-no-static-element-interactions -->
 		<div
-			class="relative w-full max-w-lg glass-strong rounded-2xl animate-scale-in"
-			style="box-shadow: var(--shadow-strong); background: var(--modal-bg); border: 1px solid var(--modal-border);"
-			onclick={(e) => e.stopPropagation()}
+			class="notification-modal glass-strong animate-scale-in relative w-full max-w-lg rounded-2xl"
+			role="document"
 		>
-			<div class="flex items-center justify-between px-6 py-5" style="border-bottom: 1px solid var(--border-subtle);">
+			<div class="modal-header flex items-center justify-between px-6 py-5">
 				<div>
-					<h2 id="notification-modal-title" class="text-xl font-semibold" style="color: var(--text-primary);">
+					<h2 id="notification-modal-title" class="modal-title text-xl font-semibold">
 						Notifications
 					</h2>
-					<p class="text-sm mt-0.5" style="color: var(--text-tertiary);">
-						{notifications.length} {notifications.length === 1 ? 'notification' : 'notifications'}
+					<p class="modal-subtitle mt-0.5 text-sm">
+						{notifications.length}
+						{notifications.length === 1 ? 'notification' : 'notifications'}
 					</p>
 				</div>
 				<div class="flex items-center gap-2">
 					{#if notifications.length > 0 && notifications.some((n) => !n.read)}
 						<button
 							onclick={handleMarkAllAsRead}
-							class="rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 hover-lift btn"
-							style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); color: white; border: 1px solid rgba(0,0,0,0);"
+							class="mark-all-btn hover-lift btn rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200"
 							title="Mark all as read"
 						>
 							Mark all read
@@ -96,8 +97,7 @@
 					{/if}
 					<button
 						onclick={onClose}
-						class="rounded-lg p-2 transition-all duration-200 hover-lift"
-						style="color: var(--text-tertiary); background: var(--bg-hover);"
+						class="close-btn hover-lift rounded-lg p-2 transition-all duration-200"
 						aria-label="Close"
 					>
 						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -112,21 +112,17 @@
 				</div>
 			</div>
 
-			<div class="max-h-96 overflow-y-auto">
+			<div class="notification-list max-h-96 overflow-y-auto">
 				{#if loading}
 					<div class="flex items-center justify-center py-16">
-						<div class="h-10 w-10 animate-spin rounded-full border-4 border-t-transparent" style="border-color: var(--accent-primary) transparent transparent transparent;"></div>
+						<div
+							class="loading-spinner h-10 w-10 animate-spin rounded-full border-4 border-t-transparent"
+						></div>
 					</div>
 				{:else if notifications.length === 0}
-					<div class="flex flex-col items-center justify-center py-16" style="color: var(--text-secondary);">
-						<div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl" style="background: var(--bg-tertiary); border: 1px solid var(--modal-border);">
-							<svg
-								class="h-8 w-8"
-								style="color: var(--text-tertiary);"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
+					<div class="empty-state flex flex-col items-center justify-center py-16">
+						<div class="empty-icon mb-4 flex h-16 w-16 items-center justify-center rounded-2xl">
+							<svg class="icon h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path
 									stroke-linecap="round"
 									stroke-linejoin="round"
@@ -135,49 +131,61 @@
 								/>
 							</svg>
 						</div>
-						<p class="font-medium" style="color: var(--text-primary);">No notifications yet</p>
-						<p class="text-sm mt-1" style="color: var(--text-tertiary);">When you get notifications, they'll show up here</p>
+						<p class="empty-title font-medium">No notifications yet</p>
+						<p class="empty-subtitle mt-1 text-sm">
+							When you get notifications, they'll show up here
+						</p>
 					</div>
 				{:else}
-					<ul class="divide-y" style="divide-color: var(--modal-border);">
+					<ul class="notification-items divide-y">
 						{#each notifications as notification (notification._id)}
 							<li
-								class="group relative px-6 py-4 transition-all duration-200"
+								class="notification-item group relative px-6 py-4 transition-all duration-200"
 								class:unread={!notification.read}
-								style="background: {!notification.read ? 'var(--bg-hover)' : 'transparent'};"
 							>
 								<div class="flex items-start gap-4">
-									<div class="mt-1 flex h-10 w-10 items-center justify-center rounded-xl shrink-0" style="background: var(--bg-tertiary); border: 1px solid var(--modal-border);">
+									<div
+										class="notification-icon mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+									>
 										<span class="text-lg">{getNotificationIcon(notification.type)}</span>
 									</div>
 
-									<div class="flex-1 min-w-0">
-										<div class="flex items-start justify-between gap-2 mb-1">
-											<h3 class="font-medium" style="color: var(--text-primary);" class:font-semibold={!notification.read}>
+									<div class="min-w-0 flex-1">
+										<div class="mb-1 flex items-start justify-between gap-2">
+											<h3
+												class="notification-title font-medium"
+												class:font-semibold={!notification.read}
+											>
 												{notification.title}
 											</h3>
 											{#if !notification.read}
-												<span class="h-2 w-2 rounded-full shrink-0 mt-2" style="background: var(--accent-primary); box-shadow: 0 0 8px var(--accent-primary);"></span>
+												<span class="unread-dot mt-2 h-2 w-2 shrink-0 rounded-full"></span>
 											{/if}
 										</div>
-										<p class="text-sm mb-2" style="color: var(--text-secondary);">
+										<p class="notification-message mb-2 text-sm">
 											{notification.message}
 										</p>
-										<p class="text-xs" style="color: var(--text-tertiary);">
+										<p class="notification-time text-xs">
 											{formatTimestamp(notification.createdAt)}
 										</p>
 									</div>
 
-									<div class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+									<div
+										class="notification-actions shrink-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+									>
 										<div class="flex gap-1">
 											{#if !notification.read}
 												<button
 													onclick={() => handleMarkAsRead(notification._id)}
-													class="rounded-lg p-2 transition-all duration-200 hover-lift btn"
-													style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); color: white;"
+													class="action-btn-read hover-lift btn rounded-lg p-2 transition-all duration-200"
 													title="Mark as read"
 												>
-													<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<svg
+														class="h-4 w-4"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
 														<path
 															stroke-linecap="round"
 															stroke-linejoin="round"
@@ -189,9 +197,9 @@
 											{/if}
 											<button
 												onclick={() => handleDelete(notification._id)}
-												class="rounded-lg p-2 transition-all duration-200 hover-lift btn"
-												style="background: rgba(239, 68, 68, 0.06); color: #ef4444; border: 1px solid rgba(239,68,68,0.08);"
+												class="action-btn-delete hover-lift btn rounded-lg p-2 transition-all duration-200"
 												title="Delete"
+												aria-label="Delete notification"
 											>
 												<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 													<path
@@ -212,11 +220,10 @@
 			</div>
 
 			{#if notifications.length > 0}
-				<div class="px-6 py-4 text-center" style="border-top: 1px solid var(--modal-border);">
+				<div class="modal-footer px-6 py-4 text-center">
 					<button
 						onclick={onClose}
-						class="text-sm font-medium transition-colors duration-200"
-						style="color: var(--accent-secondary);"
+						class="close-link text-sm font-medium transition-colors duration-200"
 					>
 						Close
 					</button>
@@ -227,36 +234,144 @@
 {/if}
 
 <style>
-	.overflow-y-auto::-webkit-scrollbar {
-		width: 6px;
-	}
+	/* Use PostCSS nesting for clarity: base backdrop contains modal and children */
+	.notification-backdrop {
+		background: var(--modal-backdrop);
+		backdrop-filter: blur(8px);
 
-	.overflow-y-auto::-webkit-scrollbar-track {
-		background: transparent;
-	}
+		.notification-modal {
+			box-shadow: var(--shadow-strong);
+			background: var(--modal-bg);
+			border: 1px solid var(--modal-border);
 
-	.overflow-y-auto::-webkit-scrollbar-thumb {
-		background: var(--scrollbar-thumb, rgba(255,255,255,0.08));
-		border-radius: 3px;
-		transition: background 0.2s;
-	}
+			.modal-header {
+				border-bottom: 1px solid var(--border-subtle);
+			}
 
-	.overflow-y-auto::-webkit-scrollbar-thumb:hover {
-		background: var(--scrollbar-thumb-hover, rgba(255,255,255,0.14));
-	}
-	
-	.unread {
-		position: relative;
-	}
-	
-	.unread::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 3px;
-		background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
-		border-radius: 0 2px 2px 0;
+			.modal-title {
+				color: var(--text-primary);
+			}
+
+			.modal-subtitle {
+				color: var(--text-tertiary);
+			}
+
+			.mark-all-btn {
+				background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+				color: white;
+				border: 1px solid rgba(0, 0, 0, 0);
+			}
+
+			.close-btn {
+				color: var(--text-tertiary);
+				background: var(--bg-hover);
+			}
+
+			.loading-spinner {
+				border-color: var(--accent-primary) transparent transparent transparent;
+			}
+
+			.empty-state {
+				color: var(--text-secondary);
+
+				.empty-icon {
+					background: var(--bg-tertiary);
+					border: 1px solid var(--modal-border);
+
+					.icon {
+						color: var(--text-tertiary);
+					}
+				}
+
+				.empty-title {
+					color: var(--text-primary);
+				}
+
+				.empty-subtitle {
+					color: var(--text-tertiary);
+				}
+			}
+
+			.notification-item {
+				background: transparent;
+
+				&.unread {
+					background: var(--bg-hover);
+					position: relative;
+
+					&::before {
+						content: '';
+						position: absolute;
+						left: 0;
+						top: 0;
+						bottom: 0;
+						width: 3px;
+						background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
+						border-radius: 0 2px 2px 0;
+					}
+				}
+			}
+
+			.notification-icon {
+				background: var(--bg-tertiary);
+				border: 1px solid var(--modal-border);
+			}
+
+			.notification-title {
+				color: var(--text-primary);
+			}
+
+			.unread-dot {
+				background: var(--accent-primary);
+				box-shadow: 0 0 8px var(--accent-primary);
+			}
+
+			.notification-message {
+				color: var(--text-secondary);
+			}
+
+			.notification-time {
+				color: var(--text-tertiary);
+			}
+
+			.action-btn-read {
+				background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+				color: white;
+			}
+
+			.action-btn-delete {
+				background: var(--color-error-bg);
+				color: var(--color-error);
+				border: 1px solid var(--color-error-border);
+			}
+
+			.modal-footer {
+				border-top: 1px solid var(--modal-border);
+			}
+
+			.close-link {
+				color: var(--accent-secondary);
+			}
+
+			.notification-list {
+				&::-webkit-scrollbar {
+					width: 6px;
+				}
+
+				&::-webkit-scrollbar-track {
+					background: transparent;
+				}
+
+				&::-webkit-scrollbar-thumb {
+					background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.08));
+					border-radius: 3px;
+					transition: background 0.2s;
+				}
+
+				&::-webkit-scrollbar-thumb:hover {
+					background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.14));
+				}
+			}
+		}
 	}
 </style>
