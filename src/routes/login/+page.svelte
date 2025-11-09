@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { authStore } from '$lib/stores/auth.store';
+	import { authStore, user } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
@@ -37,6 +37,10 @@
 
 		try {
 			await authStore.login({ email, password });
+
+			// Signal Protocol keys will be initialized on the chat page
+			// This ensures authentication is fully established before making authenticated requests
+
 			toastStore.success('Login successful!');
 		} catch (err: unknown) {
 			const apiError = err as ApiError;

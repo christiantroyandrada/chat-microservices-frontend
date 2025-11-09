@@ -2,37 +2,49 @@
 
 ## 🎉 Project Overview
 
-This is a full-featured **real-time chat application** built with SvelteKit, TypeScript, and Tailwind CSS. It connects to a microservices backend running on ports 8081-8083, proxied through nginx on port 85 or a gateway on port 8080.
+Full-featured **real-time chat application** with **end-to-end encryption** built using SvelteKit, TypeScript, and Tailwind CSS. Connects to microservices backend via nginx reverse proxy on port 85.
 
 ### ✨ Features Implemented
+
+✅ **End-to-End Encryption (E2EE)**
+
+- Signal Protocol implementation
+- Client-side message encryption/decryption
+- Automatic prekey bundle generation and publishing
+- IndexedDB-based key storage
+- Secure session establishment
 
 ✅ **Authentication**
 
 - User registration and login
-- JWT token management
-- Protected routes
-- Auto-redirect based on auth status
+- JWT token management with httpOnly cookies
+- Protected routes with auth guards
+- Auto-redirect based on authentication status
+- Device ID management for E2EE
 
 ✅ **Real-time Chat**
 
-- WebSocket connections for instant messaging
+- WebSocket connections via Socket.IO
+- Instant message delivery
 - Typing indicators
 - Connection status monitoring
 - Auto-reconnection logic
-- Message history
+- Message history with encryption/decryption
 
 ✅ **Notifications**
 
 - Toast notifications for user feedback
 - Notification center integration
 - Unread count tracking
+- Real-time notification delivery
 
 ✅ **Modern UI**
 
 - Responsive design (mobile & desktop)
-- Tailwind CSS styling
-- Loading states
-- Error handling
+- Tailwind CSS v4 styling
+- Theme toggle (dark/light mode)
+- Loading states and error handling
+- Smooth animations and transitions
 
 ---
 
@@ -42,33 +54,44 @@ This is a full-featured **real-time chat application** built with SvelteKit, Typ
 src/
 ├── lib/
 │   ├── components/          # Reusable Svelte components
-│   │   ├── ChatHeader.svelte       # Chat conversation header
+│   │   ├── ChatHeader.svelte       # Conversation header with typing
 │   │   ├── ChatList.svelte         # Conversations sidebar
-│   │   ├── MessageInput.svelte     # Message input with typing indicator
+│   │   ├── MessageInput.svelte     # Message input with send
 │   │   ├── MessageList.svelte      # Message display with scrolling
+│   │   ├── NotificationModal.svelte # Notification center
+│   │   ├── ThemeToggle.svelte      # Dark/light theme toggle
 │   │   └── Toast.svelte            # Toast notifications
 │   │
+│   ├── crypto/              # End-to-end encryption
+│   │   └── signal.ts               # Signal Protocol implementation
+│   │
 │   ├── services/            # API and WebSocket services
-│   │   ├── api.ts                  # Base API client
+│   │   ├── api.ts                  # Base API client with auth
 │   │   ├── auth.service.ts         # Authentication API
-│   │   ├── chat.service.ts         # Chat/messaging API
+│   │   ├── chat.service.ts         # Chat/messaging with E2EE
 │   │   ├── notification.service.ts # Notifications API
 │   │   └── websocket.service.ts    # WebSocket manager
 │   │
 │   ├── stores/              # Svelte stores for state management
 │   │   ├── auth.store.ts           # Auth state & user data
-│   │   ├── chat.store.ts           # Chat conversations & messages
+│   │   ├── chat.store.ts           # Conversations & messages
 │   │   ├── notification.store.ts   # Notifications
+│   │   ├── theme.store.ts          # Theme preferences
 │   │   └── toast.store.ts          # Toast messages
 │   │
-│   └── types/               # TypeScript type definitions
-│       └── index.ts                # All app types
+│   ├── types/               # TypeScript type definitions
+│   │   └── index.ts                # All app types
+│   │
+│   └── utils/               # Utility functions
+│       ├── debounce.ts             # Debounce helper
+│       ├── normalizeNotification.ts # Notification normalization
+│       └── sanitize.ts             # HTML sanitization
 │
 └── routes/                  # SvelteKit pages
     ├── +layout.svelte              # Root layout with Toast
-    ├── +page.svelte                # Home (redirects to login/chat)
-    ├── login/+page.svelte          # Login page
-    ├── register/+page.svelte       # Registration page
+    ├── +page.svelte                # Home (redirects)
+    ├── login/+page.svelte          # Login page with E2EE setup
+    ├── register/+page.svelte       # Registration with key generation
     └── chat/+page.svelte           # Main chat interface
 ```
 
@@ -84,36 +107,40 @@ pnpm install
 
 ### 2. Configure Environment
 
-The `.env` file is already created with default values:
+Create a `.env` file in the project root:
 
-```env
-PUBLIC_API_URL=http://localhost:8080
-PUBLIC_WS_URL=ws://localhost:8082
+```bash
+cp .env.example .env
 ```
 
-**Backend Connection Options:**
+Default configuration for local development:
 
-- **Gateway (port 8080)**: Recommended for development
-- **Nginx (port 85)**: Alternative reverse proxy
+```env
+PUBLIC_API_URL=http://localhost:85
+PUBLIC_WS_URL=http://localhost:85
+PUBLIC_APP_NAME="Chat App"
+PUBLIC_APP_VERSION=0.0.1
+```
+
+**Backend Connection:**
+
+- **Nginx (port 85)**: All API and WebSocket requests
+- Nginx proxies to user-service (8081), chat-service (8082), notification-service (8083)
+- Consistent origin for httpOnly cookie authentication
 
 ### 3. Start Backend Services
 
-Make sure your backend is running:
+Ensure backend is running:
 
 ```bash
 cd ../chat-microservices
 docker-compose up -d --build
-
-# Start gateway separately
-cd gateway && npm run dev
 ```
 
 Verify backend health:
 
 ```bash
-curl http://localhost:85/api/health
-# or
-curl http://localhost:8080/api/health
+curl http://localhost:85/api/user/health
 ```
 
 ### 4. Start Frontend
@@ -130,11 +157,11 @@ Open browser at: **http://localhost:5173**
 
 ### Running the App
 
-1. **Start backend services** (ports 8081-8083)
-2. **Start nginx** (port 85) or **gateway** (port 8080)
-3. **Start frontend** (`pnpm dev`)
-4. **Register a new account** at `/register`
-5. **Start chatting!**
+1. **Start backend services** (ports 8081-8083 via Docker)
+2. **Start nginx** (port 85 via Docker)
+3. **Start frontend** (`pnpm dev` on port 5173)
+4. **Register a new account** at `http://localhost:5173/register`
+5. **Login and start chatting** at `http://localhost:5173/chat`
 
 ### Testing
 
@@ -166,54 +193,88 @@ pnpm format
 
 ## 🎨 Key Components
 
+### End-to-End Encryption (E2EE)
+
+**Implementation**: Signal Protocol via `@privacyresearch/libsignal-protocol-typescript`
+
+**Key Features:**
+
+- **Client-side encryption**: Messages encrypted before sending to server
+- **Automatic setup**: Prekey bundles generated on registration/login
+- **Device ID management**: Each browser/device gets unique encryption keys
+- **Session establishment**: Automatic when messaging new contacts
+- **IndexedDB storage**: Keys stored locally, never sent to server
+
+**Flow:**
+
+1. **Registration/Login**: Generate identity keypair and prekey bundles
+2. **Publish keys**: Upload public keys to server for others to fetch
+3. **Send message**: Fetch recipient's prekey bundle, establish session, encrypt message
+4. **Receive message**: Decrypt using stored session keys
+5. **History**: Messages are decrypted when fetching conversation history
+
+**Files:**
+
+- `src/lib/crypto/signal.ts` — Signal Protocol wrapper
+- `src/lib/services/chat.service.ts` — E2EE integration in messaging
+
 ### Authentication Flow
 
 1. User visits root (`/`)
-2. App checks for stored JWT token
-3. If authenticated → redirect to `/chat`
+2. App checks authentication via httpOnly cookie
+3. If authenticated → redirect to `/chat` (with E2EE setup)
 4. If not → redirect to `/login`
 
 **Login/Register Pages:**
 
-- Form validation
-- Error handling
-- Loading states
-- Auto-redirect on success
+- Client-side form validation
+- Server-side validation feedback
+- Error handling with toast notifications
+- Loading states during API calls
+- Auto-redirect on successful authentication
+- JWT token in httpOnly cookie (backend-managed)
+- **E2EE initialization**: Generate and publish encryption keys
 
 ### Chat Interface (`/chat`)
 
 **Main features:**
 
-- **Sidebar**: List of conversations with unread badges
+- **Sidebar**: Conversations list with unread badges
 - **Header**: Current conversation info, typing indicator
-- **Messages**: Scrollable message history with date separators
+- **Messages**: Scrollable history with automatic decryption
 - **Input**: Message compose with Enter to send, Shift+Enter for newline
+- **Encryption**: All messages encrypted before sending
 
 **Real-time features:**
 
 - WebSocket connection for instant messages
+- Automatic message decryption on receipt
 - Typing indicators
 - Auto-scroll to bottom
 - Connection status notifications
 
 ### WebSocket Service
 
-Manages real-time communication:
+Manages real-time communication via Socket.IO:
 
-- Auto-connect on login
-- Auto-reconnect on disconnect (5 attempts)
-- Message delivery
+- Auto-connect on successful authentication
+- Authentication via httpOnly cookie
+- Auto-reconnect on disconnect (5 attempts, 3s delay)
+- Real-time encrypted message delivery
+- Automatic decryption of incoming messages
 - Typing indicators
-- Online/offline status
+- Connection status monitoring
+- Graceful cleanup on logout
 
 ### State Management
 
 **Stores:**
 
-- `authStore`: User authentication state
-- `chatStore`: Conversations and messages
+- `authStore`: User authentication state, device ID
+- `chatStore`: Conversations and decrypted messages
 - `notificationStore`: Notifications and unread count
-- `toastStore`: Toast messages for feedback
+- `toastStore`: Toast messages for user feedback
+- `themeStore`: Dark/light mode preference
 
 ---
 
@@ -221,34 +282,47 @@ Manages real-time communication:
 
 ### Backend Services
 
-| Service              | Port | Endpoint Prefix      | Purpose                      |
-| -------------------- | ---- | -------------------- | ---------------------------- |
-| User Service         | 8081 | `/api/user`          | Auth, registration, profiles |
-| Chat Service         | 8082 | `/api/chat`          | Messages, conversations      |
-| Notification Service | 8083 | `/api/notifications` | Notifications                |
-| Nginx Proxy          | 85   | `/api/*`             | Reverse proxy to services    |
-| Gateway              | 8080 | `/api/*`             | Alternative gateway          |
+| Service              | Port | Endpoint Prefix  | Purpose                       |
+| -------------------- | ---- | ---------------- | ----------------------------- |
+| User Service         | 8081 | `/user`          | Auth, registration, profiles  |
+| Chat Service         | 8082 | `/chat`          | Messages, conversations       |
+| Notification Service | 8083 | `/notifications` | Notifications                 |
+| Nginx Proxy          | 85   | `/*`             | Reverse proxy to all services |
+
+**Note:** All services are accessed through nginx on port 85. Direct service access is not exposed to frontend.
 
 ### API Endpoints Used
 
 **Authentication:**
 
-- `POST /api/user/register` - Register new user
-- `POST /api/user/login` - Login user
-- `GET /api/user/me` - Get current user
+- `POST /user/register` - Register new user
+- `POST /user/login` - Login user (sets httpOnly cookie)
+- `POST /user/logout` - Logout user (clears httpOnly cookie)
+- `GET /user/me` - Get current user profile
+- `GET /user/search?q={query}` - Search users by name or email
+- `GET /user/:id` - Get user by ID
 
 **Chat:**
 
-- `GET /api/chat/conversations` - Get all conversations
-- `GET /api/chat/messages/:userId` - Get messages with user
-- `POST /api/chat/messages` - Send message
-- `PUT /api/chat/messages/read/:senderId` - Mark as read
+- `GET /chat/conversations` - Get all conversations with last message
+- `GET /chat/messages/:userId` - Get message history with specific user
+- `POST /chat/messages` - Send message via HTTP (also via WebSocket)
+- `PUT /chat/messages/read/:senderId` - Mark messages as read
 
 **Notifications:**
 
-- `GET /api/notifications` - Get notifications
-- `GET /api/notifications/unread/count` - Get unread count
-- `PUT /api/notifications/:id/read` - Mark as read
+- `GET /notifications` - Get all notifications
+- `GET /notifications/unread/count` - Get unread notification count
+- `PUT /notifications/:id/read` - Mark notification as read
+- `DELETE /notifications/:id` - Delete notification
+
+**WebSocket Events (via Socket.IO):**
+
+- `connect` - WebSocket connection established
+- `disconnect` - WebSocket connection closed
+- `sendMessage` - Send message in real-time
+- `receiveMessage` - Receive incoming message
+- `typing` - Send/receive typing indicators
 
 ---
 
@@ -261,9 +335,10 @@ Manages real-time communication:
 **Solutions:**
 
 1. Verify backend is running: `docker-compose ps`
-2. Check health endpoint: `curl http://localhost:85/api/health`
-3. Verify `.env` file has correct API URL
+2. Check health endpoint: `curl http://localhost:85/user/health`
+3. Verify `.env` file has correct `PUBLIC_API_URL=http://localhost:85`
 4. Check browser console for CORS errors
+5. Ensure nginx container is healthy and routing requests correctly
 
 ### WebSocket Not Connecting
 
@@ -271,10 +346,12 @@ Manages real-time communication:
 
 **Solutions:**
 
-1. Verify chat service is running on port 8082
-2. Check `PUBLIC_WS_URL` in `.env`
-3. Open browser DevTools → Network → WS tab
-4. Look for WebSocket connection errors
+1. Verify chat service is running: `docker-compose ps chat`
+2. Check `PUBLIC_WS_URL=http://localhost:85` in `.env` (must match API URL)
+3. Ensure nginx is routing `/chat/socket.io/` correctly
+4. Open browser DevTools → Network → WS tab to inspect connection
+5. Check for WebSocket upgrade errors in nginx logs
+6. Verify httpOnly cookie is present in Application → Cookies (DevTools)
 
 ### Authentication Failing
 
@@ -282,10 +359,13 @@ Manages real-time communication:
 
 **Solutions:**
 
-1. Check backend user service on port 8081
-2. Verify MongoDB is running
-3. Ensure you're using the gateway origin (e.g. http://localhost:85) so the httpOnly cookie is sent
-4. Clear site cookies or open a fresh private window and try again
+1. Verify user service is running: `docker-compose ps user`
+2. Check PostgreSQL database is healthy: `docker-compose ps postgres`
+3. Ensure `PUBLIC_API_URL` matches nginx origin for httpOnly cookies
+4. Clear browser cookies (Application → Cookies in DevTools)
+5. Check browser console for 401/403 errors
+6. Verify JWT_SECRET is configured in backend services
+7. Try incognito/private window to rule out cookie conflicts
 
 ### Build Errors
 
@@ -309,25 +389,28 @@ pnpm format
 
 ## 🔒 Security Notes
 
-- JWT tokens stored in localStorage
-- Tokens sent via `Authorization: Bearer` header
-- WebSocket auth via query parameter
-- Input validation on forms
-- CORS handled by backend
-- JWT tokens are stored in httpOnly cookies (set by the backend)
-- Requests should be made with credentials included (frontend is configured to send cookies)
-- WebSocket auth is performed using the same httpOnly cookie on the Socket.IO handshake
-- Input validation on forms
-- CORS handled by backend
+### Current Implementation
 
-**Production Checklist:**
+- **JWT Storage**: Tokens stored in httpOnly cookies (set by backend)
+- **Authentication**: Automatic cookie transmission with `credentials: 'include'`
+- **WebSocket Auth**: Socket.IO handshake uses httpOnly cookie from headers
+- **CORS**: Configured on backend services to allow credentials
+- **Input Validation**: Client-side validation + server-side validation
+- **XSS Prevention**: Svelte automatically escapes content
+- **CSRF Protection**: SameSite cookie attribute (set by backend)
+
+### Production Checklist
 
 - [ ] Use HTTPS for all connections
-- [ ] Use WSS for WebSocket
-- [ ] Implement token refresh
-- [ ] Add rate limiting
-- [ ] Enable CSP headers
-- [ ] Sanitize user inputs
+- [ ] Use WSS (secure WebSocket) for real-time communication
+- [ ] Implement token refresh mechanism
+- [ ] Add rate limiting on API endpoints
+- [ ] Enable Content Security Policy (CSP) headers
+- [ ] Sanitize and validate all user inputs
+- [ ] Use secure cookie settings (Secure, HttpOnly, SameSite)
+- [ ] Implement proper error handling without exposing sensitive info
+- [ ] Add security headers (X-Frame-Options, X-Content-Type-Options)
+- [ ] Regular security audits and dependency updates
 
 ---
 
@@ -335,29 +418,35 @@ pnpm format
 
 ### Potential Features
 
-- [ ] **User search** - Find and start conversations with new users
+- [x] **User search** - Find and start conversations with new users
+- [x] **Dark mode** - Theme switcher implemented
+- [x] **Typing indicators** - Real-time typing status
+- [x] **Read receipts** - Mark messages as read
 - [ ] **File upload** - Send images and files
 - [ ] **Message reactions** - React with emojis
-- [ ] **Read receipts** - Show when messages are read
-- [ ] **User profiles** - View and edit profiles
+- [ ] **User profiles** - View and edit user profiles
 - [ ] **Group chats** - Multi-user conversations
 - [ ] **Voice/video calls** - WebRTC integration
 - [ ] **Message editing** - Edit sent messages
 - [ ] **Message deletion** - Delete messages
-- [ ] **Dark mode** - Theme switcher
-- [ ] **Push notifications** - Browser notifications
-- [ ] **Email notifications** - Email alerts
+- [ ] **Push notifications** - Browser push notifications
+- [ ] **Email notifications** - Email alerts for offline messages
 
 ### Technical Improvements
 
-- [ ] Add tests (Vitest + Playwright)
-- [ ] Implement pagination for messages
-- [ ] Add message caching
-- [ ] Optimize WebSocket reconnection
+- [x] Implement Svelte 5 runes API for reactive state
+- [x] Add PostCSS nesting support
+- [x] Implement proper WebSocket lifecycle management
+- [x] Add connection status monitoring
+- [ ] Add comprehensive tests (Vitest + Playwright)
+- [ ] Implement pagination for message history
+- [ ] Add message caching with IndexedDB
+- [ ] Optimize WebSocket reconnection strategy
 - [ ] Add service worker for offline support
 - [ ] Implement virtual scrolling for large message lists
-- [ ] Add skeleton loaders
+- [ ] Add skeleton loaders for better perceived performance
 - [ ] Implement optimistic UI updates
+- [ ] Add performance monitoring and analytics
 
 ---
 

@@ -64,7 +64,11 @@
 		loading = true;
 
 		try {
-			await authStore.register({ username, email, password });
+			const createdUser = await authStore.register({ username, email, password });
+
+			// Signal Protocol keys will be initialized on the chat page
+			// This ensures authentication is fully established before making authenticated requests
+
 			toastStore.success('Registration successful!');
 		} catch (err: unknown) {
 			const apiError = err as ApiError;

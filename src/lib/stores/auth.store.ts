@@ -115,7 +115,7 @@ function createAuthStore() {
 				await authService.logout();
 			} catch (e) {
 				// still proceed with clearing client state even if logout call fails
-				console.warn('Logout API failed', e)
+				console.warn('Logout API failed', e);
 			}
 			// Clear local auth state and navigate to login
 			set(initialState);

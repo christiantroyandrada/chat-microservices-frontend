@@ -45,24 +45,24 @@ class WebSocketService {
 				reconnectionDelay: 3000
 			});
 
-			this.socket.on('connect', () => {
-				this.notifyStatus('connected');
+		this.socket.on('connect', () => {
+			console.log('[WebSocket] Connected to server, socket ID:', this.socket?.id);
+			this.notifyStatus('connected');
 
-				// Clear any pending reconnect timer
-				if (this.reconnectTimer) {
-					clearTimeout(this.reconnectTimer);
-					this.reconnectTimer = null;
-				}
+			// Clear any pending reconnect timer
+			if (this.reconnectTimer) {
+				clearTimeout(this.reconnectTimer);
+				this.reconnectTimer = null;
+			}
 
-				// JWT authentication happens on handshake (io.use middleware on server)
-				// The server automatically joins the user to their room based on authenticated JWT
-				// No need to emit 'identify' event anymore
-			});
-			this.socket.on('disconnect', () => {
-				this.notifyStatus('disconnected');
-			});
-
-			this.socket.on('connect_error', (error) => {
+			// JWT authentication happens on handshake (io.use middleware on server)
+			// The server automatically joins the user to their room based on authenticated JWT
+			// No need to emit 'identify' event anymore
+		});
+		this.socket.on('disconnect', () => {
+			console.log('[WebSocket] Disconnected from server');
+			this.notifyStatus('disconnected');
+		});			this.socket.on('connect_error', (error) => {
 				// Socket.IO may surface Error objects or plain strings; prefer a concise message
 				const msg = error instanceof Error ? error.message : String(error);
 				console.warn('Socket.IO connection error:', msg);
@@ -72,33 +72,39 @@ class WebSocketService {
 				this.notifyStatus('reconnecting');
 			});
 
-			// Listen for incoming messages
-			this.socket.on('receiveMessage', (payload: unknown) => {
-				const data = payload as ReceiveMessagePayload;
+		// Listen for incoming messages
+		this.socket.on('receiveMessage', async (payload: unknown) => {
+			const data = payload as ReceiveMessagePayload;
 
-				// Normalize server message shape to frontend `Message`
-				const normalized = {
-					_id: String(data._id ?? data.id ?? ''),
-					senderId: String(data.senderId ?? ''),
-					senderUsername: String(data.senderUsername ?? data.senderName ?? '') || undefined,
-					receiverId: String(data.receiverId ?? ''),
-					content: String(data.content ?? data.message ?? ''),
-					timestamp: String(data.timestamp ?? data.createdAt ?? new Date().toISOString()),
-					read: Boolean(data.read ?? data.isRead ?? false),
-					createdAt: data.createdAt as string | undefined,
-					updatedAt: data.updatedAt as string | undefined
-				} as Message;
+			// Normalize server message shape to frontend `Message`
+			const normalized = {
+				_id: String(data._id ?? data.id ?? ''),
+				senderId: String(data.senderId ?? ''),
+				senderUsername: String(data.senderUsername ?? data.senderName ?? '') || undefined,
+				receiverId: String(data.receiverId ?? ''),
+				content: String(data.content ?? data.message ?? ''),
+				timestamp: String(data.timestamp ?? data.createdAt ?? new Date().toISOString()),
+				read: Boolean(data.read ?? data.isRead ?? false),
+				createdAt: data.createdAt as string | undefined,
+				updatedAt: data.updatedAt as string | undefined
+			} as Message;
 
-				this.messageCallbacks.forEach((callback) => {
-					try {
-						callback(normalized);
-					} catch (error) {
-						console.error('Error in message callback:', error);
-					}
-				});
+			console.log('[WebSocket] Received message:', {
+				_id: normalized._id,
+				senderId: normalized.senderId,
+				receiverId: normalized.receiverId,
+				contentLength: normalized.content?.length || 0
 			});
 
-			// Listen for typing indicators
+			// Pass message to callbacks (component will handle decryption with currentUserId)
+			this.messageCallbacks.forEach((callback) => {
+				try {
+					callback(normalized);
+				} catch (error) {
+					console.error('Error in message callback:', error);
+				}
+			});
+		});			// Listen for typing indicators
 			this.socket.on('typing', (payload: unknown) => {
 				const d = payload as TypingPayload;
 				this.typingCallbacks.forEach((callback) => {
@@ -153,6 +159,11 @@ class WebSocketService {
 				console.error('Failed to send message: Invalid message content (empty or non-string)');
 				return;
 			}
+
+			// Note: We don't validate if the message is encrypted here because:
+			// 1. Messages are already encrypted and sent via REST API (chat service)
+			// 2. WebSocket is used to broadcast the message for real-time delivery
+			// 3. The sender's local copy has plaintext content for display
 
 			this.socket.emit(
 				'sendMessage',

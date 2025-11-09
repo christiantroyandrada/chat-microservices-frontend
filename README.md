@@ -1,26 +1,27 @@
 # Chat Microservices Frontend
 
-This is the frontend application for the [Chat Microservices](https://github.com/christiantroyandrada/chat-microservices) backend system. Built with SvelteKit, TypeScript, and Tailwind CSS, it provides a modern, responsive chat interface that connects to the microservices backend.
+Modern, responsive real-time chat application built with SvelteKit, TypeScript, and Tailwind CSS. Features end-to-end encryption using the Signal Protocol for secure messaging.
+
+## ✨ Features
+
+- 🔐 **End-to-End Encryption**: Signal Protocol implementation for secure messaging
+- 🔑 **User Authentication**: JWT-based auth with httpOnly cookies
+- 💬 **Real-time Messaging**: WebSocket connections via Socket.IO
+- 🔔 **Push Notifications**: Real-time notification system
+- 📱 **Responsive Design**: Mobile-first UI with Tailwind CSS
+- ⚡ **Fast & Lightweight**: SvelteKit for optimal performance
+- 🧪 **Test Coverage**: Unit tests (Vitest) and E2E tests (Playwright)
+- 🎨 **Modern UI**: Clean, intuitive interface with dark/light themes
 
 ## Tech Stack
 
-- **Framework**: [SvelteKit](https://kit.svelte.dev/) (v2.47.1)
-- **Language**: TypeScript (v5.9.3)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/) (v4.1.14)
-- **Testing**:
-  - Unit tests: Vitest (v3.2.4)
-  - E2E tests: Playwright (v1.56.1)
+- **Framework**: [SvelteKit](https://kit.svelte.dev/) v2.47.1
+- **Language**: TypeScript v5.9.3
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) v4.1.14
+- **Encryption**: Signal Protocol via `@privacyresearch/libsignal-protocol-typescript`
+- **Real-time**: Socket.IO Client v4.8.1
+- **Testing**: Vitest v3.2.4 + Playwright v1.56.1
 - **Package Manager**: pnpm (recommended)
-
-## Features
-
-- 🔐 User authentication and registration
-- 💬 Real-time chat messaging
-- 🔔 Push notifications
-- 📱 Responsive design for mobile and desktop
-- 🎨 Modern UI with Tailwind CSS
-- ⚡ Fast and lightweight SvelteKit application
-- 🧪 Comprehensive test coverage
 
 ## Prerequisites
 
@@ -30,25 +31,28 @@ This is the frontend application for the [Chat Microservices](https://github.com
 
 ## Backend Connection
 
-This frontend connects to the following backend services:
+This frontend connects to the Chat Microservices backend via nginx reverse proxy.
 
-### Via Gateway (Recommended - port 8080)
+### API Endpoints (via nginx on port 85)
 
-- **Auth/User API**: `http://localhost:8080/api/user`
-- **Chat API**: `http://localhost:8080/api/chat`
-- **Notifications API**: `http://localhost:8080/api/notifications`
+- **User/Auth Service**: `http://localhost:85/api/user`
+- **Chat Service**: `http://localhost:85/api/chat`
+- **Notifications Service**: `http://localhost:85/api/notifications`
+- **WebSocket**: `http://localhost:85` (Socket.IO connection)
 
-### Direct Service Access (Alternative - via nginx on port 85)
+**Important**: The frontend uses nginx (port 85) as the API gateway for:
 
-- **User Service**: `http://localhost:85/api/user` (port 8081)
-- **Chat Service**: `http://localhost:85/api/chat` (port 8082)
-- **Notification Service**: `http://localhost:85/api/notifications` (port 8083)
+- Consistent origin handling for CORS
+- httpOnly cookie authentication
+- WebSocket proxy support
 
-**Note**: Make sure the backend services are running before starting the frontend. See the [backend README](https://github.com/christiantroyandrada/chat-microservices/blob/main/README.md) for setup instructions.
+Make sure the [backend services](https://github.com/christiantroyandrada/chat-microservices) are running before starting the frontend.
 
 ## Quick Start
 
 ### 1. Install Dependencies
+
+Using pnpm (recommended):
 
 ```bash
 pnpm install
@@ -62,29 +66,49 @@ npm install
 
 ### 2. Environment Configuration
 
-Create a `.env` file in the root directory (if needed):
+Create a `.env` file in the project root:
 
 ```bash
-# API Gateway URL (default)
-PUBLIC_API_URL=http://localhost:8080
-
-# Or use nginx reverse proxy
-# PUBLIC_API_URL=http://localhost:85
-
-# WebSocket URL (for real-time chat)
-PUBLIC_WS_URL=ws://localhost:8082
+cp .env.example .env
 ```
 
-### 3. Start Development Server
+Default configuration for local development:
+
+```env
+PUBLIC_API_URL=http://localhost:85
+PUBLIC_WS_URL=http://localhost:85
+PUBLIC_APP_NAME="Chat App"
+PUBLIC_APP_VERSION=0.0.1
+```
+
+**Note**: The frontend connects to nginx on port 85, which proxies all backend services. This ensures proper CORS handling and httpOnly cookie authentication.
+
+### 3. Start Backend Services
+
+Ensure the backend is running before starting the frontend:
+
+```bash
+# In the chat-microservices directory
+docker-compose up -d --build
+```
+
+Verify backend is accessible:
+
+```bash
+curl http://localhost:85/api/user/health
+# Expected: {"status":"ok"}
+```
+
+### 4. Start Development Server
 
 ```bash
 pnpm dev
 
-# or start the server and open the app in a new browser tab
+# Or with auto-open in browser
 pnpm dev --open
 ```
 
-The application will be available at `http://localhost:5173` (default Vite port).
+The application will be available at `http://localhost:5173`.
 
 ## Available Scripts
 
@@ -116,48 +140,67 @@ The application will be available at `http://localhost:5173` (default Vite port)
 ```
 chat-microservices-frontend/
 ├── src/
-│   ├── lib/                    # Shared components and utilities
-│   │   ├── assets/            # Images, icons, etc.
-│   │   └── index.ts           # Library exports
-│   ├── routes/                # SvelteKit routes (pages)
+│   ├── lib/
+│   │   ├── components/         # Reusable Svelte components
+│   │   │   ├── ChatHeader.svelte
+│   │   │   ├── ChatList.svelte
+│   │   │   ├── MessageInput.svelte
+│   │   │   ├── MessageList.svelte
+│   │   │   ├── NotificationModal.svelte
+│   │   │   ├── ThemeToggle.svelte
+│   │   │   └── Toast.svelte
+│   │   ├── crypto/            # E2EE implementation
+│   │   │   └── signal.ts      # Signal Protocol wrapper
+│   │   ├── services/          # API and WebSocket services
+│   │   │   ├── api.ts
+│   │   │   ├── auth.service.ts
+│   │   │   ├── chat.service.ts
+│   │   │   ├── notification.service.ts
+│   │   │   └── websocket.service.ts
+│   │   ├── stores/            # Svelte stores
+│   │   │   ├── auth.store.ts
+│   │   │   ├── chat.store.ts
+│   │   │   ├── notification.store.ts
+│   │   │   ├── theme.store.ts
+│   │   │   └── toast.store.ts
+│   │   ├── types/             # TypeScript definitions
+│   │   │   └── index.ts
+│   │   └── utils/             # Utility functions
+│   │       ├── debounce.ts
+│   │       ├── normalizeNotification.ts
+│   │       └── sanitize.ts
+│   ├── routes/                # SvelteKit routes
 │   │   ├── +layout.svelte     # Root layout
-│   │   ├── +page.svelte       # Home page
-│   │   └── ...                # Additional routes
+│   │   ├── +page.svelte       # Home (redirect)
+│   │   ├── chat/+page.svelte  # Chat interface
+│   │   ├── login/+page.svelte # Login page
+│   │   └── register/+page.svelte # Registration
 │   ├── app.css                # Global styles
 │   ├── app.d.ts               # TypeScript declarations
 │   └── app.html               # HTML template
 ├── static/                     # Static assets
-│   └── robots.txt
-├── e2e/                        # End-to-end tests
-│   └── demo.test.ts
-├── playwright.config.ts        # Playwright configuration
-├── vite.config.ts             # Vite configuration
-├── svelte.config.js           # SvelteKit configuration
-├── tailwind.config.js         # Tailwind CSS configuration
-├── tsconfig.json              # TypeScript configuration
-└── package.json               # Dependencies and scripts
+├── playwright.config.ts        # Playwright config
+├── vite.config.ts             # Vite config
+├── svelte.config.js           # SvelteKit config
+├── tsconfig.json              # TypeScript config
+└── package.json               # Dependencies
 ```
 
 ## Development Workflow
 
 ### 1. Ensure Backend is Running
 
-Before starting frontend development, make sure the backend services are up:
+Start the backend services first:
 
 ```bash
 # In the chat-microservices directory
 docker-compose up -d --build
-
-# Start the gateway separately (if using gateway)
-cd gateway && npm run dev
 ```
 
 Verify backend health:
 
 ```bash
-curl -I http://localhost:85/api/health || true
-# or
-curl -I http://localhost:8080/api/health || true
+curl http://localhost:85/api/user/health
 ```
 
 ### 2. Start Frontend Development
@@ -176,16 +219,29 @@ pnpm test:unit
 pnpm test:e2e
 ```
 
+### 4. Code Quality Checks
+
+```bash
+# Type checking
+pnpm check
+
+# Linting
+pnpm lint
+
+# Formatting
+pnpm format
+```
+
 ## API Integration
 
 The frontend communicates with the backend through RESTful APIs and WebSocket connections:
 
 ### Authentication Flow
 
-1. User registers via `/api/user/register`
-2. User logs in via `/api/user/login`
-3. JWT token is stored (localStorage/sessionStorage)
-4. Token is included in subsequent API requests
+1. User registers via `/user/register`
+2. User logs in via `/user/login`; the server sets an httpOnly authentication cookie
+3. The frontend uses cookie-based authentication (no JWT stored in localStorage)
+4. Subsequent API requests and the Socket.IO handshake send the httpOnly cookie automatically
 
 ### Chat Flow
 
@@ -198,6 +254,15 @@ The frontend communicates with the backend through RESTful APIs and WebSocket co
 - Listen to notification events from `/api/notifications`
 - Display in-app notifications
 - Handle push notifications (if enabled)
+
+## Security & recent enhancements
+
+This project has implemented several security improvements to align with production best practices. Key items:
+
+- Authentication uses httpOnly cookies set by the backend; Socket.IO handshakes accept cookies for authentication.
+- The frontend should connect to the gateway/nginx (default: `http://localhost:85`) so cookies are sent with requests.
+- WebSocket upgrades are proxied by nginx at `/chat/socket.io/`; ensure nginx preserves Upgrade/Connection headers and cookies.
+- See the backend `SECURITY.md` for a complete audit summary and production checklist.
 
 ## Building for Production
 

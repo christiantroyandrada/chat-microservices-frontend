@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { env } from '$env/dynamic/public';
 	import { authStore, user } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { notificationStore } from '$lib/stores/notification.store';
@@ -8,6 +9,7 @@
 	import { chatService } from '$lib/services/chat.service';
 	import { wsService } from '$lib/services/websocket.service';
 	import { sanitizeMessage } from '$lib/utils';
+	import { initSignalWithRestore } from '$lib/crypto/signal';
 	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
 
 	import ChatList from '$lib/components/ChatList.svelte';
@@ -44,6 +46,35 @@
 			}
 		}
 
+		// Initialize Signal Protocol keys (non-blocking background task)
+		// This ensures encryption keys are ready before sending/receiving messages
+		if (typeof window !== 'undefined' && $user) {
+			const userId = $user._id as string;
+			let deviceId: string = localStorage.getItem('deviceId') ?? '';
+			if (!deviceId) {
+				deviceId =
+					typeof crypto !== 'undefined' && 'randomUUID' in crypto
+						? crypto.randomUUID()
+						: String(Date.now()) + '-' + Math.floor(Math.random() * 1e6);
+				localStorage.setItem('deviceId', deviceId);
+			}
+			const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
+			
+			// Initialize in background - don't block page load
+			initSignalWithRestore(userId, deviceId, apiBase)
+				.then(success => {
+					if (success) {
+						console.log('[Chat] Signal Protocol initialized successfully');
+					} else {
+						console.warn('[Chat] Signal Protocol initialization failed');
+						toastStore.warning('Encryption setup incomplete. Messages may not be encrypted.');
+					}
+				})
+				.catch(err => {
+					console.error('[Chat] Signal Protocol initialization error:', err);
+				});
+		}
+
 		// Connect WebSocket (auth handled via httpOnly cookie)
 		wsService.connect();
 
@@ -69,7 +100,8 @@
 	async function loadConversations() {
 		loading.conversations = true;
 		try {
-			conversations = await chatService.getConversations();
+			const currentUserId = $user?._id as string | undefined;
+			conversations = await chatService.getConversations(currentUserId);
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to load conversations';
 			toastStore.error(message);
@@ -80,22 +112,20 @@
 
 	async function selectConversation(userId: string) {
 		const conversation = conversations.find((c) => c.userId === userId);
-		if (!conversation) return;
+		if (!conversation || !$user) return;
 
 		selectedConversation = conversation;
 		loading.messages = true;
 
-		try {
-			messages = await chatService.getMessages(userId);
-			await chatService.markAsRead(userId);
+		const currentUserId = $user._id as string;
 
-			// Update unread count
-			conversations = conversations.map((c) =>
-				c.userId === userId ? { ...c, unreadCount: 0 } : c
-			);
+		try {
+			messages = await chatService.getMessages(userId, 50, 0, currentUserId);
+			await chatService.markAsRead(userId);
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to load messages';
 			toastStore.error(message);
+			messages = [];
 		} finally {
 			loading.messages = false;
 		}
@@ -112,12 +142,16 @@
 		}
 
 		const receiverId = selectedConversation.userId;
+		const currentUserId = $user._id as string;
 
 		try {
-			const message = await chatService.sendMessage({
-				receiverId,
-				content: sanitizedContent
-			});
+			const message = await chatService.sendMessage(
+				{
+					receiverId,
+					content: sanitizedContent
+				},
+				currentUserId
+			);
 
 			// Add message to local state
 			messages = [...messages, message];
@@ -143,7 +177,49 @@
 		}
 	}
 
-	function handleIncomingMessage(message: Message) {
+	async function handleIncomingMessage(message: Message) {
+		console.log('[Chat] handleIncomingMessage called:', {
+			_id: message._id,
+			senderId: message.senderId,
+			receiverId: message.receiverId,
+			contentLength: message.content?.length || 0,
+			currentUser: $user?._id
+		});
+
+		// Decrypt message content if encrypted
+		let displayContent = message.content;
+		let decryptionFailed = false;
+		try {
+			const parsed = JSON.parse(message.content);
+			if (parsed && parsed.__encrypted && $user) {
+				console.log('[Chat] Message is encrypted, attempting decryption...');
+				const currentUserId = $user._id as string;
+				const { decryptMessage } = await import('$lib/crypto/signal');
+				const ctObj = { type: parsed.type, body: parsed.body };
+				displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
+				// Update the message object with decrypted content
+				message.content = displayContent;
+				console.log('[Chat] Message decrypted successfully');
+			}
+		} catch (decryptError) {
+			console.error('[Chat] Decryption failed:', decryptError);
+			decryptionFailed = true;
+			// Show user-friendly error message instead of encrypted JSON
+			message.content = '🔒 [Message could not be decrypted - encryption keys may be out of sync]';
+		}
+
+		// Save decrypted message to local storage (Signal-style)
+		if ($user) {
+			try {
+				const { getMessageStore } = await import('$lib/crypto/messageStore');
+				const messageStore = getMessageStore($user._id as string);
+				await messageStore.saveMessage(message);
+				console.log('[Chat] Saved incoming message to local storage');
+			} catch (err) {
+				console.error('[Chat] Failed to save message to local storage:', err);
+			}
+		}
+
 		// Add message to the list if it's for current conversation
 		if (
 			selectedConversation &&
@@ -158,7 +234,7 @@
 			}
 		}
 
-		// Update conversations list
+		// Update conversations list with decrypted content
 		const existingConversation = conversations.find(
 			(c) => c.userId === message.senderId || c.userId === message.receiverId
 		);
@@ -168,7 +244,7 @@
 				c.userId === message.senderId || c.userId === message.receiverId
 					? {
 							...c,
-							lastMessage: message.content,
+							lastMessage: displayContent,
 							lastMessageTime: message.timestamp,
 							unreadCount:
 								selectedConversation?.userId !== message.senderId ? (c.unreadCount || 0) + 1 : 0
@@ -180,7 +256,7 @@
 			void loadConversations();
 		}
 
-		// Show notification
+		// Show notification with decrypted content
 		if (message.senderId !== $user?._id) {
 			toastStore.info(`New message from ${message.senderUsername || 'User'}`);
 		}
@@ -382,7 +458,7 @@
 					</div>
 					<button
 						onclick={handleLogout}
-						class="hover-lift rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200"
+						class="hover-lift inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200"
 						style="background: var(--color-error-bg); color: var(--color-error); border: 1px solid var(--color-error-border);"
 						aria-label="Logout"
 					>
