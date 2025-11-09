@@ -234,145 +234,144 @@
 {/if}
 
 <style>
+	/* Use PostCSS nesting for clarity: base backdrop contains modal and children */
 	.notification-backdrop {
 		background: var(--modal-backdrop);
 		backdrop-filter: blur(8px);
-	}
 
-	.notification-modal {
-		box-shadow: var(--shadow-strong);
-		background: var(--modal-bg);
-		border: 1px solid var(--modal-border);
-	}
+		.notification-modal {
+			box-shadow: var(--shadow-strong);
+			background: var(--modal-bg);
+			border: 1px solid var(--modal-border);
 
-	.modal-header {
-		border-bottom: 1px solid var(--border-subtle);
-	}
+			.modal-header {
+				border-bottom: 1px solid var(--border-subtle);
+			}
 
-	.modal-title {
-		color: var(--text-primary);
-	}
+			.modal-title {
+				color: var(--text-primary);
+			}
 
-	.modal-subtitle {
-		color: var(--text-tertiary);
-	}
+			.modal-subtitle {
+				color: var(--text-tertiary);
+			}
 
-	.mark-all-btn {
-		background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-		color: white;
-		border: 1px solid rgba(0, 0, 0, 0);
-	}
+			.mark-all-btn {
+				background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+				color: white;
+				border: 1px solid rgba(0, 0, 0, 0);
+			}
 
-	.close-btn {
-		color: var(--text-tertiary);
-		background: var(--bg-hover);
-	}
+			.close-btn {
+				color: var(--text-tertiary);
+				background: var(--bg-hover);
+			}
 
-	.loading-spinner {
-		border-color: var(--accent-primary) transparent transparent transparent;
-	}
+			.loading-spinner {
+				border-color: var(--accent-primary) transparent transparent transparent;
+			}
 
-	.empty-state {
-		color: var(--text-secondary);
-	}
+			.empty-state {
+				color: var(--text-secondary);
 
-	.empty-icon {
-		background: var(--bg-tertiary);
-		border: 1px solid var(--modal-border);
-	}
+				.empty-icon {
+					background: var(--bg-tertiary);
+					border: 1px solid var(--modal-border);
 
-	.empty-icon .icon {
-		color: var(--text-tertiary);
-	}
+					.icon {
+						color: var(--text-tertiary);
+					}
+				}
 
-	.empty-title {
-		color: var(--text-primary);
-	}
+				.empty-title {
+					color: var(--text-primary);
+				}
 
-	.empty-subtitle {
-		color: var(--text-tertiary);
-	}
+				.empty-subtitle {
+					color: var(--text-tertiary);
+				}
+			}
 
-	.notification-items {
-		divide-color: var(--modal-border);
-	}
+			.notification-item {
+				background: transparent;
 
-	.notification-item {
-		background: transparent;
-	}
+				&.unread {
+					background: var(--bg-hover);
+					position: relative;
 
-	.notification-item.unread {
-		background: var(--bg-hover);
-		position: relative;
-	}
+					&::before {
+						content: '';
+						position: absolute;
+						left: 0;
+						top: 0;
+						bottom: 0;
+						width: 3px;
+						background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
+						border-radius: 0 2px 2px 0;
+					}
+				}
+			}
 
-	.notification-item.unread::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 3px;
-		background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
-		border-radius: 0 2px 2px 0;
-	}
+			.notification-icon {
+				background: var(--bg-tertiary);
+				border: 1px solid var(--modal-border);
+			}
 
-	.notification-icon {
-		background: var(--bg-tertiary);
-		border: 1px solid var(--modal-border);
-	}
+			.notification-title {
+				color: var(--text-primary);
+			}
 
-	.notification-title {
-		color: var(--text-primary);
-	}
+			.unread-dot {
+				background: var(--accent-primary);
+				box-shadow: 0 0 8px var(--accent-primary);
+			}
 
-	.unread-dot {
-		background: var(--accent-primary);
-		box-shadow: 0 0 8px var(--accent-primary);
-	}
+			.notification-message {
+				color: var(--text-secondary);
+			}
 
-	.notification-message {
-		color: var(--text-secondary);
-	}
+			.notification-time {
+				color: var(--text-tertiary);
+			}
 
-	.notification-time {
-		color: var(--text-tertiary);
-	}
+			.action-btn-read {
+				background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+				color: white;
+			}
 
-	.action-btn-read {
-		background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-		color: white;
-	}
+			.action-btn-delete {
+				background: var(--color-error-bg);
+				color: var(--color-error);
+				border: 1px solid var(--color-error-border);
+			}
 
-	.action-btn-delete {
-		background: var(--color-error-bg);
-		color: var(--color-error);
-		border: 1px solid var(--color-error-border);
-	}
+			.modal-footer {
+				border-top: 1px solid var(--modal-border);
+			}
 
-	.modal-footer {
-		border-top: 1px solid var(--modal-border);
-	}
+			.close-link {
+				color: var(--accent-secondary);
+			}
 
-	.close-link {
-		color: var(--accent-secondary);
-	}
+			.notification-list {
+				&::-webkit-scrollbar {
+					width: 6px;
+				}
 
-	.notification-list::-webkit-scrollbar {
-		width: 6px;
-	}
+				&::-webkit-scrollbar-track {
+					background: transparent;
+				}
 
-	.notification-list::-webkit-scrollbar-track {
-		background: transparent;
-	}
+				&::-webkit-scrollbar-thumb {
+					background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.08));
+					border-radius: 3px;
+					transition: background 0.2s;
+				}
 
-	.notification-list::-webkit-scrollbar-thumb {
-		background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.08));
-		border-radius: 3px;
-		transition: background 0.2s;
-	}
-
-	.notification-list::-webkit-scrollbar-thumb:hover {
-		background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.14));
+				&::-webkit-scrollbar-thumb:hover {
+					background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.14));
+				}
+			}
+		}
 	}
 </style>

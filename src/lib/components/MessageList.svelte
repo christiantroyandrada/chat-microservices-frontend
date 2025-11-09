@@ -242,57 +242,56 @@
 <style>
 	.messages-container {
 		background: var(--bg-secondary);
-	}
 
-	.loading-text {
-		color: var(--text-secondary);
-		animation: fadeIn 0.3s ease-out;
-	}
+		.loading-text {
+			color: var(--text-secondary);
+			animation: fadeIn 0.3s ease-out;
+		}
 
-	.empty-state {
-		color: var(--text-secondary);
-		animation: fadeIn 0.4s ease-out;
-	}
+		.empty-state {
+			color: var(--text-secondary);
+			animation: fadeIn 0.4s ease-out;
+			.empty-subtitle {
+				color: var(--text-tertiary);
+			}
+		}
 
-	.empty-subtitle {
-		color: var(--text-tertiary);
-	}
+		.date-separator {
+			animation: fadeIn 0.3s ease-out;
+		}
 
-	.date-separator {
-		animation: fadeIn 0.3s ease-out;
-	}
+		.date-badge {
+			background: rgba(255, 255, 255, 0.05);
+			color: var(--text-tertiary);
+		}
 
-	.date-badge {
-		background: rgba(255, 255, 255, 0.05);
-		color: var(--text-tertiary);
-	}
+		.message-sent {
+			animation: slideInRight 0.3s ease-out;
+		}
 
-	.message-sent {
-		animation: slideInRight 0.3s ease-out;
-	}
+		.message-received {
+			animation: slideInLeft 0.3s ease-out;
+		}
 
-	.message-received {
-		animation: slideInLeft 0.3s ease-out;
-	}
+		.bubble-sent {
+			background: var(--gradient-accent);
+			color: white;
+		}
 
-	.bubble-sent {
-		background: var(--gradient-accent);
-		color: white;
-	}
+		.bubble-received {
+			background: var(--bubble-bg);
+			color: var(--text-primary);
+			backdrop-filter: blur(8px);
+			border: 1px solid var(--bubble-border);
+		}
 
-	.bubble-received {
-		background: var(--bubble-bg);
-		color: var(--text-primary);
-		backdrop-filter: blur(8px);
-		border: 1px solid var(--bubble-border);
-	}
+		.time-sent {
+			color: rgba(255, 255, 255, 0.7);
+		}
 
-	.time-sent {
-		color: rgba(255, 255, 255, 0.7);
-	}
-
-	.time-received {
-		color: var(--text-tertiary);
+		.time-received {
+			color: var(--text-tertiary);
+		}
 	}
 
 	@keyframes fadeIn {

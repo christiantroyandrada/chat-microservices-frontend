@@ -74,20 +74,18 @@
 		cursor: pointer;
 		transition: all 0.2s ease;
 		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-	}
 
-	.theme-toggle-button:hover {
-		transform: scale(1.05);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-		background: var(--bg-tertiary);
-	}
+		&:hover {
+			transform: scale(1.05);
+			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+			background: var(--bg-tertiary);
+		}
 
-	.theme-toggle-button:active {
-		transform: scale(0.95);
-	}
+		&:active {
+			transform: scale(0.95);
+		}
 
-	@media (max-width: 768px) {
-		.theme-toggle-button {
+		@media (max-width: 768px) {
 			width: 2.5rem;
 			height: 2.5rem;
 		}

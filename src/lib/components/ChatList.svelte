@@ -277,182 +277,169 @@
 </div>
 
 <style>
-	/* ChatList component scoped styles */
+	/* ChatList component scoped styles (converted to nesting) */
 	.chat-list-container {
 		background: var(--bg-primary);
 		border-right: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-	}
 
-	.chat-list-header {
-		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-		background: var(--bg-secondary, rgba(255, 255, 255, 0.02));
-	}
+		.chat-list-user-info {
+			animation: fadeIn 0.3s ease-out;
+		}
 
-	.chat-list-user-info {
-		animation: fadeIn 0.3s ease-out;
-	}
+		.avatar-circle {
+			background: var(--gradient-accent);
+		}
 
-	.avatar-circle {
-		background: var(--gradient-accent);
-	}
+		.user-name {
+			color: var(--text-primary);
+		}
 
-	.user-name {
-		color: var(--text-primary);
-	}
+		.close-button {
+			color: var(--text-secondary);
+			transition: all 150ms;
+			background: transparent;
+		}
+		.close-button:hover {
+			background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+		}
 
-	.close-button {
-		color: var(--text-secondary);
-		transition: all 150ms;
-		background: transparent;
-	}
+		.messages-header {
+			border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+		}
+		.messages-title {
+			color: var(--text-primary);
+		}
 
-	.close-button:hover {
-		background: var(--bg-hover, rgba(255, 255, 255, 0.05));
-	}
+		.new-chat-button {
+			color: var(--text-secondary);
+			transition: all 150ms;
+			background: transparent;
+		}
+		.new-chat-button:hover {
+			background: var(--accent-hover, rgba(99, 102, 241, 0.1));
+		}
 
-	.messages-header {
-		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-	}
+		.create-modal-overlay {
+			animation: fadeIn 0.2s ease-out;
+		}
 
-	.messages-title {
-		color: var(--text-primary);
-	}
+		.create-modal-panel {
+			background: var(--modal-bg);
+			backdrop-filter: blur(12px);
+			border: 1px solid var(--modal-border);
+			color: var(--text-primary);
+		}
 
-	.new-chat-button {
-		color: var(--text-secondary);
-		transition: all 150ms;
-		background: transparent;
-	}
+		.create-modal-input {
+			background: var(--bg-tertiary);
+			border: 1px solid var(--modal-border);
+			color: var(--text-primary);
+			transition: all 150ms;
+		}
+		.create-modal-input:focus {
+			border-color: var(--accent-primary);
+		}
 
-	.new-chat-button:hover {
-		background: var(--accent-hover, rgba(99, 102, 241, 0.1));
-	}
+		.create-modal-close {
+			color: var(--text-secondary);
+			transition: all 150ms;
+			background: transparent;
+		}
+		.create-modal-close:hover {
+			background: var(--bg-hover);
+		}
 
-	.create-modal-overlay {
-		animation: fadeIn 0.2s ease-out;
-	}
+		.search-status {
+			color: var(--text-secondary);
+		}
 
-	.create-modal-panel {
-		background: var(--modal-bg);
-		backdrop-filter: blur(12px);
-		border: 1px solid var(--modal-border);
-		color: var(--text-primary);
-	}
+		.search-results {
+			border-color: var(--modal-border);
+		}
 
-	.create-modal-input {
-		background: var(--bg-tertiary);
-		border: 1px solid var(--modal-border);
-		color: var(--text-primary);
-		transition: all 150ms;
-	}
+		.search-result-item {
+			transition: all 150ms;
+			background: transparent;
+			color: var(--text-primary);
+		}
+		.search-result-item:hover {
+			background: var(--bg-hover);
+		}
 
-	.create-modal-input:focus {
-		border-color: var(--accent-primary);
-	}
+		.selected-indicator {
+			color: var(--accent-primary);
+		}
 
-	.create-modal-close {
-		color: var(--text-secondary);
-		transition: all 150ms;
-		background: transparent;
-	}
+		.cancel-button {
+			background: var(--bg-tertiary);
+			border: 1px solid var(--modal-border);
+			color: var(--text-primary);
+			transition: all 150ms;
+		}
+		.cancel-button:hover {
+			background: var(--bg-hover);
+		}
 
-	.create-modal-close:hover {
-		background: var(--bg-hover);
-	}
+		.start-chat-button {
+			background: var(--gradient-accent);
+			transition: all 150ms;
+			box-shadow: var(--shadow-cta);
+		}
+		.start-chat-button:not(:disabled):hover {
+			transform: translateY(-1px);
+		}
 
-	.search-status {
-		color: var(--text-secondary);
-	}
+		.loading-state {
+			color: var(--text-secondary);
+		}
 
-	.search-results {
-		border-color: var(--modal-border);
-	}
+		.empty-state {
+			color: var(--text-secondary);
+			animation: fadeIn 0.4s ease-out;
+		}
+		.empty-state-hint {
+			color: var(--text-tertiary);
+		}
 
-	.search-result-item {
-		transition: all 150ms;
-		background: transparent;
-		color: var(--text-primary);
-	}
+		.conversations-list {
+			border-color: var(--border-subtle, rgba(255, 255, 255, 0.06));
+		}
 
-	.search-result-item:hover {
-		background: var(--bg-hover);
-	}
+		.conversation-item {
+			animation: fadeIn 0.3s ease-out;
+			animation-fill-mode: both;
+		}
 
-	.selected-indicator {
-		color: var(--accent-primary);
-	}
+		.conversation-button {
+			transition: all 150ms;
+			background: transparent;
+		}
+		.conversation-button.selected {
+			background: var(--accent-selected, rgba(99, 102, 241, 0.1));
+		}
+		.conversation-button:not(.selected):hover {
+			background: var(--bg-hover, rgba(255, 255, 255, 0.03));
+		}
 
-	.cancel-button {
-		background: var(--bg-tertiary);
-		border: 1px solid var(--modal-border);
-		color: var(--text-primary);
-		transition: all 150ms;
-	}
+		.conversation-name {
+			color: var(--text-primary);
+		}
+		.conversation-time {
+			color: var(--text-tertiary);
+		}
+		.conversation-message {
+			color: var(--text-secondary);
+		}
 
-	.cancel-button:hover {
-		background: var(--bg-hover);
-	}
+		.unread-badge {
+			background: var(--gradient-accent);
+			animation: scaleIn 0.2s ease-out;
+		}
 
-	.start-chat-button {
-		background: var(--gradient-accent);
-		transition: all 150ms;
-		box-shadow: var(--shadow-cta);
-	}
-
-	.start-chat-button:not(:disabled):hover {
-		transform: translateY(-1px);
-	}
-
-	.loading-state {
-		color: var(--text-secondary);
-	}
-
-	.empty-state {
-		color: var(--text-secondary);
-		animation: fadeIn 0.4s ease-out;
-	}
-
-	.empty-state-hint {
-		color: var(--text-tertiary);
-	}
-
-	.conversations-list {
-		border-color: var(--border-subtle, rgba(255, 255, 255, 0.06));
-	}
-
-	.conversation-item {
-		animation: fadeIn 0.3s ease-out;
-		animation-fill-mode: both;
-	}
-
-	.conversation-button {
-		transition: all 150ms;
-		background: transparent;
-	}
-
-	.conversation-button.selected {
-		background: var(--accent-selected, rgba(99, 102, 241, 0.1));
-	}
-
-	.conversation-button:not(.selected):hover {
-		background: var(--bg-hover, rgba(255, 255, 255, 0.03));
-	}
-
-	.conversation-name {
-		color: var(--text-primary);
-	}
-
-	.conversation-time {
-		color: var(--text-tertiary);
-	}
-
-	.conversation-message {
-		color: var(--text-secondary);
-	}
-
-	.unread-badge {
-		background: var(--gradient-accent);
-		animation: scaleIn 0.2s ease-out;
+		.chat-list-header {
+			border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+			background: var(--bg-secondary, rgba(255, 255, 255, 0.02));
+		}
 	}
 
 	@keyframes fadeIn {

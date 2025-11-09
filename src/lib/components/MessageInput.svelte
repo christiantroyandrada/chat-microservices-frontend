@@ -121,40 +121,45 @@
 </div>
 
 <style>
-	/* Scoped styles for MessageInput to reduce inline styles and use theme variables */
 	.message-input-wrapper {
 		background: var(--bg-primary);
 		border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-	}
-	.message-input-textarea {
-		background: var(--input-bg);
-		border: 1px solid var(--input-border);
-		color: var(--input-text);
-		transition: all 150ms;
-	}
-	.message-input-textarea:focus {
-		border-color: var(--accent-primary);
-	}
-	.message-input-textarea.error {
-		border-color: var(--color-error);
-	}
-	.message-input-hint {
-		color: var(--text-tertiary);
-	}
-	.message-input-hint.error {
-		color: var(--color-error);
-	}
-	.send-button {
-		background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-		transition:
-			transform 120ms ease,
-			box-shadow 120ms ease;
-		box-shadow: var(--shadow-cta, 0 4px 12px rgba(0, 0, 0, 0.08));
-	}
-	.send-button:not(:disabled):hover {
-		transform: translateY(-2px);
-	}
-	.message-input-note {
-		color: var(--text-tertiary);
+
+		.message-input-textarea {
+			background: var(--input-bg);
+			border: 1px solid var(--input-border);
+			color: var(--input-text);
+			transition: all 150ms;
+
+			&:focus {
+				border-color: var(--accent-primary);
+			}
+
+			&.error {
+				border-color: var(--color-error);
+			}
+		}
+
+		.message-input-hint {
+			color: var(--text-tertiary);
+		}
+		.message-input-hint.error {
+			color: var(--color-error);
+		}
+
+		.send-button {
+			background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+			transition:
+				transform 120ms ease,
+				box-shadow 120ms ease;
+			box-shadow: var(--shadow-cta, 0 4px 12px rgba(0, 0, 0, 0.08));
+		}
+		.send-button:not(:disabled):hover {
+			transform: translateY(-2px);
+		}
+
+		.message-input-note {
+			color: var(--text-tertiary);
+		}
 	}
 </style>

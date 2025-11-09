@@ -75,45 +75,45 @@
 	.chat-header {
 		background: var(--bg-primary);
 		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-	}
 
-	.header-user-info {
-		animation: fadeIn 0.3s ease-out;
-	}
+		.header-user-info {
+			animation: fadeIn 0.3s ease-out;
+		}
 
-	.avatar-circle {
-		background: var(--gradient-accent);
-	}
+		.avatar-circle {
+			background: var(--gradient-accent);
+		}
 
-	.username {
-		color: var(--text-primary);
-	}
+		.username {
+			color: var(--text-primary);
+		}
 
-	.typing-indicator {
-		color: var(--accent-primary);
-		animation: fadeIn 0.2s ease-out;
-	}
+		.typing-indicator {
+			color: var(--accent-primary);
+			animation: fadeIn 0.2s ease-out;
+		}
 
-	.status-text {
-		color: var(--text-tertiary);
-	}
+		.status-text {
+			color: var(--text-tertiary);
+		}
 
-	.header-button {
-		color: var(--text-secondary);
-		background: transparent;
-	}
+		.header-button {
+			color: var(--text-secondary);
+			background: transparent;
 
-	.header-button:hover {
-		background: var(--bg-hover);
+			&:hover {
+				background: var(--bg-hover);
+			}
+		}
 	}
 
 	.chat-header-empty {
 		background: var(--bg-primary);
 		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-	}
 
-	.empty-message {
-		color: var(--text-secondary);
+		.empty-message {
+			color: var(--text-secondary);
+		}
 	}
 
 	@keyframes fadeIn {
