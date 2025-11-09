@@ -86,10 +86,7 @@
 	});
 </script>
 
-<div
-	class="fixed right-0 bottom-0 left-0 z-30 p-4 md:static"
-	style="background: var(--bg-primary); border-top: 1px solid rgba(255,255,255,0.06);"
->
+<div class="message-input-wrapper fixed right-0 bottom-0 left-0 z-30 p-4 md:static">
 	<div class="flex items-end gap-2">
 		<div class="flex-1">
 			<textarea
@@ -101,25 +98,12 @@
 				{placeholder}
 				maxlength={maxLength}
 				rows="1"
-				class="w-full resize-none rounded-lg px-4 py-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-				style="background: var(--input-bg); border: 1px solid {isOverLimit
-					? 'var(--color-error)'
-					: 'var(--input-border)'}; color: var(--input-text); transition: all 150ms;"
-				onfocus={(e) =>
-					(e.currentTarget.style.borderColor = isOverLimit
-						? 'var(--color-error)'
-						: 'var(--accent-primary)')}
-				onblur={(e) =>
-					(e.currentTarget.style.borderColor = isOverLimit
-						? 'var(--color-error)'
-						: 'var(--input-border)')}
+				class="message-input-textarea w-full resize-none rounded-lg px-4 py-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				aria-label="Message input"
+				class:error={isOverLimit}
 			></textarea>
 			{#if isNearLimit}
-				<p
-					class="mt-1 text-xs"
-					style="color: {isOverLimit ? 'var(--color-error)' : 'var(--text-tertiary)'};"
-				>
+				<p class="message-input-hint mt-1 text-xs" class:error={isOverLimit}>
 					{characterCount}/{maxLength} characters
 				</p>
 			{/if}
@@ -127,19 +111,50 @@
 		<button
 			onclick={handleSend}
 			disabled={!message.trim() || disabled || isOverLimit}
-			class="rounded-lg px-4 py-2 text-white transition-all disabled:cursor-not-allowed disabled:opacity-50 md:px-6"
-			style="background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);"
-			onmouseenter={(e) => {
-				if (!message.trim() || disabled || isOverLimit) return;
-				e.currentTarget.style.transform = 'translateY(-2px)';
-			}}
-			onmouseleave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+			class="send-button rounded-lg px-4 py-2 text-white transition-all disabled:cursor-not-allowed disabled:opacity-50 md:px-6"
 			aria-label="Send message"
 		>
 			Send
 		</button>
 	</div>
-	<p class="mt-2 text-xs" style="color: var(--text-tertiary);">
-		Press Enter to send, Shift+Enter for new line
-	</p>
+	<p class="message-input-note mt-2 text-xs">Press Enter to send, Shift+Enter for new line</p>
 </div>
+
+<style>
+	/* Scoped styles for MessageInput to reduce inline styles and use theme variables */
+	.message-input-wrapper {
+		background: var(--bg-primary);
+		border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+	}
+	.message-input-textarea {
+		background: var(--input-bg);
+		border: 1px solid var(--input-border);
+		color: var(--input-text);
+		transition: all 150ms;
+	}
+	.message-input-textarea:focus {
+		border-color: var(--accent-primary);
+	}
+	.message-input-textarea.error {
+		border-color: var(--color-error);
+	}
+	.message-input-hint {
+		color: var(--text-tertiary);
+	}
+	.message-input-hint.error {
+		color: var(--color-error);
+	}
+	.send-button {
+		background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+		transition:
+			transform 120ms ease,
+			box-shadow 120ms ease;
+		box-shadow: var(--shadow-cta, 0 4px 12px rgba(0, 0, 0, 0.08));
+	}
+	.send-button:not(:disabled):hover {
+		transform: translateY(-2px);
+	}
+	.message-input-note {
+		color: var(--text-tertiary);
+	}
+</style>

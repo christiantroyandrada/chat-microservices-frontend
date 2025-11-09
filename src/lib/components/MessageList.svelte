@@ -183,61 +183,53 @@
 <div
 	bind:this={messagesContainer}
 	onscroll={handleScroll}
-	class="flex-1 space-y-4 overflow-y-auto p-4 pb-24 md:pb-4"
-	style="background: var(--bg-secondary);"
+	class="messages-container flex-1 space-y-4 overflow-y-auto p-4 pb-24 md:pb-4"
 >
 	{#if loading}
 		<div class="flex h-full items-center justify-center">
-			<div style="color: var(--text-secondary); animation: fadeIn 0.3s ease-out;">
-				Loading messages...
-			</div>
+			<div class="loading-text">Loading messages...</div>
 		</div>
 	{:else if messages.length === 0}
 		<div class="flex h-full items-center justify-center">
-			<div
-				class="text-center"
-				style="color: var(--text-secondary); animation: fadeIn 0.4s ease-out;"
-			>
+			<div class="empty-state text-center">
 				<p class="mb-2 text-lg">No messages yet</p>
-				<p class="text-sm" style="color: var(--text-tertiary);">Start the conversation!</p>
+				<p class="empty-subtitle text-sm">Start the conversation!</p>
 			</div>
 		</div>
 	{:else}
 		{#each messages as message, index (message._id)}
 			{#if shouldShowDateSeparator(index)}
-				<div class="my-4 flex items-center justify-center" style="animation: fadeIn 0.3s ease-out;">
-					<div
-						class="rounded-full px-3 py-1 text-xs"
-						style="background: rgba(255,255,255,0.05); color: var(--text-tertiary);"
-					>
+				<div class="date-separator my-4 flex items-center justify-center">
+					<div class="date-badge rounded-full px-3 py-1 text-xs">
 						{formatDate(message.timestamp)}
 					</div>
 				</div>
 			{/if}
 
 			<div
-				class="flex {message.senderId === currentUserId ? 'justify-end' : 'justify-start'}"
-				style="animation: slideIn{message.senderId === currentUserId
-					? 'Right'
-					: 'Left'} 0.3s ease-out;"
+				class="message-row flex {message.senderId === currentUserId
+					? 'justify-end'
+					: 'justify-start'}"
+				class:message-sent={message.senderId === currentUserId}
+				class:message-received={message.senderId !== currentUserId}
 			>
 				<div
-					class="max-w-[85%] rounded-lg px-4 py-2 md:max-w-[70%]"
-					style={message.senderId === currentUserId
-						? 'background: var(--gradient-accent); color: white;'
-						: `background: var(--bubble-bg); color: var(--text-primary); backdrop-filter: blur(8px); border: 1px solid var(--bubble-border);`}
+					class="message-bubble max-w-[85%] rounded-lg px-4 py-2 md:max-w-[70%]"
+					class:bubble-sent={message.senderId === currentUserId}
+					class:bubble-received={message.senderId !== currentUserId}
 				>
 					{#if message.senderId !== currentUserId && message.senderUsername}
-						<div class="mb-1 text-xs font-semibold opacity-70">
+						<div class="sender-name mb-1 text-xs font-semibold opacity-70">
 							{message.senderUsername}
 						</div>
 					{/if}
-					<p class="text-sm wrap-break-word whitespace-pre-wrap">{message.content}</p>
+					<p class="message-content text-sm wrap-break-word whitespace-pre-wrap">
+						{message.content}
+					</p>
 					<div
-						class="mt-1 text-xs"
-						style={message.senderId === currentUserId
-							? 'color: rgba(255,255,255,0.7);'
-							: 'color: var(--text-tertiary);'}
+						class="message-time mt-1 text-xs"
+						class:time-sent={message.senderId === currentUserId}
+						class:time-received={message.senderId !== currentUserId}
 					>
 						{formatTime(message.timestamp)}
 					</div>
@@ -246,3 +238,91 @@
 		{/each}
 	{/if}
 </div>
+
+<style>
+	.messages-container {
+		background: var(--bg-secondary);
+	}
+
+	.loading-text {
+		color: var(--text-secondary);
+		animation: fadeIn 0.3s ease-out;
+	}
+
+	.empty-state {
+		color: var(--text-secondary);
+		animation: fadeIn 0.4s ease-out;
+	}
+
+	.empty-subtitle {
+		color: var(--text-tertiary);
+	}
+
+	.date-separator {
+		animation: fadeIn 0.3s ease-out;
+	}
+
+	.date-badge {
+		background: rgba(255, 255, 255, 0.05);
+		color: var(--text-tertiary);
+	}
+
+	.message-sent {
+		animation: slideInRight 0.3s ease-out;
+	}
+
+	.message-received {
+		animation: slideInLeft 0.3s ease-out;
+	}
+
+	.bubble-sent {
+		background: var(--gradient-accent);
+		color: white;
+	}
+
+	.bubble-received {
+		background: var(--bubble-bg);
+		color: var(--text-primary);
+		backdrop-filter: blur(8px);
+		border: 1px solid var(--bubble-border);
+	}
+
+	.time-sent {
+		color: rgba(255, 255, 255, 0.7);
+	}
+
+	.time-received {
+		color: var(--text-tertiary);
+	}
+
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	@keyframes slideInRight {
+		from {
+			transform: translateX(20px);
+			opacity: 0;
+		}
+		to {
+			transform: translateX(0);
+			opacity: 1;
+		}
+	}
+
+	@keyframes slideInLeft {
+		from {
+			transform: translateX(-20px);
+			opacity: 0;
+		}
+		to {
+			transform: translateX(0);
+			opacity: 1;
+		}
+	}
+</style>

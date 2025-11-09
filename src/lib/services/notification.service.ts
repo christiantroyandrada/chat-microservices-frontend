@@ -13,10 +13,10 @@ export const notificationService = {
 		try {
 			// Use canonical `/notifications` prefix
 			const response = await apiClient.get<unknown>(
-					`/notifications/?limit=${limit}&offset=${offset}`
-				);
+				`/notifications/?limit=${limit}&offset=${offset}`
+			);
 
-			const raw = (response.data as unknown) as Array<unknown>;
+			const raw = response.data as unknown as Array<unknown>;
 
 			// Normalize backend shape to frontend `Notification` type
 			return (raw || []).map((n: unknown, idx: number) => normalizeNotification(n, idx));

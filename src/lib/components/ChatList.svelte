@@ -101,34 +101,22 @@
 	}
 </script>
 
-<div
-	class="flex h-full flex-col"
-	style="background: var(--bg-primary); border-right: 1px solid rgba(255,255,255,0.06);"
->
+<div class="chat-list-container flex h-full flex-col">
 	<!-- User Info Header -->
-	<div
-		class="p-4"
-		style="border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02);"
-	>
+	<div class="chat-list-header p-4">
 		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-3" style="animation: fadeIn 0.3s ease-out;">
+			<div class="chat-list-user-info flex items-center gap-3">
 				<div
-					class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-semibold text-white"
-					style="background: var(--gradient-accent);"
+					class="avatar-circle flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-semibold text-white"
 				>
 					{(currentUsername?.[0] ?? 'U').toUpperCase()}
 				</div>
-				<span class="text-sm font-semibold" style="color: var(--text-primary);"
-					>{currentUsername || 'User'}</span
-				>
+				<span class="user-name text-sm font-semibold">{currentUsername || 'User'}</span>
 			</div>
 			{#if onClose}
 				<button
 					onclick={onClose}
-					class="inline-flex items-center justify-center rounded-md p-2 lg:hidden"
-					style="color: var(--text-secondary); transition: all 150ms; background: transparent;"
-					onmouseenter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-					onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
+					class="close-button inline-flex items-center justify-center rounded-md p-2 lg:hidden"
 					aria-label="Close sidebar"
 				>
 					<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -145,15 +133,12 @@
 	</div>
 
 	<!-- Messages Header -->
-	<div class="p-4" style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+	<div class="messages-header p-4">
 		<div class="flex items-center justify-between">
-			<h2 class="text-xl font-semibold" style="color: var(--text-primary);">Messages</h2>
+			<h2 class="messages-title text-xl font-semibold">Messages</h2>
 			<button
 				onclick={openCreate}
-				class="ml-2 inline-flex items-center justify-center rounded-md p-2"
-				style="color: var(--text-secondary); transition: all 150ms; background: transparent;"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
+				class="new-chat-button ml-2 inline-flex items-center justify-center rounded-md p-2"
 				aria-label="Start new conversation"
 			>
 				<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -170,61 +155,44 @@
 
 	{#if showCreate}
 		<!-- Create conversation modal / panel -->
-		<div
-			class="absolute top-16 right-0 left-0 z-50 flex justify-center p-4"
-			style="animation: fadeIn 0.2s ease-out;"
-		>
-			<div
-				class="w-full max-w-md rounded-lg p-4 shadow-lg"
-				style="background: var(--modal-bg); backdrop-filter: blur(12px); border: 1px solid var(--modal-border); color: var(--text-primary);"
-			>
+		<div class="create-modal-overlay absolute top-16 right-0 left-0 z-50 flex justify-center p-4">
+			<div class="create-modal-panel w-full max-w-md rounded-lg p-4 shadow-lg">
 				<div class="flex items-center gap-2">
-						<input
-						class="flex-1 rounded px-3 py-2"
-						style="background: var(--bg-tertiary); border: 1px solid var(--modal-border); color: var(--text-primary); transition: all 150ms;"
-						onfocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
-						onblur={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)')}
+					<input
+						class="create-modal-input flex-1 rounded px-3 py-2"
 						placeholder="Search users by name or email"
 						bind:value={searchQuery}
 						oninput={() => performSearch(searchQuery)}
 					/>
-					<button
-						onclick={closeCreate}
-						class="hover-bg-subtle rounded p-2"
-						style="color: var(--text-secondary); transition: all 150ms; background: transparent;"
-					>
-						✕
-					</button>
+					<button onclick={closeCreate} class="create-modal-close rounded p-2">✕</button>
 				</div>
 				<div class="mt-3 max-h-64 overflow-y-auto">
 					{#if isSearching}
-						<div class="text-sm" style="color: var(--text-secondary);">Searching...</div>
+						<div class="search-status text-sm">Searching...</div>
 					{:else if searchResults.length === 0}
-						<div class="text-sm" style="color: var(--text-secondary);">No users found</div>
+						<div class="search-status text-sm">No users found</div>
 					{:else}
-						<ul class="divide-y" style="border-color: var(--modal-border);">
+						<ul class="search-results divide-y">
 							{#each searchResults as user (user.userId)}
 								<li class="p-2">
 									<button
-										class="hover-bg-subtle flex w-full items-center justify-between gap-3 rounded p-2"
-										style="transition: all 150ms; background: transparent; color: var(--text-primary);"
+										class="search-result-item hover-bg-subtle flex w-full items-center justify-between gap-3 rounded p-2"
 										onclick={() => (selectedUser = user)}
 									>
 										<div class="flex items-center gap-3">
 											<div
-												class="flex h-8 w-8 items-center justify-center rounded-full font-semibold text-white"
-												style="background: var(--gradient-accent);"
+												class="avatar-circle flex h-8 w-8 items-center justify-center rounded-full font-semibold text-white"
 											>
 												{(user.username?.[0] ?? '').toUpperCase()}
 											</div>
 											<div class="text-left">
-												<div class="text-sm font-semibold" style="color: var(--text-primary);">
+												<div class="user-name text-sm font-semibold">
 													{user.username}
 												</div>
 											</div>
 										</div>
 										{#if selectedUser && selectedUser.userId === user.userId}
-											<span class="text-sm" style="color: var(--accent-primary);">Selected</span>
+											<span class="selected-indicator text-sm">Selected</span>
 										{/if}
 									</button>
 								</li>
@@ -232,22 +200,11 @@
 						</ul>
 					{/if}
 				</div>
-					<div class="mt-3 flex justify-end gap-2">
-						<button
-							onclick={closeCreate}
-							class="rounded px-3 py-1"
-							style="background: var(--bg-tertiary); border: 1px solid var(--modal-border); color: var(--text-primary); transition: all 150ms;"
-							onmouseenter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-							onmouseleave={(e) => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
-							>Cancel</button
-						>
-						<button
-							onclick={confirmCreate}
-							class="rounded px-3 py-1 text-white disabled:opacity-50"
-							style="background: var(--gradient-accent); transition: all 150ms; box-shadow: var(--shadow-cta);"
-						onmouseenter={(e) =>
-							!selectedUser ? null : (e.currentTarget.style.transform = 'translateY(-1px)')}
-						onmouseleave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+				<div class="mt-3 flex justify-end gap-2">
+					<button onclick={closeCreate} class="cancel-button rounded px-3 py-1">Cancel</button>
+					<button
+						onclick={confirmCreate}
+						class="start-chat-button rounded px-3 py-1 text-white disabled:opacity-50"
 						disabled={!selectedUser}
 					>
 						Start Chat
@@ -260,58 +217,29 @@
 	<!-- Conversations List -->
 	<div class="flex-1 overflow-y-auto">
 		{#if loading}
-			<div class="p-4 text-center" style="color: var(--text-secondary);">
-				Loading conversations...
-			</div>
+			<div class="loading-state p-4 text-center">Loading conversations...</div>
 		{:else if conversations.length === 0}
-			<div
-				class="p-4 text-center"
-				style="color: var(--text-secondary); animation: fadeIn 0.4s ease-out;"
-			>
+			<div class="empty-state p-4 text-center">
 				<p class="text-sm">No conversations yet</p>
-				<p class="mt-1 text-xs" style="color: var(--text-tertiary);">
-					Start a new chat to begin messaging
-				</p>
+				<p class="empty-state-hint mt-1 text-xs">Start a new chat to begin messaging</p>
 			</div>
 		{:else}
-			<ul
-				class="divide-y"
-				style="border-color: rgba(255,255,255,0.06);"
-				role="list"
-				aria-label="Conversations"
-			>
-				{#each conversations as conversation, index (conversation.userId)}
-					<li
-						role="listitem"
-						style="animation: fadeIn 0.3s ease-out; animation-delay: {index *
-							0.05}s; animation-fill-mode: both;"
-					>
+			<ul class="conversations-list divide-y" role="list" aria-label="Conversations">
+				{#each conversations as conversation (conversation.userId)}
+					<li class="conversation-item" role="listitem">
 						<button
 							onclick={() => dispatch('select', conversation.userId)}
 							aria-label="Chat with {conversation.username}{conversation.unreadCount
 								? `, ${conversation.unreadCount} unread messages`
 								: ''}"
 							aria-current={selectedUserId === conversation.userId ? 'true' : 'false'}
-							class="w-full p-4 text-left focus:outline-none"
-							style="transition: all 150ms; background: {selectedUserId === conversation.userId
-								? 'rgba(99, 102, 241, 0.1)'
-								: 'transparent'};"
-							onmouseenter={(e) => {
-								if (selectedUserId !== conversation.userId) {
-									e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-								}
-							}}
-							onmouseleave={(e) => {
-								if (selectedUserId !== conversation.userId) {
-									e.currentTarget.style.background = 'transparent';
-								}
-							}}
+							class="conversation-button w-full p-4 text-left focus:outline-none"
+							class:selected={selectedUserId === conversation.userId}
 						>
 							<div class="flex items-start gap-3">
 								<!-- Avatar -->
 								<div
-									class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-semibold text-white"
-									style="background: var(--gradient-accent);"
+									class="avatar-circle flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-semibold text-white"
 								>
 									{(conversation.username?.[0] ?? '').toUpperCase()}
 								</div>
@@ -319,14 +247,14 @@
 								<!-- Content -->
 								<div class="min-w-0 flex-1">
 									<div class="mb-1 flex items-center justify-between">
-										<h3 class="truncate text-sm font-semibold" style="color: var(--text-primary);">
+										<h3 class="conversation-name truncate text-sm font-semibold">
 											{conversation.username}
 										</h3>
-										<span class="text-xs" style="color: var(--text-tertiary);">
+										<span class="conversation-time text-xs">
 											{formatTime(conversation.lastMessageTime)}
 										</span>
 									</div>
-									<p class="truncate text-sm" style="color: var(--text-secondary);">
+									<p class="conversation-message truncate text-sm">
 										{truncateMessage(conversation.lastMessage, 40)}
 									</p>
 								</div>
@@ -334,8 +262,7 @@
 								<!-- Unread Badge -->
 								{#if conversation.unreadCount && conversation.unreadCount > 0}
 									<div
-										class="flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold text-white"
-										style="background: var(--gradient-accent); animation: scaleIn 0.2s ease-out;"
+										class="unread-badge flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold text-white"
 									>
 										{conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
 									</div>
@@ -348,3 +275,201 @@
 		{/if}
 	</div>
 </div>
+
+<style>
+	/* ChatList component scoped styles */
+	.chat-list-container {
+		background: var(--bg-primary);
+		border-right: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+	}
+
+	.chat-list-header {
+		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+		background: var(--bg-secondary, rgba(255, 255, 255, 0.02));
+	}
+
+	.chat-list-user-info {
+		animation: fadeIn 0.3s ease-out;
+	}
+
+	.avatar-circle {
+		background: var(--gradient-accent);
+	}
+
+	.user-name {
+		color: var(--text-primary);
+	}
+
+	.close-button {
+		color: var(--text-secondary);
+		transition: all 150ms;
+		background: transparent;
+	}
+
+	.close-button:hover {
+		background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+	}
+
+	.messages-header {
+		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+	}
+
+	.messages-title {
+		color: var(--text-primary);
+	}
+
+	.new-chat-button {
+		color: var(--text-secondary);
+		transition: all 150ms;
+		background: transparent;
+	}
+
+	.new-chat-button:hover {
+		background: var(--accent-hover, rgba(99, 102, 241, 0.1));
+	}
+
+	.create-modal-overlay {
+		animation: fadeIn 0.2s ease-out;
+	}
+
+	.create-modal-panel {
+		background: var(--modal-bg);
+		backdrop-filter: blur(12px);
+		border: 1px solid var(--modal-border);
+		color: var(--text-primary);
+	}
+
+	.create-modal-input {
+		background: var(--bg-tertiary);
+		border: 1px solid var(--modal-border);
+		color: var(--text-primary);
+		transition: all 150ms;
+	}
+
+	.create-modal-input:focus {
+		border-color: var(--accent-primary);
+	}
+
+	.create-modal-close {
+		color: var(--text-secondary);
+		transition: all 150ms;
+		background: transparent;
+	}
+
+	.create-modal-close:hover {
+		background: var(--bg-hover);
+	}
+
+	.search-status {
+		color: var(--text-secondary);
+	}
+
+	.search-results {
+		border-color: var(--modal-border);
+	}
+
+	.search-result-item {
+		transition: all 150ms;
+		background: transparent;
+		color: var(--text-primary);
+	}
+
+	.search-result-item:hover {
+		background: var(--bg-hover);
+	}
+
+	.selected-indicator {
+		color: var(--accent-primary);
+	}
+
+	.cancel-button {
+		background: var(--bg-tertiary);
+		border: 1px solid var(--modal-border);
+		color: var(--text-primary);
+		transition: all 150ms;
+	}
+
+	.cancel-button:hover {
+		background: var(--bg-hover);
+	}
+
+	.start-chat-button {
+		background: var(--gradient-accent);
+		transition: all 150ms;
+		box-shadow: var(--shadow-cta);
+	}
+
+	.start-chat-button:not(:disabled):hover {
+		transform: translateY(-1px);
+	}
+
+	.loading-state {
+		color: var(--text-secondary);
+	}
+
+	.empty-state {
+		color: var(--text-secondary);
+		animation: fadeIn 0.4s ease-out;
+	}
+
+	.empty-state-hint {
+		color: var(--text-tertiary);
+	}
+
+	.conversations-list {
+		border-color: var(--border-subtle, rgba(255, 255, 255, 0.06));
+	}
+
+	.conversation-item {
+		animation: fadeIn 0.3s ease-out;
+		animation-fill-mode: both;
+	}
+
+	.conversation-button {
+		transition: all 150ms;
+		background: transparent;
+	}
+
+	.conversation-button.selected {
+		background: var(--accent-selected, rgba(99, 102, 241, 0.1));
+	}
+
+	.conversation-button:not(.selected):hover {
+		background: var(--bg-hover, rgba(255, 255, 255, 0.03));
+	}
+
+	.conversation-name {
+		color: var(--text-primary);
+	}
+
+	.conversation-time {
+		color: var(--text-tertiary);
+	}
+
+	.conversation-message {
+		color: var(--text-secondary);
+	}
+
+	.unread-badge {
+		background: var(--gradient-accent);
+		animation: scaleIn 0.2s ease-out;
+	}
+
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	@keyframes scaleIn {
+		from {
+			transform: scale(0);
+		}
+		to {
+			transform: scale(1);
+		}
+	}
+</style>

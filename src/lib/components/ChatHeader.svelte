@@ -9,33 +9,24 @@
 </script>
 
 {#if recipient}
-	<div
-		class="p-3 md:p-4"
-		style="background: var(--bg-primary); border-bottom: 1px solid rgba(255,255,255,0.06);"
-	>
+	<div class="chat-header p-3 md:p-4">
 		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-3" style="animation: fadeIn 0.3s ease-out;">
+			<div class="header-user-info flex items-center gap-3">
 				<!-- Avatar -->
 				<div
-					class="flex h-10 w-10 items-center justify-center rounded-full font-semibold text-white"
-					style="background: var(--gradient-accent);"
+					class="avatar-circle flex h-10 w-10 items-center justify-center rounded-full font-semibold text-white"
 				>
 					{(recipient.username?.[0] ?? '').toUpperCase()}
 				</div>
 
 				<div>
-					<h3 class="text-base font-semibold md:text-lg" style="color: var(--text-primary);">
+					<h3 class="username text-base font-semibold md:text-lg">
 						{recipient.username}
 					</h3>
 					{#if typingUsers.has(recipient.userId)}
-						<p
-							class="text-sm"
-							style="color: var(--accent-primary); animation: fadeIn 0.2s ease-out;"
-						>
-							typing...
-						</p>
+						<p class="typing-indicator text-sm">typing...</p>
 					{:else}
-						<p class="text-sm" style="color: var(--text-tertiary);">Online</p>
+						<p class="status-text text-sm">Online</p>
 					{/if}
 				</div>
 			</div>
@@ -43,8 +34,7 @@
 			<div class="flex items-center gap-2">
 				<button
 					onclick={() => dispatch('call')}
-					class="hover-bg-accent rounded-full p-2 transition-all"
-					style="color: var(--text-secondary); background: transparent;"
+					class="header-button hover-bg-accent rounded-full p-2 transition-all"
 					title="Video call"
 					aria-label="Start video call"
 				>
@@ -59,8 +49,7 @@
 				</button>
 				<button
 					onclick={() => dispatch('info')}
-					class="hover-bg-accent rounded-full p-2 transition-all"
-					style="color: var(--text-secondary); background: transparent;"
+					class="header-button hover-bg-accent rounded-full p-2 transition-all"
 					title="User info"
 					aria-label="View user information"
 				>
@@ -77,10 +66,62 @@
 		</div>
 	</div>
 {:else}
-	<div
-		class="p-4"
-		style="background: var(--bg-primary); border-bottom: 1px solid rgba(255,255,255,0.06);"
-	>
-		<div class="text-center" style="color: var(--text-secondary);">Select a conversation</div>
+	<div class="chat-header-empty p-4">
+		<div class="empty-message text-center">Select a conversation</div>
 	</div>
 {/if}
+
+<style>
+	.chat-header {
+		background: var(--bg-primary);
+		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+	}
+
+	.header-user-info {
+		animation: fadeIn 0.3s ease-out;
+	}
+
+	.avatar-circle {
+		background: var(--gradient-accent);
+	}
+
+	.username {
+		color: var(--text-primary);
+	}
+
+	.typing-indicator {
+		color: var(--accent-primary);
+		animation: fadeIn 0.2s ease-out;
+	}
+
+	.status-text {
+		color: var(--text-tertiary);
+	}
+
+	.header-button {
+		color: var(--text-secondary);
+		background: transparent;
+	}
+
+	.header-button:hover {
+		background: var(--bg-hover);
+	}
+
+	.chat-header-empty {
+		background: var(--bg-primary);
+		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+	}
+
+	.empty-message {
+		color: var(--text-secondary);
+	}
+
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+</style>
