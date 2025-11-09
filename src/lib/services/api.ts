@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/public';
 import type { ApiResponse, ApiError } from '$lib/types';
 
-const API_URL = env.PUBLIC_API_URL || 'http://localhost:8080';
+const API_URL = env.PUBLIC_API_URL || 'http://localhost:85';
 
 class ApiClient {
 	private baseURL: string;
@@ -12,17 +12,14 @@ class ApiClient {
 	}
 
 	private getAuthHeaders(): HeadersInit {
-		const token = this.getToken();
+		// Cookies are sent automatically with credentials: 'include'
+		// No need to manually add Authorization header. We only set
+		// Content-Type when a body is present (avoids sending it for GET requests).
 		return {
-			'Content-Type': 'application/json',
-			...(token ? { Authorization: `Bearer ${token}` } : {})
+			'Content-Type': 'application/json'
 		};
 	}
-
-	private getToken(): string | null {
-		if (typeof window === 'undefined') return null;
-		return localStorage.getItem('auth_token');
-	}
+	// Token storage is deprecated — JWT is sent in an httpOnly cookie.
 
 	/**
 	 * Make an HTTP request with automatic cancellation support
@@ -49,6 +46,7 @@ class ApiClient {
 					...this.getAuthHeaders(),
 					...options.headers
 				},
+				credentials: 'include', // Send httpOnly cookies with requests
 				signal: abortController.signal
 			});
 
@@ -57,21 +55,54 @@ class ApiClient {
 				this.activeRequests.delete(requestId);
 			}
 
-			const data = await response.json();
+			// Some responses may be empty or not JSON; parse defensively.
+			let data: unknown = null;
+			try {
+				const text = await response.text();
+				data = text ? JSON.parse(text) : {};
+			} catch (e) {
+				// Non-JSON response — keep raw text
+				data = { data: null, message: typeof e === 'object' ? String(e) : 'Invalid JSON' };
+			}
+
+			// Normalize parsed response to a safe object shape
+			type ResponseShape = {
+				data?: unknown;
+				message?: string;
+				error?: string;
+				errors?: unknown;
+				[k: string]: unknown;
+			};
+			const normalized: ResponseShape = ((): ResponseShape => {
+				if (data && typeof data === 'object') {
+					return data as ResponseShape;
+				}
+				return { data } as ResponseShape;
+			})();
 
 			if (!response.ok) {
 				throw {
-					message: data.message || data.error || 'Request failed',
+					message: normalized.message || normalized.error || 'Request failed',
 					status: response.status,
-					errors: data.errors
+					errors: normalized.errors
 				} as ApiError;
 			}
 
-			return {
+			// Normalize data to the expected generic type T. We cast via unknown
+			// because the runtime shape is dynamic (backend-controlled).
+			const respData = (normalized.data ?? normalized) as unknown as T;
+
+			// Cast the final response to the ApiResponse<T> shape so TypeScript
+			// accepts the dynamic runtime-normalized fields preserved from the
+			// backend. We still keep `data` strongly typed as T for callers.
+			const finalResp = {
 				success: true,
-				data: data.data || data,
-				message: data.message
-			};
+				data: respData,
+				message: normalized.message,
+				...(typeof normalized === 'object' ? normalized : {})
+			} as unknown as ApiResponse<T>;
+
+			return finalResp;
 		} catch (error) {
 			// Clean up active request
 			if (requestId) {

@@ -7,7 +7,6 @@
 	import { themeStore } from '$lib/stores/theme.store';
 	import { chatService } from '$lib/services/chat.service';
 	import { wsService } from '$lib/services/websocket.service';
-	import { authService } from '$lib/services/auth.service';
 	import { sanitizeMessage } from '$lib/utils';
 	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
 
@@ -45,11 +44,8 @@
 			}
 		}
 
-		// Connect WebSocket
-		const token = authService.getToken();
-		if (token) {
-			wsService.connect(token);
-		}
+		// Connect WebSocket (auth handled via httpOnly cookie)
+		wsService.connect();
 
 		// Set up WebSocket listeners
 		unsubscribeWsMessage = wsService.onMessage(handleIncomingMessage);

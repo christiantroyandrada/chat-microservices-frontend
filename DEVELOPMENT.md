@@ -284,8 +284,8 @@ Manages real-time communication:
 
 1. Check backend user service on port 8081
 2. Verify MongoDB is running
-3. Check browser localStorage for `auth_token`
-4. Clear localStorage and try again
+3. Ensure you're using the gateway origin (e.g. http://localhost:85) so the httpOnly cookie is sent
+4. Clear site cookies or open a fresh private window and try again
 
 ### Build Errors
 
@@ -312,6 +312,11 @@ pnpm format
 - JWT tokens stored in localStorage
 - Tokens sent via `Authorization: Bearer` header
 - WebSocket auth via query parameter
+- Input validation on forms
+- CORS handled by backend
+- JWT tokens are stored in httpOnly cookies (set by the backend)
+- Requests should be made with credentials included (frontend is configured to send cookies)
+- WebSocket auth is performed using the same httpOnly cookie on the Socket.IO handshake
 - Input validation on forms
 - CORS handled by backend
 

@@ -18,7 +18,7 @@ function createAuthStore() {
 		subscribe,
 
 		/**
-		 * Initialize auth state from stored token
+		 * Initialize auth state from httpOnly cookie
 		 * Prevents race conditions by ensuring only one init runs at a time
 		 */
 		async init() {
@@ -29,12 +29,8 @@ function createAuthStore() {
 				return initPromise;
 			}
 
-			const token = authService.getToken();
-			if (!token) {
-				set(initialState);
-				return;
-			}
-
+			// With httpOnly cookies, we can't check token client-side
+			// Try to fetch current user to verify authentication
 			initPromise = this._performInit();
 			await initPromise;
 			initPromise = null;
@@ -69,11 +65,6 @@ function createAuthStore() {
 
 				update((state) => ({ ...state, user, loading: false, error: null }));
 
-				// Store user data
-				if (browser) {
-					localStorage.setItem('user', JSON.stringify(user));
-				}
-
 				void goto('/chat');
 				return user;
 			} catch (error) {
@@ -98,11 +89,6 @@ function createAuthStore() {
 
 				update((state) => ({ ...state, user, loading: false, error: null }));
 
-				// Store user data
-				if (browser) {
-					localStorage.setItem('user', JSON.stringify(user));
-				}
-
 				void goto('/chat');
 				return user;
 			} catch (error) {
@@ -121,9 +107,7 @@ function createAuthStore() {
 		 */
 		logout() {
 			authService.logout();
-			if (browser) {
-				localStorage.removeItem('user');
-			}
+			// Do not persist user data in localStorage; session is cookie-based.
 			set(initialState);
 			void goto('/login');
 		} /**

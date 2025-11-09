@@ -25,11 +25,10 @@ export const authService = {
 		// backend exposes registration at /register on the user router which is mounted
 		// under /api/user by the gateway/nginx. Use the full path here.
 		const response = await apiClient.post<AuthUser>('/user/register', payload);
-		if (response.data) {
-			if ((response.data as AuthUser).token) {
-				this.setToken((response.data as AuthUser).token);
-			}
-		}
+
+		// Token is sent via httpOnly cookie (not in response body)
+		// No need to extract or store token manually
+
 		return response.data!;
 	},
 
@@ -39,11 +38,10 @@ export const authService = {
 	async login(credentials: LoginCredentials): Promise<AuthUser> {
 		// login route on user service
 		const response = await apiClient.post<AuthUser>('/user/login', credentials);
-		if (response.data) {
-			if ((response.data as AuthUser).token) {
-				this.setToken((response.data as AuthUser).token);
-			}
-		}
+
+		// Token is sent via httpOnly cookie (not in response body)
+		// No need to extract or store token manually
+
 		return response.data!;
 	},
 
@@ -51,8 +49,9 @@ export const authService = {
 	 * Logout user
 	 */
 	logout(): void {
+		// Token is in httpOnly cookie, managed by backend
+		// Clear any client-side data if needed
 		if (typeof window !== 'undefined') {
-			localStorage.removeItem('auth_token');
 			localStorage.removeItem('user');
 		}
 	},
@@ -71,31 +70,10 @@ export const authService = {
 		};
 
 		return user;
-	},
-
-	/**
-	 * Store authentication token
-	 */
-	setToken(token: string): void {
-		if (typeof window !== 'undefined') {
-			localStorage.setItem('auth_token', token);
-		}
-	},
-
-	/**
-	 * Get stored token
-	 */
-	getToken(): string | null {
-		if (typeof window !== 'undefined') {
-			return localStorage.getItem('auth_token');
-		}
-		return null;
-	},
-
-	/**
-	 * Check if user is authenticated
-	 */
-	isAuthenticated(): boolean {
-		return !!this.getToken();
 	}
+
+	// Deprecated client-side token helpers removed. Authentication is verified
+	// by calling `getCurrentUser()` which relies on httpOnly cookies sent by
+	// the server. Any token storage in localStorage (e.g. `auth_token`) has
+	// been removed from the codebase.
 };
