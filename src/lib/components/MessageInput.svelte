@@ -102,12 +102,12 @@
 				maxlength={maxLength}
 				rows="1"
 				class="w-full resize-none rounded-lg px-4 py-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-				style="background: rgba(255,255,255,0.05); border: 1px solid {isOverLimit
+				style="background: var(--input-bg); border: 1px solid {isOverLimit
 					? '#ef4444'
-					: 'rgba(255,255,255,0.1)'}; color: var(--text-primary); transition: all 150ms;"
+					: 'var(--input-border)'}; color: var(--input-text); transition: all 150ms;"
 				onfocus={(e) => (e.currentTarget.style.borderColor = isOverLimit ? '#ef4444' : '#6366f1')}
 				onblur={(e) =>
-					(e.currentTarget.style.borderColor = isOverLimit ? '#ef4444' : 'rgba(255,255,255,0.1)')}
+					(e.currentTarget.style.borderColor = isOverLimit ? '#ef4444' : 'var(--input-border)')}
 				aria-label="Message input"
 			></textarea>
 			{#if isNearLimit}

@@ -20,6 +20,13 @@
 	--modal-border: rgba(255, 255, 255, 0.06);
 	--scrollbar-thumb: rgba(255, 255, 255, 0.12);
 	--scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+
+	/* Input & bubble tokens */
+	--input-bg: rgba(255, 255, 255, 0.05);
+	--input-border: rgba(255, 255, 255, 0.1);
+	--input-text: var(--text-primary);
+	--bubble-bg: rgba(255, 255, 255, 0.05);
+	--bubble-border: rgba(255, 255, 255, 0.06);
 }
 
 /* Utility: visually hidden (screen-reader only) */
@@ -217,6 +224,13 @@ html.light {
 	--modal-border: rgba(11, 11, 13, 0.06);
 	--scrollbar-thumb: rgba(11, 11, 13, 0.12);
 	--scrollbar-thumb-hover: rgba(11, 11, 13, 0.18);
+
+	/* Light-theme input & bubble tokens */
+	--input-bg: #ffffff;
+	--input-border: rgba(11, 11, 13, 0.08);
+	--input-text: var(--text-primary);
+	--bubble-bg: rgba(11, 11, 13, 0.04);
+	--bubble-border: rgba(11, 11, 13, 0.06);
 }
 
 /* Ensure system color-scheme is set for form controls and native widgets */

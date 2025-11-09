@@ -17,7 +17,7 @@
 	let pendingConversationScroll = false;
 
 	$effect(() => {
-		conversationId;
+		void conversationId;
 		if (conversationId && conversationId !== lastConversationId) {
 			lastConversationId = conversationId;
 			shouldAutoScroll = true;
@@ -27,8 +27,8 @@
 	});
 
 	$effect(() => {
-		messages;
-		loading;
+		void messages;
+		void loading;
 		if (!messagesContainer) return;
 
 		if (pendingConversationScroll && !loading) {
@@ -135,7 +135,7 @@
 				'[MessageList] scrollToLatest performed, behavior=',
 				options?.behavior ?? 'auto'
 			);
-		} catch (e) {
+		} catch {
 			// ignore errors in environments without console or DOM
 		}
 	}
@@ -228,7 +228,7 @@
 					class="max-w-[85%] rounded-lg px-4 py-2 md:max-w-[70%]"
 					style={message.senderId === currentUserId
 						? 'background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%); color: white;'
-						: 'background: rgba(255,255,255,0.05); color: var(--text-primary); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.06);'}
+						: `background: var(--bubble-bg); color: var(--text-primary); backdrop-filter: blur(8px); border: 1px solid var(--bubble-border);`}
 				>
 					{#if message.senderId !== currentUserId && message.senderUsername}
 						<div class="mb-1 text-xs font-semibold opacity-70">

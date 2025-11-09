@@ -53,26 +53,28 @@
 			onClose();
 		}
 	}
+
+	function handleBackdropKeydown(e: KeyboardEvent) {
+		// Close on Escape
+		if (e.key === 'Escape') onClose();
+	}
 </script>
 
 {#if isOpen}
-	<!-- svelte-ignore a11y-click-events-have-key-events -->
-	<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
 	<div
 		class="animate-fade-in fixed inset-0 z-50 flex items-start justify-center px-4 pt-16"
 		style="background: var(--modal-backdrop); backdrop-filter: blur(8px);"
 		onclick={handleBackdropClick}
+		onkeydown={handleBackdropKeydown}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="notification-modal-title"
 		tabindex="-1"
 	>
-		<!-- svelte-ignore a11y-click-events-have-key-events -->
-		<!-- svelte-ignore a11y-no-static-element-interactions -->
 		<div
 			class="glass-strong animate-scale-in relative w-full max-w-lg rounded-2xl"
 			style="box-shadow: var(--shadow-strong); background: var(--modal-bg); border: 1px solid var(--modal-border);"
-			onclick={(e) => e.stopPropagation()}
+			role="document"
 		>
 			<div
 				class="flex items-center justify-between px-6 py-5"
@@ -263,6 +265,7 @@
 {/if}
 
 <style>
+	/* stylelint-disable */
 	.overflow-y-auto::-webkit-scrollbar {
 		width: 6px;
 	}
