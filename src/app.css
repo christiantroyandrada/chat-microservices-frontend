@@ -1,3 +1,219 @@
 @import 'tailwindcss';
-@plugin '@tailwindcss/forms';
-@plugin '@tailwindcss/typography';
+
+:root {
+	/* Modern Color Palette */
+	--bg-primary: #0a0a0f;
+	--bg-secondary: #13131a;
+	--bg-tertiary: #1a1a24;
+	--text-primary: #ffffff;
+	--text-secondary: #cbd5e1; /* brighter for contrast */
+	--text-tertiary: #9aa0b2;
+	/* UI tokens */
+	--bg-hover: rgba(255,255,255,0.02);
+	--border-subtle: rgba(255,255,255,0.06);
+	--shadow-strong: 0 8px 30px rgba(2,6,23,0.6);
+	/* Accents & modal */
+	--accent-primary: #6366f1;
+	--accent-secondary: #818cf8;
+	--modal-backdrop: rgba(0, 0, 0, 0.6);
+	--modal-bg: rgba(10,10,15,0.72);
+	--modal-border: rgba(255,255,255,0.06);
+	--scrollbar-thumb: rgba(255,255,255,0.12);
+	--scrollbar-thumb-hover: rgba(255,255,255,0.22);
+}
+
+/* Utility: visually hidden (screen-reader only) */
+.sr-only {
+	position: absolute !important;
+	height: 1px; width: 1px;
+	overflow: hidden;
+	clip: rect(1px, 1px, 1px, 1px);
+	white-space: nowrap;
+}
+
+/* Interactive affordances */
+.hover-lift {
+	transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.hover-lift:hover,
+.hover-lift:focus {
+	transform: translateY(-3px);
+	box-shadow: 0 6px 20px rgba(2,6,23,0.45);
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	border-radius: 10px;
+	padding: 8px 12px;
+	cursor: pointer;
+	transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+	border: 1px solid transparent;
+}
+
+.btn-primary {
+	background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+	color: white;
+	box-shadow: 0 6px 18px rgba(99,102,241,0.18);
+}
+
+/* High-visibility focus for keyboard users */
+button:focus-visible, .btn:focus-visible, a:focus-visible {
+	outline: 3px solid rgba(99,102,241,0.9);
+	outline-offset: 3px;
+}
+
+/* Small entrance for badges */
+.animate-scale-in {
+	animation: scaleIn 220ms cubic-bezier(.2,.9,.2,1) both;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
+
+/* Stronger contrast when user requests more contrast */
+@media (prefers-contrast: more) {
+	:root {
+		--text-primary: #ffffff;
+		--text-secondary: #e6eefc;
+		--bg-hover: rgba(255,255,255,0.06);
+		--border-subtle: rgba(255,255,255,0.12);
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
+		'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	background: var(--bg-primary);
+	color: var(--text-primary);
+	margin: 0;
+	padding: 0;
+	transition: background 220ms ease, color 220ms ease;
+}
+
+/* Smooth Scrollbar */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(255, 255, 255, 0.1);
+	border-radius: 4px;
+	transition: background 150ms;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(255, 255, 255, 0.2);
+}
+
+/* Animations */
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes slideInLeft {
+	from {
+		opacity: 0;
+		transform: translateX(-20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
+@keyframes slideInRight {
+	from {
+		opacity: 0;
+		transform: translateX(20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
+@keyframes scaleIn {
+	from {
+		opacity: 0;
+		transform: scale(0.95);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes shimmer {
+	0% {
+		background-position: -1000px 0;
+	}
+	100% {
+		background-position: 1000px 0;
+	}
+}
+
+/* Focus Visible */
+*:focus-visible {
+	outline: 2px solid #6366f1;
+	outline-offset: 2px;
+}
+
+/* Light theme overrides - applied when <html> has class="light" */
+html.light {
+	--bg-primary: #ffffff;
+	--bg-secondary: #f7f7fb;
+	--bg-tertiary: #eef2f6;
+	--text-primary: #0b0b0d;
+	--text-secondary: #4b5563;
+	--text-tertiary: #6b7280;
+	/* Light UI tokens */
+	--bg-hover: rgba(11,11,13,0.04);
+	--border-subtle: rgba(11,11,13,0.06);
+	--shadow-strong: 0 8px 30px rgba(2,6,23,0.08);
+	/* Light-mode accents & modal */
+	--accent-primary: #4f46e5;
+	--accent-secondary: #7c83ff;
+	--modal-backdrop: rgba(11,11,13,0.12);
+	--modal-bg: #ffffff;
+	--modal-border: rgba(11,11,13,0.06);
+	--scrollbar-thumb: rgba(11,11,13,0.12);
+	--scrollbar-thumb-hover: rgba(11,11,13,0.18);
+}
+
+/* Ensure system color-scheme is set for form controls and native widgets */
+html.dark {
+	color-scheme: dark;
+}
+html.light {
+	color-scheme: light;
+}
+
+

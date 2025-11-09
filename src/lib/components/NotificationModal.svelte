@@ -59,7 +59,8 @@
 	<!-- svelte-ignore a11y-click-events-have-key-events -->
 	<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
 	<div
-		class="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-16"
+		class="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 animate-fade-in"
+		style="background: var(--modal-backdrop); backdrop-filter: blur(8px);"
 		onclick={handleBackdropClick}
 		role="dialog"
 		aria-modal="true"
@@ -69,18 +70,25 @@
 		<!-- svelte-ignore a11y-click-events-have-key-events -->
 		<!-- svelte-ignore a11y-no-static-element-interactions -->
 		<div
-			class="relative mx-4 w-full max-w-lg rounded-lg bg-white shadow-xl"
+			class="relative w-full max-w-lg glass-strong rounded-2xl animate-scale-in"
+			style="box-shadow: var(--shadow-strong); background: var(--modal-bg); border: 1px solid var(--modal-border);"
 			onclick={(e) => e.stopPropagation()}
 		>
-			<div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-				<h2 id="notification-modal-title" class="text-xl font-semibold text-gray-900">
-					Notifications
-				</h2>
+			<div class="flex items-center justify-between px-6 py-5" style="border-bottom: 1px solid var(--border-subtle);">
+				<div>
+					<h2 id="notification-modal-title" class="text-xl font-semibold" style="color: var(--text-primary);">
+						Notifications
+					</h2>
+					<p class="text-sm mt-0.5" style="color: var(--text-tertiary);">
+						{notifications.length} {notifications.length === 1 ? 'notification' : 'notifications'}
+					</p>
+				</div>
 				<div class="flex items-center gap-2">
 					{#if notifications.length > 0 && notifications.some((n) => !n.read)}
 						<button
 							onclick={handleMarkAllAsRead}
-							class="rounded-md px-3 py-1 text-sm text-blue-600 hover:bg-blue-50"
+							class="rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 hover-lift btn"
+							style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); color: white; border: 1px solid rgba(0,0,0,0);"
 							title="Mark all as read"
 						>
 							Mark all read
@@ -88,7 +96,8 @@
 					{/if}
 					<button
 						onclick={onClose}
-						class="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+						class="rounded-lg p-2 transition-all duration-200 hover-lift"
+						style="color: var(--text-tertiary); background: var(--bg-hover);"
 						aria-label="Close"
 					>
 						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,61 +114,67 @@
 
 			<div class="max-h-96 overflow-y-auto">
 				{#if loading}
-					<div class="flex items-center justify-center py-12">
-						<div class="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+					<div class="flex items-center justify-center py-16">
+						<div class="h-10 w-10 animate-spin rounded-full border-4 border-t-transparent" style="border-color: var(--accent-primary) transparent transparent transparent;"></div>
 					</div>
 				{:else if notifications.length === 0}
-					<div class="flex flex-col items-center justify-center py-12 text-gray-500">
-						<svg
-							class="mb-3 h-16 w-16 text-gray-300"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-							/>
-						</svg>
-						<p class="text-sm">No notifications yet</p>
+					<div class="flex flex-col items-center justify-center py-16" style="color: var(--text-secondary);">
+						<div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl" style="background: var(--bg-tertiary); border: 1px solid var(--modal-border);">
+							<svg
+								class="h-8 w-8"
+								style="color: var(--text-tertiary);"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+								/>
+							</svg>
+						</div>
+						<p class="font-medium" style="color: var(--text-primary);">No notifications yet</p>
+						<p class="text-sm mt-1" style="color: var(--text-tertiary);">When you get notifications, they'll show up here</p>
 					</div>
 				{:else}
-					<ul class="divide-y divide-gray-200">
+					<ul class="divide-y" style="divide-color: var(--modal-border);">
 						{#each notifications as notification (notification._id)}
 							<li
-								class="group relative px-6 py-4 transition-colors hover:bg-gray-50"
-								class:bg-blue-50={!notification.read}
+								class="group relative px-6 py-4 transition-all duration-200"
+								class:unread={!notification.read}
+								style="background: {!notification.read ? 'var(--bg-hover)' : 'transparent'};"
 							>
-								<div class="flex items-start gap-3">
-									<div class="mt-1 text-2xl">
-										{getNotificationIcon(notification.type)}
+								<div class="flex items-start gap-4">
+									<div class="mt-1 flex h-10 w-10 items-center justify-center rounded-xl shrink-0" style="background: var(--bg-tertiary); border: 1px solid var(--modal-border);">
+										<span class="text-lg">{getNotificationIcon(notification.type)}</span>
 									</div>
 
 									<div class="flex-1 min-w-0">
-										<div class="flex items-start justify-between gap-2">
-											<h3 class="font-medium text-gray-900" class:font-semibold={!notification.read}>
+										<div class="flex items-start justify-between gap-2 mb-1">
+											<h3 class="font-medium" style="color: var(--text-primary);" class:font-semibold={!notification.read}>
 												{notification.title}
 											</h3>
 											{#if !notification.read}
-												<span class="h-2 w-2 rounded-full bg-blue-500 shrink-0 mt-2"></span>
+												<span class="h-2 w-2 rounded-full shrink-0 mt-2" style="background: var(--accent-primary); box-shadow: 0 0 8px var(--accent-primary);"></span>
 											{/if}
 										</div>
-										<p class="mt-1 text-sm text-gray-600">
+										<p class="text-sm mb-2" style="color: var(--text-secondary);">
 											{notification.message}
 										</p>
-										<p class="mt-1 text-xs text-gray-400">
+										<p class="text-xs" style="color: var(--text-tertiary);">
 											{formatTimestamp(notification.createdAt)}
 										</p>
 									</div>
 
-									<div class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+									<div class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
 										<div class="flex gap-1">
 											{#if !notification.read}
 												<button
 													onclick={() => handleMarkAsRead(notification._id)}
-													class="rounded p-1 text-blue-600 hover:bg-blue-100"
+													class="rounded-lg p-2 transition-all duration-200 hover-lift btn"
+													style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); color: white;"
 													title="Mark as read"
 												>
 													<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -174,7 +189,8 @@
 											{/if}
 											<button
 												onclick={() => handleDelete(notification._id)}
-												class="rounded p-1 text-red-600 hover:bg-red-100"
+												class="rounded-lg p-2 transition-all duration-200 hover-lift btn"
+												style="background: rgba(239, 68, 68, 0.06); color: #ef4444; border: 1px solid rgba(239,68,68,0.08);"
 												title="Delete"
 											>
 												<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -196,10 +212,11 @@
 			</div>
 
 			{#if notifications.length > 0}
-				<div class="border-t border-gray-200 px-6 py-3 text-center">
+				<div class="px-6 py-4 text-center" style="border-top: 1px solid var(--modal-border);">
 					<button
 						onclick={onClose}
-						class="text-sm font-medium text-blue-600 hover:text-blue-700"
+						class="text-sm font-medium transition-colors duration-200"
+						style="color: var(--accent-secondary);"
 					>
 						Close
 					</button>
@@ -215,15 +232,31 @@
 	}
 
 	.overflow-y-auto::-webkit-scrollbar-track {
-		background: #f1f1f1;
+		background: transparent;
 	}
 
 	.overflow-y-auto::-webkit-scrollbar-thumb {
-		background: #888;
+		background: var(--scrollbar-thumb, rgba(255,255,255,0.08));
 		border-radius: 3px;
+		transition: background 0.2s;
 	}
 
 	.overflow-y-auto::-webkit-scrollbar-thumb:hover {
-		background: #555;
+		background: var(--scrollbar-thumb-hover, rgba(255,255,255,0.14));
+	}
+	
+	.unread {
+		position: relative;
+	}
+	
+	.unread::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 3px;
+		background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
+		border-radius: 0 2px 2px 0;
 	}
 </style>

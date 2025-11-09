@@ -24,6 +24,7 @@
 	});
 
 	async function handleSubmit() {
+		event?.preventDefault();
 		error = '';
 		fieldErrors = {};
 
@@ -80,28 +81,39 @@
 	<title>Login - Chat App</title>
 </svelte:head>
 
-<div class="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-	<div class="w-full max-w-md space-y-8">
-		<div class="text-center">
-			<h2 class="text-3xl font-bold text-gray-900">Sign in to your account</h2>
-			<p class="mt-2 text-sm text-gray-600">
-				Or
-				<a href="/register" class="font-medium text-blue-600 hover:text-blue-500">
-					create a new account
-				</a>
+<div class="flex min-h-screen items-center justify-center px-4 py-12 animate-fade-in" style="background: var(--bg-primary);">
+	<div class="w-full max-w-md">
+		<!-- Logo/Brand -->
+		<div class="text-center mb-10">
+			<div class="inline-flex h-14 w-14 items-center justify-center rounded-2xl mb-4" style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);">
+				<svg class="h-7 w-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+				</svg>
+			</div>
+			<h2 class="text-3xl font-bold mb-2" style="color: var(--text-primary);">Welcome back</h2>
+			<p class="text-sm" style="color: var(--text-secondary);">
+				Sign in to continue to your conversations
 			</p>
 		</div>
 
-		<form class="mt-8 space-y-6" on:submit|preventDefault={handleSubmit}>
+		<!-- Login Form -->
+		<form class="glass-strong rounded-2xl p-8 space-y-6" style="box-shadow: var(--shadow-medium);" onsubmit={handleSubmit}>
 			{#if error}
-				<div class="rounded border border-red-400 bg-red-50 px-4 py-3 text-red-700">
-					{error}
+				<div class="rounded-xl px-4 py-3 animate-slide-in" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444;">
+					<div class="flex items-start gap-2">
+						<svg class="h-5 w-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<span class="text-sm">{error}</span>
+					</div>
 				</div>
 			{/if}
 
-			<div class="space-y-4">
+			<div class="space-y-5">
 				<div>
-					<label for="email" class="block text-sm font-medium text-gray-700"> Email address </label>
+					<label for="email" class="block text-sm font-medium mb-2" style="color: var(--text-secondary);">
+						Email address
+					</label>
 					<input
 						id="email"
 						name="email"
@@ -109,19 +121,20 @@
 						autocomplete="email"
 						required
 						bind:value={email}
-						class="mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none {fieldErrors.email
-							? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-							: 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}"
+						class="w-full rounded-xl px-4 py-3 transition-all duration-200"
+						style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.email ? '#ef4444' : 'var(--border-subtle)'}; color: var(--text-primary);"
 						placeholder="you@example.com"
 					/>
 					{#if fieldErrors.email}
-						<p class="mt-1 text-sm text-red-600">{fieldErrors.email}</p>
+						<p class="mt-2 text-sm" style="color: #ef4444;">{fieldErrors.email}</p>
 					{/if}
 				</div>
 
 				<div>
-					<label for="password" class="block text-sm font-medium text-gray-700"> Password </label>
-					<div class="relative mt-1">
+					<label for="password" class="block text-sm font-medium mb-2" style="color: var(--text-secondary);">
+						Password
+					</label>
+					<div class="relative">
 						<input
 							id="password"
 							name="password"
@@ -129,38 +142,41 @@
 							autocomplete="current-password"
 							required
 							bind:value={password}
-							class="block w-full rounded-md border px-3 py-2 pr-10 shadow-sm focus:outline-none {fieldErrors.password
-								? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-								: 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}"
+							class="w-full rounded-xl px-4 py-3 pr-12 transition-all duration-200"
+							style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.password ? '#ef4444' : 'var(--border-subtle)'}; color: var(--text-primary);"
 							placeholder="••••••••"
 						/>
 						<button
 							type="button"
-							on:click={() => (showPassword = !showPassword)}
-							class="absolute inset-y-0 right-0 flex items-center pr-2 text-sm leading-5"
+							onclick={() => (showPassword = !showPassword)}
+							class="absolute inset-y-0 right-0 flex items-center pr-4 transition-colors duration-200"
+							style="color: var(--text-tertiary);"
 							aria-label={showPassword ? 'Hide password' : 'Show password'}
 						>
-							{#if showPassword}
-								<span class="text-gray-600">Hide</span>
-							{:else}
-								<span class="text-gray-600">Show</span>
-							{/if}
+							<span class="text-sm font-medium">{showPassword ? 'Hide' : 'Show'}</span>
 						</button>
 					</div>
 					{#if fieldErrors.password}
-						<p class="mt-1 text-sm text-red-600">{fieldErrors.password}</p>
+						<p class="mt-2 text-sm" style="color: #ef4444;">{fieldErrors.password}</p>
 					{/if}
 				</div>
 			</div>
 
-			<div>
-				<button
-					type="submit"
-					disabled={loading}
-					class="flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-				>
-					{loading ? 'Signing in...' : 'Sign in'}
-				</button>
+			<button
+				type="submit"
+				disabled={loading}
+				class="btn-primary w-full py-3.5 rounded-xl font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 hover-lift"
+			>
+				{loading ? 'Signing in...' : 'Sign in'}
+			</button>
+
+			<div class="text-center pt-4" style="border-top: 1px solid var(--border-subtle);">
+				<p class="text-sm" style="color: var(--text-secondary);">
+					Don't have an account?
+					<a href="/register" class="font-medium transition-colors duration-200" style="color: var(--accent-secondary);">
+						Create one
+					</a>
+				</p>
 			</div>
 		</form>
 	</div>

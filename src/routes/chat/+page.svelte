@@ -4,6 +4,7 @@
 	import { authStore, user } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { notificationStore } from '$lib/stores/notification.store';
+    import { themeStore } from '$lib/stores/theme.store';
 	import { chatService } from '$lib/services/chat.service';
 	import { wsService } from '$lib/services/websocket.service';
 	import { authService } from '$lib/services/auth.service';
@@ -258,18 +259,19 @@
 	<title>Chat - {$user?.username || 'User'}</title>
 </svelte:head>
 
-<div class="flex h-screen flex-col bg-gray-100">
-	<!-- Top Navigation -->
-	<nav class="border-b border-gray-200 bg-white px-4 py-3">
-		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-3">
+<div class="flex h-screen flex-col" style="background: var(--bg-primary);">
+	<!-- Modern Top Navigation with Glass Effect -->
+	<nav class="glass-strong border-b" style="border-color: var(--border-subtle);">
+		<div class="flex items-center justify-between px-6 py-4">
+			<div class="flex items-center gap-4">
 				<!-- Mobile: toggle sidebar -->
 				<button
-					class="mr-2 inline-flex items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 md:hidden"
+					class="inline-flex items-center justify-center rounded-lg p-2 transition-all duration-200 md:hidden hover-lift"
+					style="color: var(--text-secondary);"
 					onclick={() => (showSidebar = !showSidebar)}
 					aria-label="Toggle conversations"
 				>
-					<svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -278,18 +280,29 @@
 						/>
 					</svg>
 				</button>
-				<h1 class="text-xl font-bold text-gray-900">Chat App</h1>
+				<div class="flex items-center gap-3">
+					<div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600">
+						<svg class="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+						</svg>
+					</div>
+					<div>
+						<h1 class="text-lg font-semibold" style="color: var(--text-primary);">Chat</h1>
+						<p class="text-xs" style="color: var(--text-tertiary);">Stay connected</p>
+					</div>
+				</div>
 			</div>
 
-			<div class="flex items-center gap-4">
-				<!-- Notifications -->
+			<div class="flex items-center gap-2">
+				<!-- Notifications with modern badge -->
 				<button
 					onclick={toggleNotificationModal}
-					class="relative rounded-full p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+					class="relative rounded-xl p-2.5 transition-all duration-200 hover-lift"
+					style="color: var(--text-secondary); background: var(--bg-hover);"
 					title="Notifications"
 					aria-label="Open notifications"
 				>
-					<svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -299,18 +312,48 @@
 					</svg>
 					{#if $notificationStore.unreadCount > 0}
 						<span
-							class="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-semibold text-white"
+							class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold text-white animate-scale-in"
+							style="background: linear-gradient(135deg, #ec4899, #ef4444); box-shadow: 0 2px 8px rgba(236, 72, 153, 0.4);"
 						>
 							{$notificationStore.unreadCount > 9 ? '9+' : $notificationStore.unreadCount}
 						</span>
 					{/if}
 				</button>
 
-				<!-- User Menu -->
-				<div class="flex items-center gap-2">
+				<!-- Theme toggle -->
+				<button
+					onclick={() => themeStore.toggle()}
+					class="rounded-xl p-2.5 transition-all duration-200 hover-lift ml-1 btn"
+					class:btn-primary={$themeStore === 'light'}
+					style="color: var(--text-secondary); background: var(--bg-hover);"
+					title="Toggle theme"
+					aria-label="Toggle theme"
+					aria-pressed={$themeStore === 'dark'}
+				>
+					<span class="sr-only">Toggle light/dark theme</span>
+					{#if $themeStore === 'dark'}
+						<!-- Sun icon for switching to light -->
+						<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364-6.364l-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0l-1.414-1.414M7.05 7.05L5.636 5.636" />
+						</svg>
+					{:else}
+						<!-- Moon icon for switching to dark -->
+						<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+						</svg>
+					{/if}
+				</button>
+
+				<!-- User Menu with modern styling -->
+				<div class="flex items-center gap-3 ml-2">
+					<div class="hidden sm:flex flex-col items-end">
+						<span class="text-sm font-medium" style="color: var(--text-primary);">{$user?.username || 'User'}</span>
+						<span class="text-xs" style="color: var(--text-tertiary);">Online</span>
+					</div>
 					<button
 						onclick={handleLogout}
-						class="ml-2 rounded-md px-3 py-1 text-sm text-red-600 transition-colors hover:bg-red-50"
+						class="rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 hover-lift"
+						style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);"
 					>
 						Logout
 					</button>
@@ -319,10 +362,10 @@
 		</div>
 	</nav>
 
-	<!-- Main Chat Interface -->
+	<!-- Main Chat Interface with Modern Design -->
 	<div class="flex flex-1 overflow-hidden">
-		<!-- Sidebar - Conversations List (desktop) -->
-		<div class="hidden w-80 shrink-0 md:block">
+		<!-- Sidebar - Conversations List (desktop) with glass effect -->
+		<div class="hidden w-80 shrink-0 md:block" style="background: var(--bg-secondary); border-right: 1px solid var(--border-subtle);">
 			<ChatList
 				{conversations}
 				selectedUserId={selectedConversation?.userId || null}
@@ -334,17 +377,18 @@
 			/>
 		</div>
 
-		<!-- Mobile sidebar overlay -->
+		<!-- Mobile sidebar overlay with modern backdrop -->
 		{#if showSidebar}
 			<div class="fixed inset-0 z-40 flex md:hidden">
-				<!-- Backdrop -->
+				<!-- Modern Backdrop -->
 				<button
-					class="absolute inset-0 bg-black opacity-40"
+					class="absolute inset-0 transition-all duration-300"
+					style="background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px);"
 					aria-hidden="true"
 					onclick={() => (showSidebar = false)}
 				></button>
-				<!-- Panel -->
-				<div class="relative z-50 w-80 max-w-full bg-white shadow-xl">
+				<!-- Sliding Panel with animation -->
+				<div class="relative z-50 w-80 max-w-full glass-strong animate-slide-in" style="box-shadow: var(--shadow-strong);">
 					<ChatList
 						{conversations}
 						selectedUserId={selectedConversation?.userId || null}
@@ -365,8 +409,8 @@
 			</div>
 		{/if}
 
-		<!-- Chat Area -->
-		<div class="flex flex-1 flex-col bg-white">
+		<!-- Chat Area with modern styling -->
+		<div class="flex flex-1 flex-col" style="background: var(--bg-primary);">
 			{#if selectedConversation}
 				<ChatHeader recipient={selectedConversation} {typingUsers} />
 				<MessageList {messages} currentUserId={$user?._id || ''} loading={loading.messages} />
@@ -376,23 +420,26 @@
 					disabled={!wsService.isConnected()}
 				/>
 			{:else}
-				<div class="flex flex-1 items-center justify-center text-gray-500">
+				<div class="flex flex-1 items-center justify-center animate-fade-in" style="color: var(--text-secondary);">
 					<div class="text-center">
-						<svg
-							class="mx-auto mb-4 h-24 w-24 text-gray-300"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-							/>
-						</svg>
-						<h3 class="mb-2 text-lg font-medium">No conversation selected</h3>
-						<p class="text-sm">Choose a conversation from the sidebar to start chatting</p>
+						<div class="mb-6 mx-auto flex h-24 w-24 items-center justify-center rounded-2xl" style="background: var(--bg-tertiary); border: 1px solid var(--border-subtle);">
+							<svg
+								class="h-12 w-12"
+								style="color: var(--text-tertiary);"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+								/>
+							</svg>
+						</div>
+						<h3 class="mb-2 text-xl font-semibold" style="color: var(--text-primary);">No conversation selected</h3>
+						<p class="text-sm" style="color: var(--text-tertiary);">Choose a conversation from the sidebar to start chatting</p>
 					</div>
 				</div>
 			{/if}
