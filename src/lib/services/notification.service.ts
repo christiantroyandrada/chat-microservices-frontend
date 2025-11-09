@@ -10,9 +10,9 @@ export const notificationService = {
 	 */
 	async getNotifications(limit = 20, offset = 0): Promise<Notification[]> {
 		try {
-			// include trailing slash so nginx location /notification/ matches and doesn't redirect
+			// Use canonical `/notifications` prefix
 			const response = await apiClient.get<Notification[]>(
-				`/notification/?limit=${limit}&offset=${offset}`
+				`/notifications/?limit=${limit}&offset=${offset}`
 			);
 			return response.data || [];
 		} catch (err) {
@@ -26,7 +26,7 @@ export const notificationService = {
 	 */
 	async getUnreadCount(): Promise<number> {
 		try {
-			const response = await apiClient.get<{ count: number }>('/notification/unread/count');
+			const response = await apiClient.get<{ count: number }>('/notifications/unread/count');
 			return response.data?.count || 0;
 		} catch (err) {
 			console.warn('notificationService.getUnreadCount failed, returning 0', err);
@@ -39,7 +39,7 @@ export const notificationService = {
 	 */
 	async markAsRead(notificationId: string): Promise<void> {
 		try {
-			await apiClient.put(`/notification/${notificationId}/read`);
+			await apiClient.put(`/notifications/${notificationId}/read`);
 		} catch (err) {
 			console.warn('notificationService.markAsRead failed', err);
 		}
@@ -50,7 +50,7 @@ export const notificationService = {
 	 */
 	async markAllAsRead(): Promise<void> {
 		try {
-			await apiClient.put('/notification/read-all');
+			await apiClient.put('/notifications/read-all');
 		} catch (err) {
 			console.warn('notificationService.markAllAsRead failed', err);
 		}
@@ -61,7 +61,7 @@ export const notificationService = {
 	 */
 	async deleteNotification(notificationId: string): Promise<void> {
 		try {
-			await apiClient.delete(`/notification/${notificationId}`);
+			await apiClient.delete(`/notifications/${notificationId}`);
 		} catch (err) {
 			console.warn('notificationService.deleteNotification failed', err);
 		}
@@ -72,7 +72,7 @@ export const notificationService = {
 	 */
 	async sendNotification(payload: NotificationPayload): Promise<Notification> {
 		try {
-			const response = await apiClient.post<Notification>('/notification', payload);
+			const response = await apiClient.post<Notification>('/notifications', payload);
 			return response.data!;
 		} catch (err) {
 			console.warn('notificationService.sendNotification failed', err);

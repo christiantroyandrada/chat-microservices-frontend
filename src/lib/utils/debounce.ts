@@ -4,18 +4,22 @@
  * @param delay Delay in milliseconds
  * @returns Debounced function
  */
-export function debounce<T extends (...args: unknown[]) => unknown>(
-	fn: T,
+export function debounce<T extends unknown[]>(
+	fn: (...args: T) => unknown,
 	delay: number
-): (...args: Parameters<T>) => void {
+): (...args: T) => void {
 	let timeoutId: ReturnType<typeof setTimeout>;
 
-	return function (this: ThisParameterType<T>, ...args: Parameters<T>) {
+	return function (this: unknown, ...args: T) {
 		clearTimeout(timeoutId);
 		timeoutId = setTimeout(() => {
-			// Use a safe cast without introducing `any` token
-			const fnSafe = fn as unknown as (...a: Parameters<T>) => unknown;
-			fnSafe.apply(this as unknown, args);
+			try {
+				(fn as (...a: T) => unknown).apply(this, args);
+			} catch (e) {
+				// swallow errors inside debounced fn to avoid unhandled rejections
+				// caller should handle errors inside their async fn if needed
+				console.error('debounce wrapped function threw', e);
+			}
 		}, delay);
 	};
 }
@@ -26,16 +30,19 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
  * @param limit Time limit in milliseconds
  * @returns Throttled function
  */
-export function throttle<T extends (...args: unknown[]) => unknown>(
-	fn: T,
+export function throttle<T extends unknown[]>(
+	fn: (...args: T) => unknown,
 	limit: number
-): (...args: Parameters<T>) => void {
+): (...args: T) => void {
 	let inThrottle: boolean;
 
-	return function (this: ThisParameterType<T>, ...args: Parameters<T>) {
+	return function (this: unknown, ...args: T) {
 		if (!inThrottle) {
-			const fnSafe = fn as unknown as (...a: Parameters<T>) => unknown;
-			fnSafe.apply(this as unknown, args);
+			try {
+				(fn as (...a: T) => unknown).apply(this, args);
+			} catch (e) {
+				console.error('throttle wrapped function threw', e);
+			}
 			inThrottle = true;
 			setTimeout(() => (inThrottle = false), limit);
 		}
