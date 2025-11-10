@@ -1,8 +1,10 @@
 <script lang="ts">
-	import { authStore } from '$lib/stores/auth.store';
+	import { authStore, user } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import { env } from '$env/dynamic/public';
+	import { generateAndPublishIdentity, initSignal } from '$lib/crypto/signal';
 	import type { ApiError } from '$lib/types';
 
 	let email = '';
@@ -37,6 +39,59 @@
 
 		try {
 			await authStore.login({ email, password });
+
+			// After successful login, check if user has prekeys published
+			// If not (or if on a new device), generate and publish them
+			try {
+				if (typeof window !== 'undefined' && $user) {
+					let deviceId: string = localStorage.getItem('deviceId') ?? '';
+					if (!deviceId) {
+						deviceId =
+							typeof crypto !== 'undefined' && 'randomUUID' in crypto
+								? crypto.randomUUID()
+								: String(Date.now()) + '-' + Math.floor(Math.random() * 1e6);
+						localStorage.setItem('deviceId', deviceId);
+					}
+
+					// Check if prekeys exist for this user
+					const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
+					const userId = $user._id as string;
+
+					console.log('[Login] Checking prekeys for user:', userId);
+
+					try {
+						const resp = await fetch(`${apiBase}/api/user/prekeys/${encodeURIComponent(userId)}`, {
+							credentials: 'include'
+						});
+
+						console.log('[Login] Prekey check response:', resp.status);
+
+						// If 404, no prekeys exist - generate and publish
+						if (!resp.ok && resp.status === 404) {
+							console.log('[Login] No prekeys found, generating and publishing...');
+							await initSignal();
+							// Actually await the publishing so we can catch errors
+							try {
+								await generateAndPublishIdentity(apiBase, userId, deviceId);
+								console.log('[Login] Successfully published prekeys');
+							} catch (publishErr) {
+								console.error('[Login] Failed to publish prekeys:', publishErr);
+								// Don't block login, just warn the user
+								toastStore.warning(
+									'Could not publish encryption keys. You may not be able to receive encrypted messages.'
+								);
+							}
+						} else if (resp.ok) {
+							console.log('[Login] User already has prekeys published');
+						}
+					} catch (e) {
+						console.error('[Login] Failed to check/publish prekeys:', e);
+					}
+				}
+			} catch (err) {
+				console.warn('Signal init/publish skipped:', err);
+			}
+
 			toastStore.success('Login successful!');
 		} catch (err: unknown) {
 			const apiError = err as ApiError;

@@ -2,37 +2,49 @@
 
 ## 🎉 Project Overview
 
-This is a full-featured **real-time chat application** built with SvelteKit, TypeScript, and Tailwind CSS. It connects to a microservices backend running on ports 8081-8083, proxied through nginx on port 85 or a gateway on port 8080.
+Full-featured **real-time chat application** with **end-to-end encryption** built using SvelteKit, TypeScript, and Tailwind CSS. Connects to microservices backend via nginx reverse proxy on port 85.
 
 ### ✨ Features Implemented
+
+✅ **End-to-End Encryption (E2EE)**
+
+- Signal Protocol implementation
+- Client-side message encryption/decryption
+- Automatic prekey bundle generation and publishing
+- IndexedDB-based key storage
+- Secure session establishment
 
 ✅ **Authentication**
 
 - User registration and login
-- JWT token management
-- Protected routes
-- Auto-redirect based on auth status
+- JWT token management with httpOnly cookies
+- Protected routes with auth guards
+- Auto-redirect based on authentication status
+- Device ID management for E2EE
 
 ✅ **Real-time Chat**
 
-- WebSocket connections for instant messaging
+- WebSocket connections via Socket.IO
+- Instant message delivery
 - Typing indicators
 - Connection status monitoring
 - Auto-reconnection logic
-- Message history
+- Message history with encryption/decryption
 
 ✅ **Notifications**
 
 - Toast notifications for user feedback
 - Notification center integration
 - Unread count tracking
+- Real-time notification delivery
 
 ✅ **Modern UI**
 
 - Responsive design (mobile & desktop)
-- Tailwind CSS styling
-- Loading states
-- Error handling
+- Tailwind CSS v4 styling
+- Theme toggle (dark/light mode)
+- Loading states and error handling
+- Smooth animations and transitions
 
 ---
 
@@ -42,33 +54,44 @@ This is a full-featured **real-time chat application** built with SvelteKit, Typ
 src/
 ├── lib/
 │   ├── components/          # Reusable Svelte components
-│   │   ├── ChatHeader.svelte       # Chat conversation header
+│   │   ├── ChatHeader.svelte       # Conversation header with typing
 │   │   ├── ChatList.svelte         # Conversations sidebar
-│   │   ├── MessageInput.svelte     # Message input with typing indicator
+│   │   ├── MessageInput.svelte     # Message input with send
 │   │   ├── MessageList.svelte      # Message display with scrolling
+│   │   ├── NotificationModal.svelte # Notification center
+│   │   ├── ThemeToggle.svelte      # Dark/light theme toggle
 │   │   └── Toast.svelte            # Toast notifications
 │   │
+│   ├── crypto/              # End-to-end encryption
+│   │   └── signal.ts               # Signal Protocol implementation
+│   │
 │   ├── services/            # API and WebSocket services
-│   │   ├── api.ts                  # Base API client
+│   │   ├── api.ts                  # Base API client with auth
 │   │   ├── auth.service.ts         # Authentication API
-│   │   ├── chat.service.ts         # Chat/messaging API
+│   │   ├── chat.service.ts         # Chat/messaging with E2EE
 │   │   ├── notification.service.ts # Notifications API
 │   │   └── websocket.service.ts    # WebSocket manager
 │   │
 │   ├── stores/              # Svelte stores for state management
 │   │   ├── auth.store.ts           # Auth state & user data
-│   │   ├── chat.store.ts           # Chat conversations & messages
+│   │   ├── chat.store.ts           # Conversations & messages
 │   │   ├── notification.store.ts   # Notifications
+│   │   ├── theme.store.ts          # Theme preferences
 │   │   └── toast.store.ts          # Toast messages
 │   │
-│   └── types/               # TypeScript type definitions
-│       └── index.ts                # All app types
+│   ├── types/               # TypeScript type definitions
+│   │   └── index.ts                # All app types
+│   │
+│   └── utils/               # Utility functions
+│       ├── debounce.ts             # Debounce helper
+│       ├── normalizeNotification.ts # Notification normalization
+│       └── sanitize.ts             # HTML sanitization
 │
 └── routes/                  # SvelteKit pages
     ├── +layout.svelte              # Root layout with Toast
-    ├── +page.svelte                # Home (redirects to login/chat)
-    ├── login/+page.svelte          # Login page
-    ├── register/+page.svelte       # Registration page
+    ├── +page.svelte                # Home (redirects)
+    ├── login/+page.svelte          # Login page with E2EE setup
+    ├── register/+page.svelte       # Registration with key generation
     └── chat/+page.svelte           # Main chat interface
 ```
 
@@ -84,13 +107,13 @@ pnpm install
 
 ### 2. Configure Environment
 
-Create a `.env` file in the project root (copy from `.env.example`):
+Create a `.env` file in the project root:
 
 ```bash
 cp .env.example .env
 ```
 
-Default configuration:
+Default configuration for local development:
 
 ```env
 PUBLIC_API_URL=http://localhost:85
@@ -101,25 +124,23 @@ PUBLIC_APP_VERSION=0.0.1
 
 **Backend Connection:**
 
-- **Nginx (port 85)**: Recommended for development (proxies all services)
-- All API and WebSocket requests route through nginx for consistent origin handling
+- **Nginx (port 85)**: All API and WebSocket requests
+- Nginx proxies to user-service (8081), chat-service (8082), notification-service (8083)
+- Consistent origin for httpOnly cookie authentication
 
 ### 3. Start Backend Services
 
-Make sure your backend is running:
+Ensure backend is running:
 
 ```bash
 cd ../chat-microservices
 docker-compose up -d --build
-
-# Start gateway separately
-cd gateway && npm run dev
 ```
 
 Verify backend health:
 
 ```bash
-curl http://localhost:85/user/health
+curl http://localhost:85/api/user/health
 ```
 
 ### 4. Start Frontend
@@ -172,11 +193,36 @@ pnpm format
 
 ## 🎨 Key Components
 
+### End-to-End Encryption (E2EE)
+
+**Implementation**: Signal Protocol via `@privacyresearch/libsignal-protocol-typescript`
+
+**Key Features:**
+
+- **Client-side encryption**: Messages encrypted before sending to server
+- **Automatic setup**: Prekey bundles generated on registration/login
+- **Device ID management**: Each browser/device gets unique encryption keys
+- **Session establishment**: Automatic when messaging new contacts
+- **IndexedDB storage**: Keys stored locally, never sent to server
+
+**Flow:**
+
+1. **Registration/Login**: Generate identity keypair and prekey bundles
+2. **Publish keys**: Upload public keys to server for others to fetch
+3. **Send message**: Fetch recipient's prekey bundle, establish session, encrypt message
+4. **Receive message**: Decrypt using stored session keys
+5. **History**: Messages are decrypted when fetching conversation history
+
+**Files:**
+
+- `src/lib/crypto/signal.ts` — Signal Protocol wrapper
+- `src/lib/services/chat.service.ts` — E2EE integration in messaging
+
 ### Authentication Flow
 
 1. User visits root (`/`)
-2. App checks authentication status via httpOnly cookie
-3. If authenticated → redirect to `/chat`
+2. App checks authentication via httpOnly cookie
+3. If authenticated → redirect to `/chat` (with E2EE setup)
 4. If not → redirect to `/login`
 
 **Login/Register Pages:**
@@ -186,20 +232,23 @@ pnpm format
 - Error handling with toast notifications
 - Loading states during API calls
 - Auto-redirect on successful authentication
-- JWT token stored in httpOnly cookie (managed by backend)
+- JWT token in httpOnly cookie (backend-managed)
+- **E2EE initialization**: Generate and publish encryption keys
 
 ### Chat Interface (`/chat`)
 
 **Main features:**
 
-- **Sidebar**: List of conversations with unread badges
+- **Sidebar**: Conversations list with unread badges
 - **Header**: Current conversation info, typing indicator
-- **Messages**: Scrollable message history with date separators
+- **Messages**: Scrollable history with automatic decryption
 - **Input**: Message compose with Enter to send, Shift+Enter for newline
+- **Encryption**: All messages encrypted before sending
 
 **Real-time features:**
 
 - WebSocket connection for instant messages
+- Automatic message decryption on receipt
 - Typing indicators
 - Auto-scroll to bottom
 - Connection status notifications
@@ -209,21 +258,23 @@ pnpm format
 Manages real-time communication via Socket.IO:
 
 - Auto-connect on successful authentication
-- Authentication via httpOnly cookie (sent automatically with handshake)
-- Auto-reconnect on disconnect (5 attempts with 3s delay)
-- Real-time message delivery
+- Authentication via httpOnly cookie
+- Auto-reconnect on disconnect (5 attempts, 3s delay)
+- Real-time encrypted message delivery
+- Automatic decryption of incoming messages
 - Typing indicators
-- Connection status monitoring (connected/disconnected/reconnecting)
-- Graceful cleanup on logout/unmount
+- Connection status monitoring
+- Graceful cleanup on logout
 
 ### State Management
 
 **Stores:**
 
-- `authStore`: User authentication state
-- `chatStore`: Conversations and messages
+- `authStore`: User authentication state, device ID
+- `chatStore`: Conversations and decrypted messages
 - `notificationStore`: Notifications and unread count
-- `toastStore`: Toast messages for feedback
+- `toastStore`: Toast messages for user feedback
+- `themeStore`: Dark/light mode preference
 
 ---
 
@@ -231,12 +282,12 @@ Manages real-time communication via Socket.IO:
 
 ### Backend Services
 
-| Service              | Port | Endpoint Prefix      | Purpose                      |
-| -------------------- | ---- | -------------------- | ---------------------------- |
-| User Service         | 8081 | `/user`              | Auth, registration, profiles |
-| Chat Service         | 8082 | `/chat`              | Messages, conversations      |
-| Notification Service | 8083 | `/notifications`     | Notifications                |
-| Nginx Proxy          | 85   | `/*`                 | Reverse proxy to all services|
+| Service              | Port | Endpoint Prefix  | Purpose                       |
+| -------------------- | ---- | ---------------- | ----------------------------- |
+| User Service         | 8081 | `/user`          | Auth, registration, profiles  |
+| Chat Service         | 8082 | `/chat`          | Messages, conversations       |
+| Notification Service | 8083 | `/notifications` | Notifications                 |
+| Nginx Proxy          | 85   | `/*`             | Reverse proxy to all services |
 
 **Note:** All services are accessed through nginx on port 85. Direct service access is not exposed to frontend.
 

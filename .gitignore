@@ -9,6 +9,9 @@ node_modules
 /.svelte-kit
 /build
 
+# Vendor (generated from node_modules)
+/static/vendor
+
 # OS
 .DS_Store
 Thumbs.db

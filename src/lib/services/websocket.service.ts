@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/public';
+import { initSignal, decryptMessage } from '$lib/crypto/signal';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
 import type {
@@ -73,7 +74,7 @@ class WebSocketService {
 			});
 
 			// Listen for incoming messages
-			this.socket.on('receiveMessage', (payload: unknown) => {
+			this.socket.on('receiveMessage', async (payload: unknown) => {
 				const data = payload as ReceiveMessagePayload;
 
 				// Normalize server message shape to frontend `Message`
@@ -88,6 +89,48 @@ class WebSocketService {
 					createdAt: data.createdAt as string | undefined,
 					updatedAt: data.updatedAt as string | undefined
 				} as Message;
+
+				// Try to detect and decrypt Signal-encrypted payloads. Payload convention:
+				// { __encrypted: true, type: number, body: <base64> }
+				const tryDecrypt = async () => {
+					const c = normalized.content;
+					if (!c) return;
+
+					type EncryptedEnvelope = { __encrypted: boolean; type: number; body: string };
+					let parsed: EncryptedEnvelope | null = null;
+					try {
+						parsed = JSON.parse(c) as EncryptedEnvelope;
+					} catch {
+						return; // not JSON -> nothing to do
+					}
+
+					if (!parsed || !parsed.__encrypted) {
+						console.log('[WebSocket] Message is not encrypted, passing through');
+						return;
+					}
+
+					console.log(
+						'[WebSocket] Decrypting incoming message, senderId:',
+						normalized.senderId,
+						'type:',
+						parsed.type
+					);
+
+					try {
+						await initSignal();
+						// decryptMessage expects {type, body} where body is base64 string
+						const ctObj = { type: parsed.type, body: parsed.body };
+						const plain = await decryptMessage(normalized.senderId, ctObj);
+						if (plain) {
+							normalized.content = plain;
+							console.log('[WebSocket] Successfully decrypted message:', plain);
+						}
+					} catch (decryptError) {
+						console.error('[WebSocket] Failed to decrypt incoming message:', decryptError);
+					}
+				};
+
+				await tryDecrypt();
 
 				this.messageCallbacks.forEach((callback) => {
 					try {
@@ -153,6 +196,11 @@ class WebSocketService {
 				console.error('Failed to send message: Invalid message content (empty or non-string)');
 				return;
 			}
+
+			// Note: We don't validate if the message is encrypted here because:
+			// 1. Messages are already encrypted and sent via REST API (chat service)
+			// 2. WebSocket is used to broadcast the message for real-time delivery
+			// 3. The sender's local copy has plaintext content for display
 
 			this.socket.emit(
 				'sendMessage',

@@ -54,9 +54,9 @@ export const authService = {
 			if (typeof window !== 'undefined') {
 				// remove any temporary client-side caches
 				try {
-					localStorage.removeItem('user')
+					localStorage.removeItem('user');
 				} catch (e) {
-					console.warn('Failed to remove user from localStorage', e)
+					console.warn('Failed to remove user from localStorage', e);
 				}
 			}
 		}) as unknown as void;
