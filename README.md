@@ -62,18 +62,20 @@ npm install
 
 ### 2. Environment Configuration
 
-Create a `.env` file in the root directory (if needed):
+Create a `.env` file in the project root (copy from `.env.example`):
 
 ```bash
-# API Gateway URL (default)
-PUBLIC_API_URL=http://localhost:8080
-
-# Or use nginx reverse proxy
-# PUBLIC_API_URL=http://localhost:85
-
-# WebSocket URL (for real-time chat)
-PUBLIC_WS_URL=ws://localhost:8082
+cp .env.example .env
 ```
+
+Recommended local configuration (uses nginx gateway on port 85):
+
+```env
+PUBLIC_API_URL=http://localhost:85
+PUBLIC_WS_URL=http://localhost:85
+```
+
+Note: The frontend relies on the gateway/nginx origin so httpOnly authentication cookies are sent with API and Socket.IO handshakes.
 
 ### 3. Start Development Server
 
@@ -182,10 +184,10 @@ The frontend communicates with the backend through RESTful APIs and WebSocket co
 
 ### Authentication Flow
 
-1. User registers via `/api/user/register`
-2. User logs in via `/api/user/login`
-3. JWT token is stored (localStorage/sessionStorage)
-4. Token is included in subsequent API requests
+1. User registers via `/user/register`
+2. User logs in via `/user/login`; the server sets an httpOnly authentication cookie
+3. The frontend uses cookie-based authentication (no JWT stored in localStorage)
+4. Subsequent API requests and the Socket.IO handshake send the httpOnly cookie automatically
 
 ### Chat Flow
 
@@ -198,6 +200,15 @@ The frontend communicates with the backend through RESTful APIs and WebSocket co
 - Listen to notification events from `/api/notifications`
 - Display in-app notifications
 - Handle push notifications (if enabled)
+
+## Security & recent enhancements
+
+This project has implemented several security improvements to align with production best practices. Key items:
+
+- Authentication uses httpOnly cookies set by the backend; Socket.IO handshakes accept cookies for authentication.
+- The frontend should connect to the gateway/nginx (default: `http://localhost:85`) so cookies are sent with requests.
+- WebSocket upgrades are proxied by nginx at `/chat/socket.io/`; ensure nginx preserves Upgrade/Connection headers and cookies.
+- See the backend `SECURITY.md` for a complete audit summary and production checklist.
 
 ## Building for Production
 
