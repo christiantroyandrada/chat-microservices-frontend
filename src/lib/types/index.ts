@@ -44,6 +44,7 @@ export interface ChatConversation {
 	userId: string;
 	username: string;
 	lastMessage?: string;
+	lastMessageSenderId?: string;
 	lastMessageTime?: string;
 	unreadCount?: number;
 }

@@ -27,10 +27,15 @@ export type Identity = {
 // We purposefully avoid a direct interface implementation here to keep
 // the runtime shape correct while being resilient to minor type mismatches.
 class IndexedDBSignalProtocolStore {
-	private dbName = 'signal-protocol-store';
+	private dbName: string;
 	private storeName = 'state';
 	private db: IDBDatabase | null = null;
 	private cache: Record<string, any> = {};
+
+	constructor(userId: string) {
+		// Make database name user-specific to avoid key collision between users
+		this.dbName = `signal-protocol-store-${userId}`;
+	}
 
 	async init(): Promise<void> {
 		if (this.db) return;
@@ -216,17 +221,65 @@ class IndexedDBSignalProtocolStore {
 	}
 }
 
-const store = new IndexedDBSignalProtocolStore();
+let store: IndexedDBSignalProtocolStore | null = null;
 let initialized = false;
+let currentUserId: string | null = null;
 
-export async function initSignal(): Promise<void> {
+export async function initSignal(userId?: string): Promise<void> {
+	// If userId is provided and different from current, reinitialize store
+	if (userId && userId !== currentUserId) {
+		store = new IndexedDBSignalProtocolStore(userId);
+		currentUserId = userId;
+		initialized = false;
+	}
+	
+	// If no store exists yet, we need a userId
+	if (!store) {
+		if (!userId) {
+			throw new Error('initSignal requires userId parameter for first initialization');
+		}
+		store = new IndexedDBSignalProtocolStore(userId);
+		currentUserId = userId;
+	}
+	
 	if (initialized) return;
 	await store.init();
 	initialized = true;
 }
 
+/**
+ * Get the current store instance (throws if not initialized)
+ */
+function getStore(): IndexedDBSignalProtocolStore {
+	if (!store) {
+		throw new Error('Signal store not initialized. Call initSignal(userId) first.');
+	}
+	return store;
+}
+
+/**
+ * Check if this device has encryption keys stored locally in IndexedDB
+ * Returns true if identity keypair and signed prekey exist
+ */
+export async function hasLocalKeys(userId?: string): Promise<boolean> {
+	await initSignal(userId);
+	const identityKeyPair = await getStore().getIdentityKeyPair();
+	const signedPreKey = await getStore().loadSignedPreKey(1); // We always use keyId 1 for signed prekey
+	return !!(identityKeyPair && signedPreKey);
+}
+
+/**
+ * Check if we have an established session with a user
+ */
+export async function hasSession(targetUserId: string, currentUserId?: string): Promise<boolean> {
+	await initSignal(currentUserId);
+	const address = new SignalProtocolAddress(targetUserId, 1);
+	const session = await getStore().loadSession(address.toString());
+	return !!session;
+}
+
 export async function generateSignalIdentity(): Promise<Identity & { _signalBundle?: any }> {
-	await initSignal();
+	const storeInstance = getStore();
 
 	// Use KeyHelper from the library to generate keys
 	const identityKeyPair = await KeyHelper.generateIdentityKeyPair();
@@ -242,12 +295,12 @@ export async function generateSignalIdentity(): Promise<Identity & { _signalBund
 	const signedPreKey = await KeyHelper.generateSignedPreKey(identityKeyPair, 1);
 
 	// Store locally
-	await store.storeIdentityKeyPair(identityKeyPair);
-	await store.storeLocalRegistrationId(registrationId);
-	await store.storeSignedPreKey(signedPreKey.keyId, signedPreKey.keyPair);
+	await storeInstance.storeIdentityKeyPair(identityKeyPair);
+	await storeInstance.storeLocalRegistrationId(registrationId);
+	await storeInstance.storeSignedPreKey(signedPreKey.keyId, signedPreKey.keyPair);
 
 	for (const preKey of preKeys) {
-		await store.storePreKey(preKey.keyId, preKey.keyPair);
+		await storeInstance.storePreKey(preKey.keyId, preKey.keyPair);
 	}
 
 	// Convert to base64 for transmission
@@ -308,14 +361,16 @@ export async function generateAndPublishIdentity(
 	userId: string,
 	deviceId: string
 ): Promise<any> {
+	// Ensure store is initialized for this user before generating identity
+	await initSignal(userId);
 	const identity = await generateSignalIdentity();
 	const bundle = (identity as any)._signalBundle;
 	if (!bundle) throw new Error('No generated prekey bundle available');
 	return publishSignalPrekey(apiBase, userId, deviceId, bundle);
 }
 
-export async function createSessionWithPrekeyBundle(prekeyBundle: any): Promise<void> {
-	await initSignal();
+export async function createSessionWithPrekeyBundle(prekeyBundle: any, currentUserId?: string): Promise<void> {
+	await initSignal(currentUserId);
 
 	const bundleData = prekeyBundle.bundle || prekeyBundle;
 	const userId = prekeyBundle.userId || bundleData.userId || 'unknown';
@@ -351,18 +406,19 @@ export async function createSessionWithPrekeyBundle(prekeyBundle: any): Promise<
 	}
 
 	const address = new SignalProtocolAddress(userId, 1);
-	const sessionBuilder = new SessionBuilder(store, address);
+	const sessionBuilder = new SessionBuilder(getStore(), address);
 	await sessionBuilder.processPreKey(device);
 }
 
 export async function encryptMessage(
 	recipientId: string,
-	plaintext: string
+	plaintext: string,
+	currentUserId?: string
 ): Promise<{ type: number; body: string }> {
-	await initSignal();
+	await initSignal(currentUserId);
 
 	const address = new SignalProtocolAddress(recipientId, 1);
-	const sessionCipher = new SessionCipher(store, address);
+	const sessionCipher = new SessionCipher(getStore(), address);
 
 	const encoder = new TextEncoder();
 	const messageBytes = encoder.encode(plaintext);
@@ -424,9 +480,10 @@ export async function encryptMessage(
 
 export async function decryptMessage(
 	senderId: string,
-	ciphertext: { type: number; body: string } | string
+	ciphertext: { type: number; body: string } | string,
+	currentUserId?: string
 ): Promise<string> {
-	await initSignal();
+	await initSignal(currentUserId);
 
 	const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
 		const binary = atob(base64);
@@ -449,7 +506,7 @@ export async function decryptMessage(
 	}
 
 	const address = new SignalProtocolAddress(senderId, 1);
-	const sessionCipher = new SessionCipher(store, address);
+	const sessionCipher = new SessionCipher(getStore(), address);
 
 	let plaintext: ArrayBuffer;
 
@@ -463,12 +520,56 @@ export async function decryptMessage(
 	return decoder.decode(plaintext);
 }
 
+/**
+ * Clear all Signal Protocol state for a user
+ * Useful for debugging encryption issues or resetting sessions
+ */
+export async function clearSignalState(userId: string): Promise<void> {
+	const dbName = `signal-protocol-store-${userId}`;
+	return new Promise((resolve, reject) => {
+		const request = indexedDB.deleteDatabase(dbName);
+		request.onerror = () => reject(request.error);
+		request.onsuccess = () => {
+			console.log(`[Signal] Deleted database ${dbName}`);
+			// Reset the store reference so a new one will be created
+			if (currentUserId === userId) {
+				store = null;
+				initialized = false;
+				currentUserId = null;
+			}
+			resolve();
+		};
+		request.onblocked = () => {
+			console.warn(`[Signal] Database ${dbName} deletion blocked - close all tabs`);
+		};
+	});
+}
+
+/**
+ * Remove session with a specific user
+ * Useful when encountering MessageCounterError
+ */
+export async function removeSessionWith(targetUserId: string, currentUserId_param: string): Promise<void> {
+	await initSignal(currentUserId_param);
+	if (!store) {
+		console.warn('[Signal] No store found for user');
+		return;
+	}
+	
+	await store.removeAllSessions(targetUserId);
+	console.log(`[Signal] Removed all sessions with user ${targetUserId}`);
+}
+
 export default {
 	initSignal,
+	hasLocalKeys,
+	hasSession,
 	generateSignalIdentity,
 	publishSignalPrekey,
 	generateAndPublishIdentity,
 	createSessionWithPrekeyBundle,
 	encryptMessage,
-	decryptMessage
+	decryptMessage,
+	clearSignalState,
+	removeSessionWith
 };

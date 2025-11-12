@@ -6,6 +6,7 @@ import {
 	encryptMessage,
 	decryptMessage
 } from '$lib/crypto/signal';
+import { getMessageStore } from '$lib/crypto/messageStore';
 import type { Message, SendMessagePayload, ChatConversation, ServerMessage } from '$lib/types';
 
 /**
@@ -35,28 +36,86 @@ function normalizeMessage(serverMsg: ServerMessage): Message {
 export const chatService = {
 	/**
 	 * Get all conversations for the current user
+	 * Pulls last message preview from local storage (already decrypted)
 	 */
-	async getConversations(): Promise<ChatConversation[]> {
+	async getConversations(currentUserId?: string): Promise<ChatConversation[]> {
 		const response = await apiClient.get<ChatConversation[]>('/chat/conversations');
-		return response.data || [];
+		const conversations = response.data || [];
+
+		// If we have currentUserId, try to get last message from local storage
+		if (currentUserId) {
+			const messageStore = getMessageStore(currentUserId);
+			
+			const conversationsWithLocalMessages = await Promise.all(
+				conversations.map(async (conv) => {
+					// Get the last message from local storage for this conversation
+					const messages = await messageStore.getMessages(conv.userId, currentUserId, 1);
+					
+					if (messages.length > 0) {
+						const lastLocalMessage = messages[messages.length - 1];
+						// Use local storage message (already decrypted plaintext)
+						return {
+							...conv,
+							lastMessage: lastLocalMessage.senderId === currentUserId 
+								? `You: ${lastLocalMessage.content}`
+								: lastLocalMessage.content,
+							lastMessageTime: lastLocalMessage.timestamp
+						};
+					}
+					
+					// No local messages, return as-is (might be new conversation)
+					return conv;
+				})
+			);
+
+			return conversationsWithLocalMessages;
+		}
+
+		return conversations;
 	},
 
 	/**
 	 * Get messages between current user and another user
+	 * Uses local IndexedDB cache (Signal-style approach):
+	 * 1. Try to load from local storage first (instant, plaintext)
+	 * 2. If not in cache, fetch from server, decrypt, and store locally
 	 */
-	async getMessages(userId: string, limit = 50, offset = 0): Promise<Message[]> {
-		// backend exposes GET /get/:receiverId on the chat router (mounted under /chat)
+	async getMessages(userId: string, limit = 50, offset = 0, currentUserId?: string): Promise<Message[]> {
+		if (!currentUserId) {
+			throw new Error('currentUserId is required for getMessages');
+		}
+
+		const messageStore = getMessageStore(currentUserId);
+
+		// First, try to load from local storage
+		const localMessages = await messageStore.getMessages(userId, currentUserId, limit);
+
+		// If we have ANY messages locally, return them (Signal-style: local-first)
+		// Only fetch from server if local storage is completely empty
+		if (localMessages.length > 0) {
+			console.log(`[ChatService] Loaded ${localMessages.length} messages from local storage`);
+			return localMessages;
+		}
+
+		// Local storage is empty, fetch from server for the first time
+		console.log('[ChatService] No local messages found, fetching from server...');
 		const response = await apiClient.get<ServerMessage[]>(
 			`/chat/get/${userId}?limit=${limit}&offset=${offset}`
 		);
 		const data = response.data || [];
 		const normalized = data.map(normalizeMessage);
 
-		// Decrypt any encrypted messages in the history
-		await initSignal();
+		// Decrypt and store messages locally
+		await initSignal(currentUserId);
 
 		const decrypted = await Promise.all(
 			normalized.map(async (msg) => {
+				// Check if already in local storage
+				const existing = await messageStore.getMessage(msg._id);
+				if (existing) {
+					return existing; // Already have it, use cached version
+				}
+
 				try {
 					// Check if content is an encrypted envelope
 					type EncryptedEnvelope = { __encrypted: boolean; type: number; body: string };
@@ -64,40 +123,72 @@ export const chatService = {
 					try {
 						parsed = JSON.parse(msg.content) as EncryptedEnvelope;
 					} catch {
-						return msg; // not JSON, return as-is
-					}
-
-					if (!parsed || !parsed.__encrypted) {
-						return msg; // not encrypted, return as-is
-					}
-
-					// Additional check: if body doesn't look like base64, skip it (might be corrupted or already decrypted)
-					if (!/^[A-Za-z0-9+/]+=*$/.test(parsed.body)) {
-						console.warn('[ChatService] Message body is not valid base64, skipping decryption');
+						// Not JSON, store as-is
+						await messageStore.saveMessage(msg);
 						return msg;
 					}
 
+					if (!parsed || !parsed.__encrypted) {
+						// Not encrypted, store as-is
+						await messageStore.saveMessage(msg);
+						return msg;
+					}
+
+					// Additional check: if body doesn't look like base64, skip it
+					if (!/^[A-Za-z0-9+/]+=*$/.test(parsed.body)) {
+						console.warn('[ChatService] Message body is not valid base64, skipping decryption');
+						await messageStore.saveMessage(msg);
+						return msg;
+					}
+
+					// Check if this is a message sent BY the current user
+					if (msg.senderId === currentUserId) {
+						// Cannot decrypt our own sent messages (encrypted with recipient's key)
+						// This shouldn't happen if we're caching sent messages properly
+						console.warn('[ChatService] Found own sent message from server - cannot decrypt');
+						const placeholderMsg = {
+							...msg,
+							content: '🔒 [Your encrypted message]'
+						};
+						await messageStore.saveMessage(placeholderMsg);
+						return placeholderMsg;
+					}
+
 					console.log(
-						'[ChatService] Decrypting message from history, senderId:',
+						'[ChatService] Decrypting message from sender:',
 						msg.senderId,
 						'type:',
 						parsed.type
 					);
 
-					// Decrypt the message
+					// Decrypt the message using the sender's ID
 					const ctObj = { type: parsed.type, body: parsed.body };
-					const plaintext = await decryptMessage(msg.senderId, ctObj);
+					const plaintext = await decryptMessage(msg.senderId, ctObj, currentUserId);
 
-					console.log('[ChatService] Successfully decrypted message:', plaintext);
+					console.log('[ChatService] Successfully decrypted, storing in local DB');
 
-					return {
+					// Store decrypted message locally (plaintext)
+					const decryptedMsg = {
 						...msg,
 						content: plaintext
 					};
+					await messageStore.saveMessage(decryptedMsg);
+
+					return decryptedMsg;
 				} catch (decryptError) {
-					console.error('[ChatService] Failed to decrypt message from history:', decryptError);
-					// Return original message if decryption fails - better to show encrypted than nothing
-					return msg;
+					console.error('[ChatService] Failed to decrypt message:', decryptError);
+					console.error('[ChatService] Message details:', {
+						messageId: msg._id,
+						senderId: msg.senderId,
+						timestamp: msg.timestamp
+					});
+					// Store with error message
+					const errorMsg = {
+						...msg,
+						content: '[Message could not be decrypted - encryption keys may be missing]'
+					};
+					await messageStore.saveMessage(errorMsg);
+					return errorMsg;
 				}
 			})
 		);
@@ -108,7 +199,7 @@ export const chatService = {
 	/**
 	 * Send a message to another user
 	 */
-	async sendMessage(payload: SendMessagePayload): Promise<Message> {
+	async sendMessage(payload: SendMessagePayload, currentUserId?: string): Promise<Message> {
 		// Validate payload before sending
 		if (!payload.receiverId || !payload.content) {
 			throw new Error('Invalid message payload');
@@ -120,7 +211,7 @@ export const chatService = {
 
 		// Require end-to-end encryption: initialize Signal and encrypt before sending.
 		const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
-		await initSignal();
+		await initSignal(currentUserId);
 
 		// Fetch recipient prekey bundle (must be present for E2EE)
 		// Backend returns: { status: 200, data: { userId, deviceId, bundle } }
@@ -147,11 +238,11 @@ export const chatService = {
 		}
 
 		// Bootstrap session and encrypt (will throw on failure)
-		// Pass the complete data object with userId, deviceId, and bundle
-		await createSessionWithPrekeyBundle(prekeyBundleData);
+		// Pass the complete data object with userId, deviceId, and bundle, plus current user ID
+		await createSessionWithPrekeyBundle(prekeyBundleData, currentUserId);
 
 		// encryptMessage returns {type: number, body: string} where body is already base64-encoded
-		const ct = await encryptMessage(String(payload.receiverId), payload.content);
+		const ct = await encryptMessage(String(payload.receiverId), payload.content, currentUserId);
 
 		// Create encrypted envelope - body is already base64, no conversion needed
 		type EncryptedEnvelope = { __encrypted: true; type: number; body: string };
@@ -175,6 +266,14 @@ export const chatService = {
 		// The server returns the encrypted message, but the sender should see their own plaintext
 		const normalizedResponse = normalizeMessage(response.data);
 		normalizedResponse.content = payload.content; // Use original plaintext for sender's view
+
+		// Store the plaintext message in local IndexedDB (Signal-style approach)
+		// This allows us to see our own sent messages after page reload
+		if (currentUserId) {
+			const messageStore = getMessageStore(currentUserId);
+			await messageStore.saveMessage(normalizedResponse);
+			console.log('[ChatService] Saved sent message to local storage');
+		}
 
 		return normalizedResponse;
 	},

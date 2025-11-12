@@ -69,7 +69,8 @@
 	async function loadConversations() {
 		loading.conversations = true;
 		try {
-			conversations = await chatService.getConversations();
+			const currentUserId = $user?._id as string | undefined;
+			conversations = await chatService.getConversations(currentUserId);
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to load conversations';
 			toastStore.error(message);
@@ -80,22 +81,20 @@
 
 	async function selectConversation(userId: string) {
 		const conversation = conversations.find((c) => c.userId === userId);
-		if (!conversation) return;
+		if (!conversation || !$user) return;
 
 		selectedConversation = conversation;
 		loading.messages = true;
 
-		try {
-			messages = await chatService.getMessages(userId);
-			await chatService.markAsRead(userId);
+		const currentUserId = $user._id as string;
 
-			// Update unread count
-			conversations = conversations.map((c) =>
-				c.userId === userId ? { ...c, unreadCount: 0 } : c
-			);
+		try {
+			messages = await chatService.getMessages(userId, 50, 0, currentUserId);
+			await chatService.markAsRead(userId);
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to load messages';
 			toastStore.error(message);
+			messages = [];
 		} finally {
 			loading.messages = false;
 		}
@@ -112,12 +111,16 @@
 		}
 
 		const receiverId = selectedConversation.userId;
+		const currentUserId = $user._id as string;
 
 		try {
-			const message = await chatService.sendMessage({
-				receiverId,
-				content: sanitizedContent
-			});
+			const message = await chatService.sendMessage(
+				{
+					receiverId,
+					content: sanitizedContent
+				},
+				currentUserId
+			);
 
 			// Add message to local state
 			messages = [...messages, message];
@@ -143,7 +146,35 @@
 		}
 	}
 
-	function handleIncomingMessage(message: Message) {
+	async function handleIncomingMessage(message: Message) {
+		// Decrypt message content if encrypted
+		let displayContent = message.content;
+		try {
+			const parsed = JSON.parse(message.content);
+			if (parsed && parsed.__encrypted && $user) {
+				const currentUserId = $user._id as string;
+				const { decryptMessage } = await import('$lib/crypto/signal');
+				const ctObj = { type: parsed.type, body: parsed.body };
+				displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
+				// Update the message object with decrypted content
+				message.content = displayContent;
+			}
+		} catch {
+			// If parsing fails or decryption fails, keep original content
+		}
+
+		// Save decrypted message to local storage (Signal-style)
+		if ($user) {
+			try {
+				const { getMessageStore } = await import('$lib/crypto/messageStore');
+				const messageStore = getMessageStore($user._id as string);
+				await messageStore.saveMessage(message);
+				console.log('[Chat] Saved incoming message to local storage');
+			} catch (err) {
+				console.error('[Chat] Failed to save message to local storage:', err);
+			}
+		}
+
 		// Add message to the list if it's for current conversation
 		if (
 			selectedConversation &&
@@ -158,7 +189,7 @@
 			}
 		}
 
-		// Update conversations list
+		// Update conversations list with decrypted content
 		const existingConversation = conversations.find(
 			(c) => c.userId === message.senderId || c.userId === message.receiverId
 		);
@@ -168,7 +199,7 @@
 				c.userId === message.senderId || c.userId === message.receiverId
 					? {
 							...c,
-							lastMessage: message.content,
+							lastMessage: displayContent,
 							lastMessageTime: message.timestamp,
 							unreadCount:
 								selectedConversation?.userId !== message.senderId ? (c.unreadCount || 0) + 1 : 0
@@ -180,7 +211,7 @@
 			void loadConversations();
 		}
 
-		// Show notification
+		// Show notification with decrypted content
 		if (message.senderId !== $user?._id) {
 			toastStore.info(`New message from ${message.senderUsername || 'User'}`);
 		}

@@ -1,5 +1,6 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { chatService } from '$lib/services/chat.service';
+import { user } from './auth.store';
 import type { ChatConversation, Message, ChatState } from '$lib/types';
 
 const initialState: ChatState = {
@@ -21,14 +22,14 @@ function createChatStore() {
 		/**
 		 * Load conversations
 		 */
-		async loadConversations() {
+		async loadConversations(currentUserId?: string) {
 			update((state) => ({
 				...state,
 				loading: { ...state.loading, conversations: true }
 			}));
 
 			try {
-				const conversations = await chatService.getConversations();
+				const conversations = await chatService.getConversations(currentUserId);
 				update((state) => ({
 					...state,
 					conversations,
@@ -46,7 +47,7 @@ function createChatStore() {
 		/**
 		 * Load messages for a user
 		 */
-		async loadMessages(userId: string) {
+		async loadMessages(userId: string, currentUserId?: string) {
 			update((state) => ({
 				...state,
 				selectedUserId: userId,
@@ -54,7 +55,7 @@ function createChatStore() {
 			}));
 
 			try {
-				const messages = await chatService.getMessages(userId);
+				const messages = await chatService.getMessages(userId, 50, 0, currentUserId);
 				update((state) => ({
 					...state,
 					messages: { ...state.messages, [userId]: messages },

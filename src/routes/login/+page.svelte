@@ -40,8 +40,8 @@
 		try {
 			await authStore.login({ email, password });
 
-			// After successful login, check if user has prekeys published
-			// If not (or if on a new device), generate and publish them
+			// After successful login, ensure this device has encryption keys
+			// Each browser/device needs its own keys stored locally in IndexedDB
 			try {
 				if (typeof window !== 'undefined' && $user) {
 					let deviceId: string = localStorage.getItem('deviceId') ?? '';
@@ -53,39 +53,34 @@
 						localStorage.setItem('deviceId', deviceId);
 					}
 
-					// Check if prekeys exist for this user
 					const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
 					const userId = $user._id as string;
 
-					console.log('[Login] Checking prekeys for user:', userId);
+					console.log('[Login] Initializing Signal Protocol for device:', deviceId);
+					
+					// Always initialize Signal to load IndexedDB cache for this user
+					await initSignal(userId);
 
-					try {
-						const resp = await fetch(`${apiBase}/api/user/prekeys/${encodeURIComponent(userId)}`, {
-							credentials: 'include'
-						});
+					// Check if this device has keys in IndexedDB by checking for identity key pair
+					const { hasLocalKeys } = await import('$lib/crypto/signal');
+					const hasKeys = await hasLocalKeys(userId);
 
-						console.log('[Login] Prekey check response:', resp.status);
+					console.log('[Login] Local keys exist in IndexedDB:', hasKeys);
 
-						// If 404, no prekeys exist - generate and publish
-						if (!resp.ok && resp.status === 404) {
-							console.log('[Login] No prekeys found, generating and publishing...');
-							await initSignal();
-							// Actually await the publishing so we can catch errors
-							try {
-								await generateAndPublishIdentity(apiBase, userId, deviceId);
-								console.log('[Login] Successfully published prekeys');
-							} catch (publishErr) {
-								console.error('[Login] Failed to publish prekeys:', publishErr);
-								// Don't block login, just warn the user
-								toastStore.warning(
-									'Could not publish encryption keys. You may not be able to receive encrypted messages.'
-								);
-							}
-						} else if (resp.ok) {
-							console.log('[Login] User already has prekeys published');
+					// If no local keys, generate and publish for this device
+					if (!hasKeys) {
+						console.log('[Login] No local keys found, generating new keys for this device...');
+						try {
+							await generateAndPublishIdentity(apiBase, userId, deviceId);
+							console.log('[Login] Successfully generated and published keys for this device');
+						} catch (publishErr) {
+							console.error('[Login] Failed to generate/publish keys:', publishErr);
+							toastStore.warning(
+								'Could not set up encryption keys. You may not be able to send or receive encrypted messages.'
+							);
 						}
-					} catch (e) {
-						console.error('[Login] Failed to check/publish prekeys:', e);
+					} else {
+						console.log('[Login] Using existing local keys from IndexedDB');
 					}
 				}
 			} catch (err) {

@@ -80,11 +80,11 @@
 								: String(Date.now()) + '-' + Math.floor(Math.random() * 1e6);
 						localStorage.setItem('deviceId', deviceId);
 					}
-					// Initialize signal store and publish prekeys (best-effort)
-					await initSignal();
 					const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
 					const userId = createdUser && (createdUser._id as string | undefined);
 					if (userId) {
+						// Initialize signal store with userId before generating keys
+						await initSignal(String(userId));
 						// Fire-and-forget: we don't block user registration on prekey publishing
 						generateAndPublishIdentity(apiBase, String(userId), deviceId).catch((e) =>
 							console.warn('Failed to publish Signal prekey bundle', e)
