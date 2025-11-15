@@ -222,6 +222,15 @@ class IndexedDBSignalProtocolStore {
 		}
 		return true;
 	}
+
+	// Close the database connection
+	close(): void {
+		if (this.db) {
+			this.db.close();
+			this.db = null;
+			this.cache = {};
+		}
+	}
 }
 
 let store: IndexedDBSignalProtocolStore | null = null;
@@ -388,6 +397,14 @@ export async function createSessionWithPrekeyBundle(
 		(payload?.bundle as PrekeyBundleData) || (prekeyBundle as PrekeyBundleData);
 	const userId = payload?.userId || bundleData.userId || 'unknown';
 
+	console.log('[Signal] Creating session with prekey bundle:', {
+		userId,
+		hasIdentityKey: !!bundleData.identityKey,
+		hasSignedPreKey: !!bundleData.signedPreKey,
+		hasPreKeys: !!(bundleData.preKeys && bundleData.preKeys.length > 0),
+		registrationId: bundleData.registrationId
+	});
+
 	const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
 		const binary = atob(base64);
 		const bytes = new Uint8Array(binary.length);
@@ -420,7 +437,15 @@ export async function createSessionWithPrekeyBundle(
 
 	const address = new SignalProtocolAddress(userId, 1);
 	const sessionBuilder = new SessionBuilder(getStore() as any, address);
-	await sessionBuilder.processPreKey(device);
+	
+	console.log('[Signal] Processing prekey to establish session...');
+	try {
+		await sessionBuilder.processPreKey(device);
+		console.log('[Signal] Session established successfully with:', userId);
+	} catch (error) {
+		console.error('[Signal] Failed to establish session:', error);
+		throw error;
+	}
 }
 
 export async function encryptMessage(
@@ -518,15 +543,35 @@ export async function decryptMessage(
 		ctBody = base64ToArrayBuffer(ciphertext.body);
 	}
 
+	console.log('[Signal] Decrypting message:', {
+		senderId,
+		messageType: ctType,
+		bodyLength: ctBody.byteLength,
+		currentUserId
+	});
+
 	const address = new SignalProtocolAddress(senderId, 1);
 	const sessionCipher = new SessionCipher(getStore() as any, address);
 
 	let plaintext: ArrayBuffer;
 
-	if (ctType === 3) {
-		plaintext = await sessionCipher.decryptPreKeyWhisperMessage(ctBody);
-	} else {
-		plaintext = await sessionCipher.decryptWhisperMessage(ctBody);
+	try {
+		if (ctType === 3) {
+			console.log('[Signal] Decrypting PreKeyWhisperMessage (type 3) - this will establish/use a session');
+			plaintext = await sessionCipher.decryptPreKeyWhisperMessage(ctBody, 'binary');
+		} else {
+			console.log('[Signal] Decrypting WhisperMessage (type 1) - using existing session');
+			plaintext = await sessionCipher.decryptWhisperMessage(ctBody, 'binary');
+		}
+		console.log('[Signal] Decryption successful, plaintext length:', plaintext.byteLength);
+	} catch (error) {
+		console.error('[Signal] Decryption error details:', {
+			error,
+			senderId,
+			messageType: ctType,
+			hasSession: await getStore().loadSession(address.toString())
+		});
+		throw error;
 	}
 
 	const decoder = new TextDecoder();
@@ -539,23 +584,220 @@ export async function decryptMessage(
  */
 export async function clearSignalState(userId: string): Promise<void> {
 	const dbName = `signal-protocol-store-${userId}`;
+	
+	// Close the database connection first to prevent blocking
+	if (store && currentUserId === userId) {
+		store.close();
+		store = null;
+		initialized = false;
+		currentUserId = null;
+	}
+	
 	return new Promise((resolve, reject) => {
 		const request = indexedDB.deleteDatabase(dbName);
+		
 		request.onerror = () => reject(request.error);
+		
 		request.onsuccess = () => {
 			console.log(`[Signal] Deleted database ${dbName}`);
-			// Reset the store reference so a new one will be created
-			if (currentUserId === userId) {
-				store = null;
-				initialized = false;
-				currentUserId = null;
-			}
 			resolve();
 		};
+		
 		request.onblocked = () => {
-			console.warn(`[Signal] Database ${dbName} deletion blocked - close all tabs`);
+			console.warn(`[Signal] Database ${dbName} deletion blocked - this can happen if other tabs are open`);
+			// Resolve anyway - the database will be deleted once other connections close
+			// This prevents the Promise from hanging indefinitely
+			resolve();
 		};
 	});
+}
+
+/**
+ * Export complete Signal key set for backup to backend
+ * Returns all keys needed to restore Signal Protocol state
+ */
+export async function exportSignalKeys(userId: string): Promise<any> {
+	await initSignal(userId);
+	const s = getStore();
+	
+	const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+		const bytes = new Uint8Array(buffer);
+		let binary = '';
+		for (let i = 0; i < bytes.byteLength; i++) {
+			binary += String.fromCharCode(bytes[i]);
+		}
+		return btoa(binary);
+	};
+
+	// Get identity key pair
+	const identityKeyPair = await s.getIdentityKeyPair();
+	if (!identityKeyPair) throw new Error('No identity key pair found');
+
+	// Get registration ID
+	const registrationId = await s.getLocalRegistrationId();
+	if (!registrationId) throw new Error('No registration ID found');
+
+	// Get signed prekey (stored with keyId 1)
+	const signedPreKey: any = await s.loadSignedPreKey(1);
+	if (!signedPreKey) throw new Error('No signed prekey found');
+
+	// Get all prekeys
+	const preKeys: any[] = [];
+	for (let i = 1; i <= 100; i++) {
+		const preKey = await s.loadPreKey(i);
+		if (preKey) {
+			preKeys.push({
+				keyId: i,
+				keyPair: {
+					pubKey: arrayBufferToBase64(preKey.pubKey),
+					privKey: arrayBufferToBase64(preKey.privKey)
+				}
+			});
+		}
+	}
+
+	return {
+		identityKeyPair: {
+			pubKey: arrayBufferToBase64(identityKeyPair.pubKey),
+			privKey: arrayBufferToBase64(identityKeyPair.privKey)
+		},
+		registrationId,
+		signedPreKeyPair: {
+			keyId: 1,
+			keyPair: {
+				pubKey: arrayBufferToBase64(signedPreKey.pubKey),
+				privKey: arrayBufferToBase64(signedPreKey.privKey)
+			},
+			signature: arrayBufferToBase64(signedPreKey.signature)
+		},
+		preKeys
+	};
+}
+
+/**
+ * Import and restore Signal keys from backend
+ * Restores all keys to IndexedDB for the current user
+ */
+export async function importSignalKeys(userId: string, keySet: any): Promise<void> {
+	await initSignal(userId);
+	const s = getStore();
+
+	const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
+		const binary = atob(base64);
+		const bytes = new Uint8Array(binary.length);
+		for (let i = 0; i < binary.length; i++) {
+			bytes[i] = binary.charCodeAt(i);
+		}
+		return bytes.buffer;
+	};
+
+	// Store identity key pair
+	await s.storeIdentityKeyPair({
+		pubKey: base64ToArrayBuffer(keySet.identityKeyPair.pubKey),
+		privKey: base64ToArrayBuffer(keySet.identityKeyPair.privKey)
+	});
+
+	// Store registration ID
+	await s.storeLocalRegistrationId(keySet.registrationId);
+
+	// Store signed prekey (as any for library interop - same as generation code)
+	await s.storeSignedPreKey(keySet.signedPreKeyPair.keyId, {
+		pubKey: base64ToArrayBuffer(keySet.signedPreKeyPair.keyPair.pubKey),
+		privKey: base64ToArrayBuffer(keySet.signedPreKeyPair.keyPair.privKey),
+		signature: base64ToArrayBuffer(keySet.signedPreKeyPair.signature)
+	} as any);
+
+	// Store all prekeys
+	for (const preKey of keySet.preKeys) {
+		await s.storePreKey(preKey.keyId, {
+			pubKey: base64ToArrayBuffer(preKey.keyPair.pubKey),
+			privKey: base64ToArrayBuffer(preKey.keyPair.privKey)
+		});
+	}
+
+	console.log('[Signal] Successfully imported keys from backend');
+}
+
+/**
+ * Initialize Signal Protocol with key restoration from backend if available
+ * This should be called during login to ensure consistent keys across tabs/devices
+ * 
+ * IMPORTANT: Always checks backend first to ensure cross-tab/cross-device consistency.
+ * Local keys are only used as fallback if backend fetch fails.
+ */
+export async function initSignalWithRestore(
+	userId: string,
+	deviceId: string,
+	apiBase: string
+): Promise<boolean> {
+	console.log('[Signal] Initializing with restore for userId:', userId);
+
+	await initSignal(userId);
+
+	// ALWAYS check backend first to ensure consistency across tabs/devices
+	console.log('[Signal] Checking backend for authoritative keys...');
+	try {
+		const { authService } = await import('$lib/services/auth.service');
+		const keySet = await authService.fetchSignalKeys();
+
+		if (keySet) {
+			console.log('[Signal] Found keys on backend, clearing local storage and restoring...');
+			
+			// Clear local IndexedDB to ensure we start fresh with backend keys
+			await clearSignalState(userId);
+			
+			// Re-initialize store with empty state
+			await initSignal(userId);
+			
+			// Import backend keys
+			await importSignalKeys(userId, keySet);
+			console.log('[Signal] Successfully restored keys from backend');
+			
+			// Re-initialize the store to load the imported keys into memory cache
+			store = null;
+			initialized = false;
+			await initSignal(userId);
+			console.log('[Signal] Store reinitialized with restored keys');
+			
+			return true;
+		}
+
+		// No keys on backend - check if we have local keys as fallback
+		console.log('[Signal] No keys on backend, checking local storage...');
+		const hasKeys = await hasLocalKeys(userId);
+		
+		if (hasKeys) {
+			console.log('[Signal] Found local keys, backing them up to backend...');
+			// We have local keys but backend doesn't - back them up
+			const existingKeySet = await exportSignalKeys(userId);
+			await authService.storeSignalKeys(deviceId, existingKeySet);
+			console.log('[Signal] Successfully backed up local keys to backend');
+			return true;
+		}
+
+		// No keys anywhere, generate new keys
+		console.log('[Signal] No keys found anywhere, generating new keys...');
+		await generateAndPublishIdentity(apiBase, userId, deviceId);
+
+		// Export and store the newly generated keys on backend
+		console.log('[Signal] Backing up newly generated keys to backend...');
+		const newKeySet = await exportSignalKeys(userId);
+		await authService.storeSignalKeys(deviceId, newKeySet);
+		console.log('[Signal] Successfully backed up keys to backend');
+
+		return true;
+	} catch (error) {
+		console.error('[Signal] Error during key initialization/restore:', error);
+		
+		// Fallback: check if we have local keys we can use
+		const hasKeys = await hasLocalKeys(userId);
+		if (hasKeys) {
+			console.warn('[Signal] Backend fetch failed, using local keys as fallback');
+			return true;
+		}
+		
+		return false;
+	}
 }
 
 /**
@@ -587,5 +829,8 @@ export default {
 	encryptMessage,
 	decryptMessage,
 	clearSignalState,
-	removeSessionWith
+	removeSessionWith,
+	initSignalWithRestore,
+	exportSignalKeys,
+	importSignalKeys
 };

@@ -1,5 +1,4 @@
 import { env } from '$env/dynamic/public';
-import { initSignal, decryptMessage } from '$lib/crypto/signal';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
 import type {
@@ -10,7 +9,6 @@ import type {
 	ReceiveMessagePayload,
 	TypingPayload
 } from '$lib/types';
-import type { EncryptedEnvelope } from '$lib/crypto/types';
 
 class WebSocketService {
 	private socket: Socket | null = null;
@@ -47,24 +45,24 @@ class WebSocketService {
 				reconnectionDelay: 3000
 			});
 
-			this.socket.on('connect', () => {
-				this.notifyStatus('connected');
+		this.socket.on('connect', () => {
+			console.log('[WebSocket] Connected to server, socket ID:', this.socket?.id);
+			this.notifyStatus('connected');
 
-				// Clear any pending reconnect timer
-				if (this.reconnectTimer) {
-					clearTimeout(this.reconnectTimer);
-					this.reconnectTimer = null;
-				}
+			// Clear any pending reconnect timer
+			if (this.reconnectTimer) {
+				clearTimeout(this.reconnectTimer);
+				this.reconnectTimer = null;
+			}
 
-				// JWT authentication happens on handshake (io.use middleware on server)
-				// The server automatically joins the user to their room based on authenticated JWT
-				// No need to emit 'identify' event anymore
-			});
-			this.socket.on('disconnect', () => {
-				this.notifyStatus('disconnected');
-			});
-
-			this.socket.on('connect_error', (error) => {
+			// JWT authentication happens on handshake (io.use middleware on server)
+			// The server automatically joins the user to their room based on authenticated JWT
+			// No need to emit 'identify' event anymore
+		});
+		this.socket.on('disconnect', () => {
+			console.log('[WebSocket] Disconnected from server');
+			this.notifyStatus('disconnected');
+		});			this.socket.on('connect_error', (error) => {
 				// Socket.IO may surface Error objects or plain strings; prefer a concise message
 				const msg = error instanceof Error ? error.message : String(error);
 				console.warn('Socket.IO connection error:', msg);
@@ -74,74 +72,39 @@ class WebSocketService {
 				this.notifyStatus('reconnecting');
 			});
 
-			// Listen for incoming messages
-			this.socket.on('receiveMessage', async (payload: unknown) => {
-				const data = payload as ReceiveMessagePayload;
+		// Listen for incoming messages
+		this.socket.on('receiveMessage', async (payload: unknown) => {
+			const data = payload as ReceiveMessagePayload;
 
-				// Normalize server message shape to frontend `Message`
-				const normalized = {
-					_id: String(data._id ?? data.id ?? ''),
-					senderId: String(data.senderId ?? ''),
-					senderUsername: String(data.senderUsername ?? data.senderName ?? '') || undefined,
-					receiverId: String(data.receiverId ?? ''),
-					content: String(data.content ?? data.message ?? ''),
-					timestamp: String(data.timestamp ?? data.createdAt ?? new Date().toISOString()),
-					read: Boolean(data.read ?? data.isRead ?? false),
-					createdAt: data.createdAt as string | undefined,
-					updatedAt: data.updatedAt as string | undefined
-				} as Message;
+			// Normalize server message shape to frontend `Message`
+			const normalized = {
+				_id: String(data._id ?? data.id ?? ''),
+				senderId: String(data.senderId ?? ''),
+				senderUsername: String(data.senderUsername ?? data.senderName ?? '') || undefined,
+				receiverId: String(data.receiverId ?? ''),
+				content: String(data.content ?? data.message ?? ''),
+				timestamp: String(data.timestamp ?? data.createdAt ?? new Date().toISOString()),
+				read: Boolean(data.read ?? data.isRead ?? false),
+				createdAt: data.createdAt as string | undefined,
+				updatedAt: data.updatedAt as string | undefined
+			} as Message;
 
-				// Try to detect and decrypt Signal-encrypted payloads. Payload convention:
-				// { __encrypted: true, type: number, body: <base64> }
-				const tryDecrypt = async () => {
-					const c = normalized.content;
-					if (!c) return;
-
-					let parsed: EncryptedEnvelope | null = null;
-					try {
-						parsed = JSON.parse(c) as EncryptedEnvelope;
-					} catch {
-						return; // not JSON -> nothing to do
-					}
-
-					if (!parsed || !parsed.__encrypted) {
-						console.log('[WebSocket] Message is not encrypted, passing through');
-						return;
-					}
-
-					console.log(
-						'[WebSocket] Decrypting incoming message, senderId:',
-						normalized.senderId,
-						'type:',
-						parsed.type
-					);
-
-					try {
-						await initSignal();
-						// decryptMessage expects {type, body} where body is base64 string
-						const ctObj = { type: parsed.type, body: parsed.body };
-						const plain = await decryptMessage(normalized.senderId, ctObj);
-						if (plain) {
-							normalized.content = plain;
-							console.log('[WebSocket] Successfully decrypted message:', plain);
-						}
-					} catch (decryptError) {
-						console.error('[WebSocket] Failed to decrypt incoming message:', decryptError);
-					}
-				};
-
-				await tryDecrypt();
-
-				this.messageCallbacks.forEach((callback) => {
-					try {
-						callback(normalized);
-					} catch (error) {
-						console.error('Error in message callback:', error);
-					}
-				});
+			console.log('[WebSocket] Received message:', {
+				_id: normalized._id,
+				senderId: normalized.senderId,
+				receiverId: normalized.receiverId,
+				contentLength: normalized.content?.length || 0
 			});
 
-			// Listen for typing indicators
+			// Pass message to callbacks (component will handle decryption with currentUserId)
+			this.messageCallbacks.forEach((callback) => {
+				try {
+					callback(normalized);
+				} catch (error) {
+					console.error('Error in message callback:', error);
+				}
+			});
+		});			// Listen for typing indicators
 			this.socket.on('typing', (payload: unknown) => {
 				const d = payload as TypingPayload;
 				this.typingCallbacks.forEach((callback) => {

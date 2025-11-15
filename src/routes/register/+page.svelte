@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { authStore } from '$lib/stores/auth.store';
-	import { env } from '$env/dynamic/public';
-	import { generateAndPublishIdentity, initSignal } from '$lib/crypto/signal';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
@@ -68,32 +66,9 @@
 		try {
 			const createdUser = await authStore.register({ username, email, password });
 
-			// After successful registration, generate a deviceId for this browser/device
-			// and publish the Signal prekey bundle to the server in the background.
-			try {
-				if (typeof window !== 'undefined') {
-					let deviceId: string = localStorage.getItem('deviceId') ?? '';
-					if (!deviceId) {
-						deviceId =
-							typeof crypto !== 'undefined' && 'randomUUID' in crypto
-								? crypto.randomUUID()
-								: String(Date.now()) + '-' + Math.floor(Math.random() * 1e6);
-						localStorage.setItem('deviceId', deviceId);
-					}
-					const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
-					const userId = createdUser && (createdUser._id as string | undefined);
-					if (userId) {
-						// Initialize signal store with userId before generating keys
-						await initSignal(String(userId));
-						// Fire-and-forget: we don't block user registration on prekey publishing
-						generateAndPublishIdentity(apiBase, String(userId), deviceId).catch((e) =>
-							console.warn('Failed to publish Signal prekey bundle', e)
-						);
-					}
-				}
-			} catch (err) {
-				console.warn('Signal init/publish skipped:', err);
-			}
+			// Signal Protocol keys will be initialized on the chat page
+			// This ensures authentication is fully established before making authenticated requests
+
 			toastStore.success('Registration successful!');
 		} catch (err: unknown) {
 			const apiError = err as ApiError;

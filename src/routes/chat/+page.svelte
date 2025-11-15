@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { env } from '$env/dynamic/public';
 	import { authStore, user } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { notificationStore } from '$lib/stores/notification.store';
@@ -8,6 +9,7 @@
 	import { chatService } from '$lib/services/chat.service';
 	import { wsService } from '$lib/services/websocket.service';
 	import { sanitizeMessage } from '$lib/utils';
+	import { initSignalWithRestore } from '$lib/crypto/signal';
 	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
 
 	import ChatList from '$lib/components/ChatList.svelte';
@@ -42,6 +44,35 @@
 				void goto('/login');
 				return;
 			}
+		}
+
+		// Initialize Signal Protocol keys (non-blocking background task)
+		// This ensures encryption keys are ready before sending/receiving messages
+		if (typeof window !== 'undefined' && $user) {
+			const userId = $user._id as string;
+			let deviceId: string = localStorage.getItem('deviceId') ?? '';
+			if (!deviceId) {
+				deviceId =
+					typeof crypto !== 'undefined' && 'randomUUID' in crypto
+						? crypto.randomUUID()
+						: String(Date.now()) + '-' + Math.floor(Math.random() * 1e6);
+				localStorage.setItem('deviceId', deviceId);
+			}
+			const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
+			
+			// Initialize in background - don't block page load
+			initSignalWithRestore(userId, deviceId, apiBase)
+				.then(success => {
+					if (success) {
+						console.log('[Chat] Signal Protocol initialized successfully');
+					} else {
+						console.warn('[Chat] Signal Protocol initialization failed');
+						toastStore.warning('Encryption setup incomplete. Messages may not be encrypted.');
+					}
+				})
+				.catch(err => {
+					console.error('[Chat] Signal Protocol initialization error:', err);
+				});
 		}
 
 		// Connect WebSocket (auth handled via httpOnly cookie)
@@ -147,20 +178,34 @@
 	}
 
 	async function handleIncomingMessage(message: Message) {
+		console.log('[Chat] handleIncomingMessage called:', {
+			_id: message._id,
+			senderId: message.senderId,
+			receiverId: message.receiverId,
+			contentLength: message.content?.length || 0,
+			currentUser: $user?._id
+		});
+
 		// Decrypt message content if encrypted
 		let displayContent = message.content;
+		let decryptionFailed = false;
 		try {
 			const parsed = JSON.parse(message.content);
 			if (parsed && parsed.__encrypted && $user) {
+				console.log('[Chat] Message is encrypted, attempting decryption...');
 				const currentUserId = $user._id as string;
 				const { decryptMessage } = await import('$lib/crypto/signal');
 				const ctObj = { type: parsed.type, body: parsed.body };
 				displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
 				// Update the message object with decrypted content
 				message.content = displayContent;
+				console.log('[Chat] Message decrypted successfully');
 			}
-		} catch {
-			// If parsing fails or decryption fails, keep original content
+		} catch (decryptError) {
+			console.error('[Chat] Decryption failed:', decryptError);
+			decryptionFailed = true;
+			// Show user-friendly error message instead of encrypted JSON
+			message.content = '🔒 [Message could not be decrypted - encryption keys may be out of sync]';
 		}
 
 		// Save decrypted message to local storage (Signal-style)

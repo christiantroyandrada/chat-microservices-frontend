@@ -186,3 +186,28 @@ export type MessageListHandle = {
 export type MessageCallback = (message: Message) => void;
 export type StatusCallback = (status: 'connected' | 'disconnected' | 'reconnecting') => void;
 export type TypingCallback = (userId: string, isTyping: boolean) => void;
+
+// Signal Protocol Types
+// Used by: auth.service.ts, signal.ts for key backup/restore
+export interface SignalKeySet {
+	identityKeyPair: {
+		pubKey: string;
+		privKey: string;
+	};
+	registrationId: number;
+	signedPreKeyPair: {
+		keyId: number;
+		keyPair: {
+			pubKey: string;
+			privKey: string;
+		};
+		signature: string;
+	};
+	preKeys: Array<{
+		keyId: number;
+		keyPair: {
+			pubKey: string;
+			privKey: string;
+		};
+	}>;
+}

@@ -3,8 +3,6 @@
 	import { toastStore } from '$lib/stores/toast.store';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { env } from '$env/dynamic/public';
-	import { generateAndPublishIdentity, initSignal } from '$lib/crypto/signal';
 	import type { ApiError } from '$lib/types';
 
 	let email = '';
@@ -40,52 +38,8 @@
 		try {
 			await authStore.login({ email, password });
 
-			// After successful login, ensure this device has encryption keys
-			// Each browser/device needs its own keys stored locally in IndexedDB
-			try {
-				if (typeof window !== 'undefined' && $user) {
-					let deviceId: string = localStorage.getItem('deviceId') ?? '';
-					if (!deviceId) {
-						deviceId =
-							typeof crypto !== 'undefined' && 'randomUUID' in crypto
-								? crypto.randomUUID()
-								: String(Date.now()) + '-' + Math.floor(Math.random() * 1e6);
-						localStorage.setItem('deviceId', deviceId);
-					}
-
-					const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
-					const userId = $user._id as string;
-
-					console.log('[Login] Initializing Signal Protocol for device:', deviceId);
-
-					// Always initialize Signal to load IndexedDB cache for this user
-					await initSignal(userId);
-
-					// Check if this device has keys in IndexedDB by checking for identity key pair
-					const { hasLocalKeys } = await import('$lib/crypto/signal');
-					const hasKeys = await hasLocalKeys(userId);
-
-					console.log('[Login] Local keys exist in IndexedDB:', hasKeys);
-
-					// If no local keys, generate and publish for this device
-					if (!hasKeys) {
-						console.log('[Login] No local keys found, generating new keys for this device...');
-						try {
-							await generateAndPublishIdentity(apiBase, userId, deviceId);
-							console.log('[Login] Successfully generated and published keys for this device');
-						} catch (publishErr) {
-							console.error('[Login] Failed to generate/publish keys:', publishErr);
-							toastStore.warning(
-								'Could not set up encryption keys. You may not be able to send or receive encrypted messages.'
-							);
-						}
-					} else {
-						console.log('[Login] Using existing local keys from IndexedDB');
-					}
-				}
-			} catch (err) {
-				console.warn('Signal init/publish skipped:', err);
-			}
+			// Signal Protocol keys will be initialized on the chat page
+			// This ensures authentication is fully established before making authenticated requests
 
 			toastStore.success('Login successful!');
 		} catch (err: unknown) {

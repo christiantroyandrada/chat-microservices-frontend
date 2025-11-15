@@ -94,22 +94,20 @@ export const chatService = {
 
 		const messageStore = getMessageStore(currentUserId);
 
-		// First, try to load from local storage
-		const localMessages = await messageStore.getMessages(userId, currentUserId, limit);
-
-		// If we have ANY messages locally, return them (Signal-style: local-first)
-		// Only fetch from server if local storage is completely empty
-		if (localMessages.length > 0) {
-			console.log(`[ChatService] Loaded ${localMessages.length} messages from local storage`);
-			return localMessages;
-		}
-
-		// Local storage is empty, fetch from server for the first time
-		console.log('[ChatService] No local messages found, fetching from server...');
+		// Fetch from server to get latest messages (including any missed real-time broadcasts)
+		console.log('[ChatService] Fetching messages from server...');
 		const response = await apiClient.get<ServerMessage[]>(
 			`/chat/get/${userId}?limit=${limit}&offset=${offset}`
 		);
 		const data = response.data || [];
+		
+		if (data.length === 0) {
+			// No messages on server, check if we have anything locally
+			const localMessages = await messageStore.getMessages(userId, currentUserId, limit);
+			console.log(`[ChatService] Server has no messages, loaded ${localMessages.length} from local storage`);
+			return localMessages;
+		}
+		
 		const normalized = data.map(normalizeMessage);
 
 		// Decrypt and store messages locally

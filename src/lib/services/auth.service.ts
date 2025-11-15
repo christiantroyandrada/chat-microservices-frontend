@@ -1,5 +1,5 @@
 import { apiClient } from './api';
-import type { AuthUser, LoginCredentials, RegisterCredentials, User } from '$lib/types';
+import type { AuthUser, LoginCredentials, RegisterCredentials, User, SignalKeySet } from '$lib/types';
 
 export const authService = {
 	/**
@@ -76,6 +76,33 @@ export const authService = {
 		};
 
 		return user;
+	},
+
+	/**
+	 * Store Signal Protocol keys on the backend for persistence across devices/tabs
+	 */
+	async storeSignalKeys(deviceId: string, keySet: SignalKeySet): Promise<void> {
+		await apiClient.post('/user/signal-keys', { deviceId, keySet });
+	},
+
+	/**
+	 * Fetch Signal Protocol keys from the backend
+	 * Returns null if no keys are stored
+	 */
+	async fetchSignalKeys(): Promise<SignalKeySet | null> {
+		try {
+			const response = await apiClient.get<{ keySet: SignalKeySet }>('/user/signal-keys');
+			return response.data?.keySet || null;
+		} catch (error: unknown) {
+			// 404 means no keys stored yet - this is expected for new users
+			if (typeof error === 'object' && error !== null && 'response' in error) {
+				const httpError = error as { response?: { status?: number } };
+				if (httpError.response?.status === 404) {
+					return null;
+				}
+			}
+			throw error;
+		}
 	}
 
 	// Deprecated client-side token helpers removed. Authentication is verified
