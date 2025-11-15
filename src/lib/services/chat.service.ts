@@ -9,6 +9,7 @@ import {
 import { getMessageStore } from '$lib/crypto/messageStore';
 import type { Message, SendMessagePayload, ChatConversation, ServerMessage } from '$lib/types';
 import type { EncryptedEnvelope } from '$lib/crypto/types';
+import { logger } from './dev-logger';
 
 /**
  * ServiceResult is imported from central types file.
@@ -95,7 +96,7 @@ export const chatService = {
 		const messageStore = getMessageStore(currentUserId);
 
 		// Fetch from server to get latest messages (including any missed real-time broadcasts)
-		console.log('[ChatService] Fetching messages from server...');
+		logger.info('[ChatService] Fetching messages from server...');
 		const response = await apiClient.get<ServerMessage[]>(
 			`/chat/get/${userId}?limit=${limit}&offset=${offset}`
 		);
@@ -104,7 +105,7 @@ export const chatService = {
 		if (data.length === 0) {
 			// No messages on server, check if we have anything locally
 			const localMessages = await messageStore.getMessages(userId, currentUserId, limit);
-			console.log(`[ChatService] Server has no messages, loaded ${localMessages.length} from local storage`);
+			logger.info(`[ChatService] Server has no messages, loaded ${localMessages.length} from local storage`);
 			return localMessages;
 		}
 		
@@ -140,7 +141,7 @@ export const chatService = {
 
 					// Additional check: if body doesn't look like base64, skip it
 					if (!/^[A-Za-z0-9+/]+=*$/.test(parsed.body)) {
-						console.warn('[ChatService] Message body is not valid base64, skipping decryption');
+						logger.warning('[ChatService] Message body is not valid base64, skipping decryption');
 						await messageStore.saveMessage(msg);
 						return msg;
 					}
@@ -149,7 +150,7 @@ export const chatService = {
 					if (msg.senderId === currentUserId) {
 						// Cannot decrypt our own sent messages (encrypted with recipient's key)
 						// This shouldn't happen if we're caching sent messages properly
-						console.warn('[ChatService] Found own sent message from server - cannot decrypt');
+						logger.warning('[ChatService] Found own sent message from server - cannot decrypt');
 						const placeholderMsg = {
 							...msg,
 							content: '🔒 [Your encrypted message]'
@@ -158,18 +159,19 @@ export const chatService = {
 						return placeholderMsg;
 					}
 
-					console.log(
-						'[ChatService] Decrypting message from sender:',
-						msg.senderId,
-						'type:',
-						parsed.type
+					logger.info(
+						'[ChatService] Decrypting message from sender:',{
+							sender_id:	msg.senderId,
+							type: String(parsed.type),
+						}
+						
 					);
 
 					// Decrypt the message using the sender's ID
 					const ctObj = { type: parsed.type, body: parsed.body };
 					const plaintext = await decryptMessage(msg.senderId, ctObj, currentUserId);
 
-					console.log('[ChatService] Successfully decrypted, storing in local DB');
+					logger.info('[ChatService] Successfully decrypted, storing in local DB');
 
 					// Store decrypted message locally (plaintext)
 					const decryptedMsg = {
@@ -180,8 +182,8 @@ export const chatService = {
 
 					return decryptedMsg;
 				} catch (decryptError) {
-					console.error('[ChatService] Failed to decrypt message:', decryptError);
-					console.error('[ChatService] Message details:', {
+					logger.error('[ChatService] Failed to decrypt message:', decryptError);
+					logger.error('[ChatService] Message details:', {
 						messageId: msg._id,
 						senderId: msg.senderId,
 						timestamp: msg.timestamp
@@ -276,7 +278,7 @@ export const chatService = {
 		if (currentUserId) {
 			const messageStore = getMessageStore(currentUserId);
 			await messageStore.saveMessage(normalizedResponse);
-			console.log('[ChatService] Saved sent message to local storage');
+			logger.info('[ChatService] Saved sent message to local storage');
 		}
 
 		return normalizedResponse;

@@ -3,6 +3,7 @@ import { authService } from '$lib/services/auth.service';
 import type { LoginCredentials, RegisterCredentials, ApiError, AuthState } from '$lib/types';
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
+import { logger } from '$lib/services/dev-logger';
 
 const initialState: AuthState = {
 	user: null,
@@ -50,7 +51,7 @@ function createAuthStore() {
 				try {
 					await authService.logout();
 				} catch (e) {
-					console.warn('Logout during init failed', e);
+					logger.warning('Logout during init failed', e);
 				}
 				set(initialState);
 			}
@@ -115,7 +116,7 @@ function createAuthStore() {
 				await authService.logout();
 			} catch (e) {
 				// still proceed with clearing client state even if logout call fails
-				console.warn('Logout API failed', e);
+				logger.warning('Logout API failed', e);
 			}
 			// Clear local auth state and navigate to login
 			set(initialState);

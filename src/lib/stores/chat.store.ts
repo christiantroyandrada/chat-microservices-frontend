@@ -1,6 +1,7 @@
 import { writable, derived } from 'svelte/store';
 import { chatService } from '$lib/services/chat.service';
 import type { ChatConversation, Message, ChatState } from '$lib/types';
+import { logger } from '$lib/services/dev-logger';
 
 const initialState: ChatState = {
 	conversations: [],
@@ -35,7 +36,7 @@ function createChatStore() {
 					loading: { ...state.loading, conversations: false }
 				}));
 			} catch (error) {
-				console.error('Failed to load conversations:', error);
+				logger.error('Failed to load conversations:', error);
 				update((state) => ({
 					...state,
 					loading: { ...state.loading, conversations: false }
@@ -61,7 +62,7 @@ function createChatStore() {
 					loading: { ...state.loading, messages: false }
 				}));
 			} catch (error) {
-				console.error('Failed to load messages:', error);
+				logger.error('Failed to load messages:', error);
 				update((state) => ({
 					...state,
 					loading: { ...state.loading, messages: false }

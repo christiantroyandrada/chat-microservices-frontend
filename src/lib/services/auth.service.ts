@@ -1,4 +1,5 @@
 import { apiClient } from './api';
+import { logger } from './dev-logger';
 import type { AuthUser, LoginCredentials, RegisterCredentials, User, SignalKeySet } from '$lib/types';
 
 export const authService = {
@@ -56,7 +57,7 @@ export const authService = {
 				try {
 					localStorage.removeItem('user');
 				} catch (e) {
-					console.warn('Failed to remove user from localStorage', e);
+					logger.warning('Failed to remove user from localStorage', e);
 				}
 			}
 		}) as unknown as void;

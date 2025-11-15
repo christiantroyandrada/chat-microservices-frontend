@@ -24,6 +24,7 @@ import type {
 	KeyPairType
 } from '@privacyresearch/libsignal-protocol-typescript';
 import type { Identity, PrekeyBundleData, PrekeyBundlePayload } from './types';
+import { logger } from '$lib/services/dev-logger';
 
 // IndexedDB-backed store implementation
 // Implement the StorageType-compatible store expected by the library.
@@ -397,7 +398,7 @@ export async function createSessionWithPrekeyBundle(
 		(payload?.bundle as PrekeyBundleData) || (prekeyBundle as PrekeyBundleData);
 	const userId = payload?.userId || bundleData.userId || 'unknown';
 
-	console.log('[Signal] Creating session with prekey bundle:', {
+	logger.info('[Signal] Creating session with prekey bundle:', {
 		userId,
 		hasIdentityKey: !!bundleData.identityKey,
 		hasSignedPreKey: !!bundleData.signedPreKey,
@@ -438,12 +439,12 @@ export async function createSessionWithPrekeyBundle(
 	const address = new SignalProtocolAddress(userId, 1);
 	const sessionBuilder = new SessionBuilder(getStore() as any, address);
 	
-	console.log('[Signal] Processing prekey to establish session...');
+	logger.info('[Signal] Processing prekey to establish session...');
 	try {
 		await sessionBuilder.processPreKey(device);
-		console.log('[Signal] Session established successfully with:', userId);
+		logger.info('[Signal] Session established successfully with:', userId);
 	} catch (error) {
-		console.error('[Signal] Failed to establish session:', error);
+		logger.error('[Signal] Failed to establish session:', error);
 		throw error;
 	}
 }
@@ -463,7 +464,7 @@ export async function encryptMessage(
 
 	const ciphertext = await sessionCipher.encrypt(messageBytes.buffer);
 
-	console.log('[Signal] Encryption result:', {
+	logger.info('[Signal] Encryption result:', {
 		type: ciphertext.type,
 		bodyType: typeof ciphertext.body,
 		bodyIsString: typeof ciphertext.body === 'string',
@@ -482,7 +483,7 @@ export async function encryptMessage(
 	const body: unknown = ciphertext.body;
 
 	if (body instanceof ArrayBuffer) {
-		console.log('[Signal] Body is ArrayBuffer, converting to base64');
+		logger.info('[Signal] Body is ArrayBuffer, converting to base64');
 		const bytes = new Uint8Array(body);
 		bodyBase64 = btoa(String.fromCharCode(...bytes));
 	} else if (typeof body === 'string') {
@@ -491,24 +492,22 @@ export async function encryptMessage(
 		const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(body);
 
 		if (isBase64 && body.length % 4 === 0) {
-			console.log('[Signal] Body is already base64');
+			logger.info('[Signal] Body is already base64');
 			bodyBase64 = body;
 		} else {
-			console.log('[Signal] Body is binary string, converting to base64');
+			logger.info('[Signal] Body is binary string, converting to base64');
 			// Binary string - convert to base64
 			bodyBase64 = btoa(body);
 		}
 	} else {
-		console.error('[Signal] Unexpected body type:', body);
+		logger.error('[Signal] Unexpected body type:', body);
 		throw new Error('Unexpected ciphertext body type');
 	}
 
-	console.log(
-		'[Signal] Final base64 length:',
-		bodyBase64.length,
-		'first 50 chars:',
-		bodyBase64.substring(0, 50)
-	);
+	logger.debug('[Signal] Final base64', {
+		length: String(bodyBase64.length),
+		preview: bodyBase64.substring(0, 50)
+	});
 
 	return {
 		type: ciphertext.type,
@@ -543,7 +542,7 @@ export async function decryptMessage(
 		ctBody = base64ToArrayBuffer(ciphertext.body);
 	}
 
-	console.log('[Signal] Decrypting message:', {
+	logger.info('[Signal] Decrypting message:', {
 		senderId,
 		messageType: ctType,
 		bodyLength: ctBody.byteLength,
@@ -557,15 +556,15 @@ export async function decryptMessage(
 
 	try {
 		if (ctType === 3) {
-			console.log('[Signal] Decrypting PreKeyWhisperMessage (type 3) - this will establish/use a session');
+			logger.info('[Signal] Decrypting PreKeyWhisperMessage (type 3) - this will establish/use a session');
 			plaintext = await sessionCipher.decryptPreKeyWhisperMessage(ctBody, 'binary');
 		} else {
-			console.log('[Signal] Decrypting WhisperMessage (type 1) - using existing session');
+			logger.info('[Signal] Decrypting WhisperMessage (type 1) - using existing session');
 			plaintext = await sessionCipher.decryptWhisperMessage(ctBody, 'binary');
 		}
-		console.log('[Signal] Decryption successful, plaintext length:', plaintext.byteLength);
+		logger.info('[Signal] Decryption successful, plaintext length:', plaintext.byteLength);
 	} catch (error) {
-		console.error('[Signal] Decryption error details:', {
+		logger.error('[Signal] Decryption error details:', {
 			error,
 			senderId,
 			messageType: ctType,
@@ -599,12 +598,12 @@ export async function clearSignalState(userId: string): Promise<void> {
 		request.onerror = () => reject(request.error);
 		
 		request.onsuccess = () => {
-			console.log(`[Signal] Deleted database ${dbName}`);
+			logger.info(`[Signal] Deleted database ${dbName}`);
 			resolve();
 		};
 		
 		request.onblocked = () => {
-			console.warn(`[Signal] Database ${dbName} deletion blocked - this can happen if other tabs are open`);
+			logger.warning(`[Signal] Database ${dbName} deletion blocked - this can happen if other tabs are open`);
 			// Resolve anyway - the database will be deleted once other connections close
 			// This prevents the Promise from hanging indefinitely
 			resolve();
@@ -715,7 +714,7 @@ export async function importSignalKeys(userId: string, keySet: any): Promise<voi
 		});
 	}
 
-	console.log('[Signal] Successfully imported keys from backend');
+	logger.info('[Signal] Successfully imported keys from backend');
 }
 
 /**
@@ -730,18 +729,18 @@ export async function initSignalWithRestore(
 	deviceId: string,
 	apiBase: string
 ): Promise<boolean> {
-	console.log('[Signal] Initializing with restore for userId:', userId);
+	logger.info('[Signal] Initializing with restore for userId:', userId);
 
 	await initSignal(userId);
 
 	// ALWAYS check backend first to ensure consistency across tabs/devices
-	console.log('[Signal] Checking backend for authoritative keys...');
+	logger.info('[Signal] Checking backend for authoritative keys...');
 	try {
 		const { authService } = await import('$lib/services/auth.service');
 		const keySet = await authService.fetchSignalKeys();
 
 		if (keySet) {
-			console.log('[Signal] Found keys on backend, clearing local storage and restoring...');
+			logger.info('[Signal] Found keys on backend, clearing local storage and restoring...');
 			
 			// Clear local IndexedDB to ensure we start fresh with backend keys
 			await clearSignalState(userId);
@@ -751,48 +750,48 @@ export async function initSignalWithRestore(
 			
 			// Import backend keys
 			await importSignalKeys(userId, keySet);
-			console.log('[Signal] Successfully restored keys from backend');
+			logger.info('[Signal] Successfully restored keys from backend');
 			
 			// Re-initialize the store to load the imported keys into memory cache
 			store = null;
 			initialized = false;
 			await initSignal(userId);
-			console.log('[Signal] Store reinitialized with restored keys');
+			logger.info('[Signal] Store reinitialized with restored keys');
 			
 			return true;
 		}
 
 		// No keys on backend - check if we have local keys as fallback
-		console.log('[Signal] No keys on backend, checking local storage...');
+		logger.info('[Signal] No keys on backend, checking local storage...');
 		const hasKeys = await hasLocalKeys(userId);
 		
 		if (hasKeys) {
-			console.log('[Signal] Found local keys, backing them up to backend...');
+			logger.info('[Signal] Found local keys, backing them up to backend...');
 			// We have local keys but backend doesn't - back them up
 			const existingKeySet = await exportSignalKeys(userId);
 			await authService.storeSignalKeys(deviceId, existingKeySet);
-			console.log('[Signal] Successfully backed up local keys to backend');
+			logger.info('[Signal] Successfully backed up local keys to backend');
 			return true;
 		}
 
 		// No keys anywhere, generate new keys
-		console.log('[Signal] No keys found anywhere, generating new keys...');
+		logger.info('[Signal] No keys found anywhere, generating new keys...');
 		await generateAndPublishIdentity(apiBase, userId, deviceId);
 
 		// Export and store the newly generated keys on backend
-		console.log('[Signal] Backing up newly generated keys to backend...');
+		logger.info('[Signal] Backing up newly generated keys to backend...');
 		const newKeySet = await exportSignalKeys(userId);
 		await authService.storeSignalKeys(deviceId, newKeySet);
-		console.log('[Signal] Successfully backed up keys to backend');
+		logger.info('[Signal] Successfully backed up keys to backend');
 
 		return true;
 	} catch (error) {
-		console.error('[Signal] Error during key initialization/restore:', error);
+		logger.error('[Signal] Error during key initialization/restore:', error);
 		
 		// Fallback: check if we have local keys we can use
 		const hasKeys = await hasLocalKeys(userId);
 		if (hasKeys) {
-			console.warn('[Signal] Backend fetch failed, using local keys as fallback');
+			logger.warning('[Signal] Backend fetch failed, using local keys as fallback');
 			return true;
 		}
 		
@@ -810,12 +809,12 @@ export async function removeSessionWith(
 ): Promise<void> {
 	await initSignal(currentUserId_param);
 	if (!store) {
-		console.warn('[Signal] No store found for user');
+		logger.warning('[Signal] No store found for user');
 		return;
 	}
 
 	await store.removeAllSessions(targetUserId);
-	console.log(`[Signal] Removed all sessions with user ${targetUserId}`);
+	logger.info(`[Signal] Removed all sessions with user ${targetUserId}`);
 }
 
 export default {

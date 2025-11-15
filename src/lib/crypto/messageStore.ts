@@ -14,6 +14,7 @@
  */
 
 import type { Message } from '$lib/types';
+import { logger } from '$lib/services/dev-logger';
 
 class LocalMessageStore {
 	private dbName: string;
@@ -241,7 +242,7 @@ export function getMessageStore(userId: string): LocalMessageStore {
 export async function clearAllLocalMessages(userId: string): Promise<void> {
 	const store = getMessageStore(userId);
 	await store.clearAll();
-	console.log(`[MessageStore] Cleared all local messages for user ${userId}`);
+	logger.info(`[MessageStore] Cleared all local messages for user ${userId}`);
 }
 
 /**
@@ -254,11 +255,11 @@ export async function deleteMessageDatabase(userId: string): Promise<void> {
 		const request = indexedDB.deleteDatabase(dbName);
 		request.onerror = () => reject(request.error);
 		request.onsuccess = () => {
-			console.log(`[MessageStore] Deleted database ${dbName}`);
+			logger.info(`[MessageStore] Deleted database ${dbName}`);
 			resolve();
 		};
 		request.onblocked = () => {
-			console.warn(`[MessageStore] Database ${dbName} deletion blocked - close all tabs`);
+			logger.warning(`[MessageStore] Database ${dbName} deletion blocked - close all tabs`);
 		};
 	});
 }

@@ -9,6 +9,7 @@ import type {
 	ReceiveMessagePayload,
 	TypingPayload
 } from '$lib/types';
+import { logger } from './dev-logger';
 
 class WebSocketService {
 	private socket: Socket | null = null;
@@ -46,7 +47,7 @@ class WebSocketService {
 			});
 
 		this.socket.on('connect', () => {
-			console.log('[WebSocket] Connected to server, socket ID:', this.socket?.id);
+			logger.info('[WebSocket] Connected to server, socket ID:', this.socket?.id || 'unknown');
 			this.notifyStatus('connected');
 
 			// Clear any pending reconnect timer
@@ -60,12 +61,12 @@ class WebSocketService {
 			// No need to emit 'identify' event anymore
 		});
 		this.socket.on('disconnect', () => {
-			console.log('[WebSocket] Disconnected from server');
+			logger.info('[WebSocket] Disconnected from server');
 			this.notifyStatus('disconnected');
 		});			this.socket.on('connect_error', (error) => {
 				// Socket.IO may surface Error objects or plain strings; prefer a concise message
 				const msg = error instanceof Error ? error.message : String(error);
-				console.warn('Socket.IO connection error:', msg);
+				logger.warning('Socket.IO connection error:', msg);
 			});
 
 			this.socket.on('reconnect_attempt', () => {
@@ -85,23 +86,23 @@ class WebSocketService {
 				content: String(data.content ?? data.message ?? ''),
 				timestamp: String(data.timestamp ?? data.createdAt ?? new Date().toISOString()),
 				read: Boolean(data.read ?? data.isRead ?? false),
-				createdAt: data.createdAt as string | undefined,
-				updatedAt: data.updatedAt as string | undefined
-			} as Message;
+			createdAt: data.createdAt as string | undefined,
+			updatedAt: data.updatedAt as string | undefined
+		} as Message;
 
-			console.log('[WebSocket] Received message:', {
-				_id: normalized._id,
-				senderId: normalized.senderId,
-				receiverId: normalized.receiverId,
-				contentLength: normalized.content?.length || 0
-			});
+		logger.request('[WebSocket] Received message:', {
+			_id: normalized._id,
+			senderId: normalized.senderId,
+			receiverId: normalized.receiverId,
+			contentLength: String(normalized.content?.length || 0)
+		});
 
-			// Pass message to callbacks (component will handle decryption with currentUserId)
+		// Pass message to callbacks (component will handle decryption with currentUserId)
 			this.messageCallbacks.forEach((callback) => {
 				try {
 					callback(normalized);
 				} catch (error) {
-					console.error('Error in message callback:', error);
+					logger.error('Error in message callback:', error);
 				}
 			});
 		});			// Listen for typing indicators
@@ -111,12 +112,12 @@ class WebSocketService {
 					try {
 						callback(String(d.userId ?? ''), Boolean(d.isTyping ?? false));
 					} catch (error) {
-						console.error('Error in typing callback:', error);
+						logger.error('Error in typing callback:', error);
 					}
 				});
 			});
 		} catch (error) {
-			console.error('Failed to connect Socket.IO:', error);
+			logger.error('Failed to connect Socket.IO:', error);
 		}
 	}
 
@@ -156,7 +157,7 @@ class WebSocketService {
 			const msgContent = String(m.content ?? m.message ?? '');
 
 			if (!msgContent || typeof msgContent !== 'string' || msgContent.trim().length === 0) {
-				console.error('Failed to send message: Invalid message content (empty or non-string)');
+				logger.error('Failed to send message: Invalid message content (empty or non-string)');
 				return;
 			}
 
@@ -175,12 +176,12 @@ class WebSocketService {
 				},
 				(response: { ok: boolean; id?: string; error?: string }) => {
 					if (!response.ok) {
-						console.error('Failed to send message:', response.error);
+						logger.error('Failed to send message:', response.error);
 					}
 				}
 			);
 		} else {
-			console.error('Socket.IO is not connected');
+			logger.error('Socket.IO is not connected');
 		}
 	}
 
@@ -201,7 +202,7 @@ class WebSocketService {
 			try {
 				callback(status);
 			} catch (error) {
-				console.error('Error in status callback:', error);
+				logger.error('Error in status callback:', error);
 			}
 		});
 	}

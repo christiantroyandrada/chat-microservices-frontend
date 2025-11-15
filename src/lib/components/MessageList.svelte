@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Message } from '$lib/types';
 	import { onMount, tick } from 'svelte';
+	import { logger } from '$lib/services/dev-logger';
 
 	// Use Svelte 5 runes props API instead of `export let` in runes mode
 	let {
@@ -128,7 +129,7 @@
 					});
 				}
 			}
-			console.debug(
+			logger.debug(
 				'[MessageList] scrollToLatest performed, behavior=',
 				options?.behavior ?? 'auto'
 			);

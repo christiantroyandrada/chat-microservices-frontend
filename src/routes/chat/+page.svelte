@@ -10,6 +10,7 @@
 	import { wsService } from '$lib/services/websocket.service';
 	import { sanitizeMessage } from '$lib/utils';
 	import { initSignalWithRestore } from '$lib/crypto/signal';
+	import { logger } from '$lib/services/dev-logger';
 	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
 
 	import ChatList from '$lib/components/ChatList.svelte';
@@ -64,14 +65,14 @@
 			initSignalWithRestore(userId, deviceId, apiBase)
 				.then(success => {
 					if (success) {
-						console.log('[Chat] Signal Protocol initialized successfully');
+						logger.success('[Chat] Signal Protocol initialized successfully');
 					} else {
-						console.warn('[Chat] Signal Protocol initialization failed');
+						logger.warning('[Chat] Signal Protocol initialization failed');
 						toastStore.warning('Encryption setup incomplete. Messages may not be encrypted.');
 					}
 				})
 				.catch(err => {
-					console.error('[Chat] Signal Protocol initialization error:', err);
+					logger.error('[Chat] Signal Protocol initialization error:', err);
 				});
 		}
 
@@ -178,12 +179,12 @@
 	}
 
 	async function handleIncomingMessage(message: Message) {
-		console.log('[Chat] handleIncomingMessage called:', {
+		logger.debug('[Chat] handleIncomingMessage called:', {
 			_id: message._id,
 			senderId: message.senderId,
 			receiverId: message.receiverId,
-			contentLength: message.content?.length || 0,
-			currentUser: $user?._id
+			contentLength: String(message.content?.length || 0),
+			currentUser: String($user?._id || '')
 		});
 
 		// Decrypt message content if encrypted
@@ -192,17 +193,17 @@
 		try {
 			const parsed = JSON.parse(message.content);
 			if (parsed && parsed.__encrypted && $user) {
-				console.log('[Chat] Message is encrypted, attempting decryption...');
+				logger.info('[Chat] Message is encrypted, attempting decryption...');
 				const currentUserId = $user._id as string;
 				const { decryptMessage } = await import('$lib/crypto/signal');
 				const ctObj = { type: parsed.type, body: parsed.body };
 				displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
 				// Update the message object with decrypted content
 				message.content = displayContent;
-				console.log('[Chat] Message decrypted successfully');
+				logger.success('[Chat] Message decrypted successfully');
 			}
 		} catch (decryptError) {
-			console.error('[Chat] Decryption failed:', decryptError);
+			logger.error('[Chat] Decryption failed:', decryptError);
 			decryptionFailed = true;
 			// Show user-friendly error message instead of encrypted JSON
 			message.content = '🔒 [Message could not be decrypted - encryption keys may be out of sync]';
@@ -214,9 +215,9 @@
 				const { getMessageStore } = await import('$lib/crypto/messageStore');
 				const messageStore = getMessageStore($user._id as string);
 				await messageStore.saveMessage(message);
-				console.log('[Chat] Saved incoming message to local storage');
+				logger.info('[Chat] Saved incoming message to local storage');
 			} catch (err) {
-				console.error('[Chat] Failed to save message to local storage:', err);
+				logger.error('[Chat] Failed to save message to local storage:', err);
 			}
 		}
 
