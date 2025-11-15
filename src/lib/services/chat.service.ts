@@ -8,6 +8,7 @@ import {
 } from '$lib/crypto/signal';
 import { getMessageStore } from '$lib/crypto/messageStore';
 import type { Message, SendMessagePayload, ChatConversation, ServerMessage } from '$lib/types';
+import type { EncryptedEnvelope } from '$lib/crypto/types';
 
 /**
  * ServiceResult is imported from central types file.
@@ -45,24 +46,25 @@ export const chatService = {
 		// If we have currentUserId, try to get last message from local storage
 		if (currentUserId) {
 			const messageStore = getMessageStore(currentUserId);
-			
+
 			const conversationsWithLocalMessages = await Promise.all(
 				conversations.map(async (conv) => {
 					// Get the last message from local storage for this conversation
 					const messages = await messageStore.getMessages(conv.userId, currentUserId, 1);
-					
+
 					if (messages.length > 0) {
 						const lastLocalMessage = messages[messages.length - 1];
 						// Use local storage message (already decrypted plaintext)
 						return {
 							...conv,
-							lastMessage: lastLocalMessage.senderId === currentUserId 
-								? `You: ${lastLocalMessage.content}`
-								: lastLocalMessage.content,
+							lastMessage:
+								lastLocalMessage.senderId === currentUserId
+									? `You: ${lastLocalMessage.content}`
+									: lastLocalMessage.content,
 							lastMessageTime: lastLocalMessage.timestamp
 						};
 					}
-					
+
 					// No local messages, return as-is (might be new conversation)
 					return conv;
 				})
@@ -80,7 +82,12 @@ export const chatService = {
 	 * 1. Try to load from local storage first (instant, plaintext)
 	 * 2. If not in cache, fetch from server, decrypt, and store locally
 	 */
-	async getMessages(userId: string, limit = 50, offset = 0, currentUserId?: string): Promise<Message[]> {
+	async getMessages(
+		userId: string,
+		limit = 50,
+		offset = 0,
+		currentUserId?: string
+	): Promise<Message[]> {
 		if (!currentUserId) {
 			throw new Error('currentUserId is required for getMessages');
 		}
@@ -118,7 +125,6 @@ export const chatService = {
 
 				try {
 					// Check if content is an encrypted envelope
-					type EncryptedEnvelope = { __encrypted: boolean; type: number; body: string };
 					let parsed: EncryptedEnvelope | null = null;
 					try {
 						parsed = JSON.parse(msg.content) as EncryptedEnvelope;

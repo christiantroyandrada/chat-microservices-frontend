@@ -10,6 +10,7 @@ import type {
 	ReceiveMessagePayload,
 	TypingPayload
 } from '$lib/types';
+import type { EncryptedEnvelope } from '$lib/crypto/types';
 
 class WebSocketService {
 	private socket: Socket | null = null;
@@ -96,7 +97,6 @@ class WebSocketService {
 					const c = normalized.content;
 					if (!c) return;
 
-					type EncryptedEnvelope = { __encrypted: boolean; type: number; body: string };
 					let parsed: EncryptedEnvelope | null = null;
 					try {
 						parsed = JSON.parse(c) as EncryptedEnvelope;

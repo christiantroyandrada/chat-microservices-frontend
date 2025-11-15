@@ -57,7 +57,7 @@
 					const userId = $user._id as string;
 
 					console.log('[Login] Initializing Signal Protocol for device:', deviceId);
-					
+
 					// Always initialize Signal to load IndexedDB cache for this user
 					await initSignal(userId);
 

@@ -1,6 +1,5 @@
-import { writable, derived, get } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 import { chatService } from '$lib/services/chat.service';
-import { user } from './auth.store';
 import type { ChatConversation, Message, ChatState } from '$lib/types';
 
 const initialState: ChatState = {
