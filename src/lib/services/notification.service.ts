@@ -1,6 +1,7 @@
 import { apiClient } from './api';
 import type { Notification, NotificationPayload } from '$lib/types';
 import { normalizeNotification } from '$lib/utils';
+import { logger } from './dev-logger';
 
 /**
  * Notification service for managing user notifications
@@ -21,7 +22,7 @@ export const notificationService = {
 			// Normalize backend shape to frontend `Notification` type
 			return (raw || []).map((n: unknown, idx: number) => normalizeNotification(n, idx));
 		} catch (err) {
-			console.warn('notificationService.getNotifications failed, returning empty list', err);
+			logger.warning('notificationService.getNotifications failed, returning empty list', err);
 			return [];
 		}
 	},
@@ -34,7 +35,7 @@ export const notificationService = {
 			const response = await apiClient.get<{ count: number }>('/notifications/unread/count');
 			return response.data?.count || 0;
 		} catch (err) {
-			console.warn('notificationService.getUnreadCount failed, returning 0', err);
+			logger.warning('notificationService.getUnreadCount failed, returning 0', err);
 			return 0;
 		}
 	},
@@ -46,7 +47,7 @@ export const notificationService = {
 		try {
 			await apiClient.put(`/notifications/${notificationId}/read`);
 		} catch (err) {
-			console.warn('notificationService.markAsRead failed', err);
+			logger.warning('notificationService.markAsRead failed', err);
 		}
 	},
 
@@ -57,7 +58,7 @@ export const notificationService = {
 		try {
 			await apiClient.put('/notifications/read-all');
 		} catch (err) {
-			console.warn('notificationService.markAllAsRead failed', err);
+			logger.warning('notificationService.markAllAsRead failed', err);
 		}
 	},
 
@@ -68,7 +69,7 @@ export const notificationService = {
 		try {
 			await apiClient.delete(`/notifications/${notificationId}`);
 		} catch (err) {
-			console.warn('notificationService.deleteNotification failed', err);
+			logger.warning('notificationService.deleteNotification failed', err);
 		}
 	},
 
@@ -82,7 +83,7 @@ export const notificationService = {
 			// reuse normalization logic (recreate same inline logic)
 			return normalizeNotification(raw);
 		} catch (err) {
-			console.warn('notificationService.sendNotification failed', err);
+			logger.warning('notificationService.sendNotification failed', err);
 			throw err;
 		}
 	}

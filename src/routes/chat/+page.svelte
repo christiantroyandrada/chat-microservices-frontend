@@ -10,6 +10,7 @@
 	import { wsService } from '$lib/services/websocket.service';
 	import { sanitizeMessage } from '$lib/utils';
 	import { initSignalWithRestore } from '$lib/crypto/signal';
+	import { logger } from '$lib/services/dev-logger';
 	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
 
 	import ChatList from '$lib/components/ChatList.svelte';
@@ -34,7 +35,9 @@
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
 	let unsubscribeWsStatus: (() => void) | null = null;
-	let showSidebar = false;
+
+	// Track if we've done the initial message prefetch to avoid recursion
+	let hasPreloadedMessages = false;
 
 	onMount(async () => {
 		// Check authentication
@@ -46,8 +49,8 @@
 			}
 		}
 
-		// Initialize Signal Protocol keys (non-blocking background task)
-		// This ensures encryption keys are ready before sending/receiving messages
+		// Initialize Signal Protocol keys (MUST complete before loading messages)
+		// This ensures encryption keys are ready before attempting to decrypt any messages
 		if (typeof window !== 'undefined' && $user) {
 			const userId = $user._id as string;
 			let deviceId: string = localStorage.getItem('deviceId') ?? '';
@@ -59,20 +62,23 @@
 				localStorage.setItem('deviceId', deviceId);
 			}
 			const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
-			
-			// Initialize in background - don't block page load
-			initSignalWithRestore(userId, deviceId, apiBase)
-				.then(success => {
-					if (success) {
-						console.log('[Chat] Signal Protocol initialized successfully');
-					} else {
-						console.warn('[Chat] Signal Protocol initialization failed');
-						toastStore.warning('Encryption setup incomplete. Messages may not be encrypted.');
-					}
-				})
-				.catch(err => {
-					console.error('[Chat] Signal Protocol initialization error:', err);
-				});
+
+			// AWAIT initialization to prevent race conditions with message decryption
+			// NOTE: No encryption password provided - keys will NOT be backed up to server
+			// For production: prompt user for encryption password to enable secure cloud backup
+			try {
+				const success = await initSignalWithRestore(userId, deviceId, apiBase, undefined);
+				if (success) {
+					logger.success('[Chat] Signal Protocol initialized successfully');
+					logger.info('[Chat] Key backup disabled - no encryption password provided');
+				} else {
+					logger.warning('[Chat] Signal Protocol initialization failed');
+					toastStore.warning('Encryption setup incomplete. Messages may not be encrypted.');
+				}
+			} catch (err) {
+				logger.error('[Chat] Signal Protocol initialization error:', err);
+				toastStore.error('Failed to initialize encryption');
+			}
 		}
 
 		// Connect WebSocket (auth handled via httpOnly cookie)
@@ -83,7 +89,7 @@
 		unsubscribeWsTyping = wsService.onTyping(handleTypingIndicator);
 		unsubscribeWsStatus = wsService.onStatusChange(handleConnectionStatus);
 
-		// Load initial data
+		// Load initial data (Signal Protocol is now ready for decryption)
 		await loadConversations();
 		await notificationStore.fetch();
 	});
@@ -101,7 +107,38 @@
 		loading.conversations = true;
 		try {
 			const currentUserId = $user?._id as string | undefined;
-			conversations = await chatService.getConversations(currentUserId);
+			const loadedConversations = await chatService.getConversations(currentUserId);
+			
+			// Normalize unreadCount to ensure it's always a number
+			conversations = loadedConversations.map(conv => ({
+				...conv,
+				unreadCount: Number(conv.unreadCount || 0)
+			}));
+
+			// Proactively fetch the latest message for each conversation to populate
+			// local storage with decrypted content. This ensures conversation previews
+			// show the correct decrypted message on first load (e.g., after User B logs in).
+			// Only do this once on initial load to avoid infinite recursion.
+			if (currentUserId && conversations.length > 0 && !hasPreloadedMessages) {
+				hasPreloadedMessages = true;
+
+				// Fetch messages in background (don't await, don't block UI)
+				void Promise.all(
+					conversations.map(async (conv) => {
+						try {
+							// Fetch just 1 latest message to decrypt and cache it
+							await chatService.getMessages(conv.userId, 1, 0, currentUserId);
+						} catch (err) {
+							// Silently fail - non-critical background operation
+							logger.warning(`[Chat] Failed to prefetch messages for ${conv.userId}:`, err);
+						}
+					})
+				).then(() => {
+					// After all messages are fetched and decrypted, reload conversations
+					// to pick up the decrypted previews from local storage
+					void loadConversations();
+				});
+			}
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to load conversations';
 			toastStore.error(message);
@@ -117,11 +154,20 @@
 		selectedConversation = conversation;
 		loading.messages = true;
 
+		// Immediately reset unread count for this conversation
+		conversations = conversations.map(c => 
+			c.userId === userId ? { ...c, unreadCount: 0 } : c
+		);
+
 		const currentUserId = $user._id as string;
 
 		try {
 			messages = await chatService.getMessages(userId, 50, 0, currentUserId);
 			await chatService.markAsRead(userId);
+
+			// After loading and decrypting messages, refresh conversation list
+			// to update the preview with the latest decrypted message from local storage
+			await loadConversations();
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to load messages';
 			toastStore.error(message);
@@ -178,12 +224,12 @@
 	}
 
 	async function handleIncomingMessage(message: Message) {
-		console.log('[Chat] handleIncomingMessage called:', {
+		logger.debug('[Chat] handleIncomingMessage called:', {
 			_id: message._id,
 			senderId: message.senderId,
 			receiverId: message.receiverId,
-			contentLength: message.content?.length || 0,
-			currentUser: $user?._id
+			contentLength: String(message.content?.length || 0),
+			currentUser: String($user?._id || '')
 		});
 
 		// Decrypt message content if encrypted
@@ -192,17 +238,17 @@
 		try {
 			const parsed = JSON.parse(message.content);
 			if (parsed && parsed.__encrypted && $user) {
-				console.log('[Chat] Message is encrypted, attempting decryption...');
+				logger.info('[Chat] Message is encrypted, attempting decryption...');
 				const currentUserId = $user._id as string;
 				const { decryptMessage } = await import('$lib/crypto/signal');
 				const ctObj = { type: parsed.type, body: parsed.body };
 				displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
 				// Update the message object with decrypted content
 				message.content = displayContent;
-				console.log('[Chat] Message decrypted successfully');
+				logger.success('[Chat] Message decrypted successfully');
 			}
 		} catch (decryptError) {
-			console.error('[Chat] Decryption failed:', decryptError);
+			logger.error('[Chat] Decryption failed:', decryptError);
 			decryptionFailed = true;
 			// Show user-friendly error message instead of encrypted JSON
 			message.content = '🔒 [Message could not be decrypted - encryption keys may be out of sync]';
@@ -214,9 +260,9 @@
 				const { getMessageStore } = await import('$lib/crypto/messageStore');
 				const messageStore = getMessageStore($user._id as string);
 				await messageStore.saveMessage(message);
-				console.log('[Chat] Saved incoming message to local storage');
+				logger.info('[Chat] Saved incoming message to local storage');
 			} catch (err) {
-				console.error('[Chat] Failed to save message to local storage:', err);
+				logger.error('[Chat] Failed to save message to local storage:', err);
 			}
 		}
 
@@ -247,13 +293,15 @@
 							lastMessage: displayContent,
 							lastMessageTime: message.timestamp,
 							unreadCount:
-								selectedConversation?.userId !== message.senderId ? (c.unreadCount || 0) + 1 : 0
+								selectedConversation?.userId !== message.senderId 
+									? Number(c.unreadCount || 0) + 1 
+									: 0
 						}
 					: c
 			);
 		} else {
-			// New conversation
-			void loadConversations();
+			// New conversation - reload the full list from server and local storage
+			await loadConversations();
 		}
 
 		// Show notification with decrypted content
@@ -339,22 +387,7 @@
 	<nav class="glass-strong border-b" style="border-color: var(--border-subtle);">
 		<div class="flex items-center justify-between px-6 py-4">
 			<div class="flex items-center gap-4">
-				<!-- Mobile: toggle sidebar -->
-				<button
-					class="hover-lift inline-flex items-center justify-center rounded-lg p-2 transition-all duration-200 md:hidden"
-					style="color: var(--text-secondary);"
-					onclick={() => (showSidebar = !showSidebar)}
-					aria-label="Toggle conversations"
-				>
-					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M4 6h16M4 12h16M4 18h16"
-						/>
-					</svg>
-				</button>
+				<!-- Mobile: conversations are shown as the default initial view (no sidebar toggle) -->
 				<div class="flex items-center gap-3">
 					<div
 						class="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-purple-600"
@@ -469,60 +502,9 @@
 		</div>
 	</nav>
 
-	<!-- Main Chat Interface with Modern Design -->
+	<!-- Main Chat Interface with Modern Design (sidebar removed) -->
 	<div class="flex flex-1 overflow-hidden">
-		<!-- Sidebar - Conversations List (desktop) with glass effect -->
-		<div
-			class="hidden w-80 shrink-0 md:block"
-			style="background: var(--bg-secondary); border-right: 1px solid var(--border-subtle);"
-		>
-			<ChatList
-				{conversations}
-				selectedUserId={selectedConversation?.userId || null}
-				currentUserId={$user?._id || null}
-				currentUsername={$user?.username || ''}
-				loading={loading.conversations}
-				on:select={(e) => selectConversation(e.detail)}
-				on:create={(e) => createConversation(e.detail)}
-			/>
-		</div>
-
-		<!-- Mobile sidebar overlay with modern backdrop -->
-		{#if showSidebar}
-			<div class="fixed inset-0 z-40 flex md:hidden">
-				<!-- Modern Backdrop -->
-				<button
-					class="absolute inset-0 transition-all duration-300"
-					style="background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px);"
-					aria-hidden="true"
-					onclick={() => (showSidebar = false)}
-				></button>
-				<!-- Sliding Panel with animation -->
-				<div
-					class="glass-strong animate-slide-in relative z-50 w-80 max-w-full"
-					style="box-shadow: var(--shadow-strong);"
-				>
-					<ChatList
-						{conversations}
-						selectedUserId={selectedConversation?.userId || null}
-						currentUserId={$user?._id || null}
-						currentUsername={$user?.username || ''}
-						loading={loading.conversations}
-						onClose={() => (showSidebar = false)}
-						on:select={(e) => {
-							selectConversation(e.detail);
-							showSidebar = false;
-						}}
-						on:create={(e) => {
-							createConversation(e.detail);
-							showSidebar = false;
-						}}
-					/>
-				</div>
-			</div>
-		{/if}
-
-		<!-- Chat Area with modern styling -->
+		<!-- Primary area: conversation list is the default initial view (full-width). On select, show chat thread. -->
 		<div class="flex flex-1 flex-col" style="background: var(--bg-primary);">
 			{#if selectedConversation}
 				<ChatHeader recipient={selectedConversation} {typingUsers} />
@@ -539,37 +521,19 @@
 					disabled={!wsService.isConnected()}
 				/>
 			{:else}
-				<div
-					class="animate-fade-in flex flex-1 items-center justify-center"
-					style="color: var(--text-secondary);"
-				>
-					<div class="text-center">
-						<div
-							class="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-2xl"
-							style="background: var(--bg-tertiary); border: 1px solid var(--border-subtle);"
-						>
-							<svg
-								class="h-12 w-12"
-								style="color: var(--text-tertiary);"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-								/>
-							</svg>
-						</div>
-						<h3 class="mb-2 text-xl font-semibold" style="color: var(--text-primary);">
-							No conversation selected
-						</h3>
-						<p class="text-sm" style="color: var(--text-tertiary);">
-							Choose a conversation from the sidebar to start chatting
-						</p>
-					</div>
+				<!-- Conversation list (full-width) as the default first interaction screen -->
+				<div class="w-full flex-1">
+					<ChatList
+						{conversations}
+						selectedUserId={selectedConversation
+							? (selectedConversation as ChatConversation).userId
+							: null}
+						currentUserId={$user?._id || null}
+						currentUsername={$user?.username || ''}
+						loading={loading.conversations}
+						onSelect={selectConversation}
+						onCreate={createConversation}
+					/>
 				</div>
 			{/if}
 		</div>

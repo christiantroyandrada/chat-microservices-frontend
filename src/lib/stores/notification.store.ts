@@ -2,6 +2,7 @@ import { writable, derived } from 'svelte/store';
 import { notificationService } from '$lib/services/notification.service';
 import { normalizeNotification } from '$lib/utils';
 import type { Notification, NotificationState } from '$lib/types';
+import { logger } from '$lib/services/dev-logger';
 
 const initialState: NotificationState = {
 	notifications: [],
@@ -32,7 +33,7 @@ function createNotificationStore() {
 					loading: false
 				}));
 			} catch (error) {
-				console.error('Failed to fetch notifications:', error);
+				logger.error('Failed to fetch notifications:', error);
 				update((state) => ({ ...state, loading: false }));
 			}
 		},
@@ -68,7 +69,7 @@ function createNotificationStore() {
 					unreadCount: Math.max(0, state.unreadCount - 1)
 				}));
 			} catch (error) {
-				console.error('Failed to mark notification as read:', error);
+				logger.error('Failed to mark notification as read:', error);
 			}
 		},
 
@@ -85,7 +86,7 @@ function createNotificationStore() {
 					unreadCount: 0
 				}));
 			} catch (error) {
-				console.error('Failed to mark all notifications as read:', error);
+				logger.error('Failed to mark all notifications as read:', error);
 			}
 		},
 
@@ -108,7 +109,7 @@ function createNotificationStore() {
 					};
 				});
 			} catch (error) {
-				console.error('Failed to delete notification:', error);
+				logger.error('Failed to delete notification:', error);
 			}
 		},
 
