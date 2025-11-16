@@ -35,7 +35,6 @@
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
 	let unsubscribeWsStatus: (() => void) | null = null;
-	let showSidebar = false;
 
 	onMount(async () => {
 		// Check authentication
@@ -340,22 +339,7 @@
 	<nav class="glass-strong border-b" style="border-color: var(--border-subtle);">
 		<div class="flex items-center justify-between px-6 py-4">
 			<div class="flex items-center gap-4">
-				<!-- Mobile: toggle sidebar -->
-				<button
-					class="hover-lift inline-flex items-center justify-center rounded-lg p-2 transition-all duration-200 md:hidden"
-					style="color: var(--text-secondary);"
-					onclick={() => (showSidebar = !showSidebar)}
-					aria-label="Toggle conversations"
-				>
-					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M4 6h16M4 12h16M4 18h16"
-						/>
-					</svg>
-				</button>
+				<!-- Mobile: conversations are shown as the default initial view (no sidebar toggle) -->
 				<div class="flex items-center gap-3">
 					<div
 						class="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-purple-600"
@@ -470,60 +454,9 @@
 		</div>
 	</nav>
 
-	<!-- Main Chat Interface with Modern Design -->
+	<!-- Main Chat Interface with Modern Design (sidebar removed) -->
 	<div class="flex flex-1 overflow-hidden">
-		<!-- Sidebar - Conversations List (desktop) with glass effect -->
-		<div
-			class="hidden w-80 shrink-0 md:block"
-			style="background: var(--bg-secondary); border-right: 1px solid var(--border-subtle);"
-		>
-			<ChatList
-				{conversations}
-				selectedUserId={selectedConversation?.userId || null}
-				currentUserId={$user?._id || null}
-				currentUsername={$user?.username || ''}
-				loading={loading.conversations}
-				on:select={(e) => selectConversation(e.detail)}
-				on:create={(e) => createConversation(e.detail)}
-			/>
-		</div>
-
-		<!-- Mobile sidebar overlay with modern backdrop -->
-		{#if showSidebar}
-			<div class="fixed inset-0 z-40 flex md:hidden">
-				<!-- Modern Backdrop -->
-				<button
-					class="absolute inset-0 transition-all duration-300"
-					style="background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px);"
-					aria-hidden="true"
-					onclick={() => (showSidebar = false)}
-				></button>
-				<!-- Sliding Panel with animation -->
-				<div
-					class="glass-strong animate-slide-in relative z-50 w-80 max-w-full"
-					style="box-shadow: var(--shadow-strong);"
-				>
-					<ChatList
-						{conversations}
-						selectedUserId={selectedConversation?.userId || null}
-						currentUserId={$user?._id || null}
-						currentUsername={$user?.username || ''}
-						loading={loading.conversations}
-						onClose={() => (showSidebar = false)}
-						on:select={(e) => {
-							selectConversation(e.detail);
-							showSidebar = false;
-						}}
-						on:create={(e) => {
-							createConversation(e.detail);
-							showSidebar = false;
-						}}
-					/>
-				</div>
-			</div>
-		{/if}
-
-		<!-- Chat Area with modern styling -->
+		<!-- Primary area: conversation list is the default initial view (full-width). On select, show chat thread. -->
 		<div class="flex flex-1 flex-col" style="background: var(--bg-primary);">
 			{#if selectedConversation}
 				<ChatHeader recipient={selectedConversation} {typingUsers} />
@@ -540,38 +473,17 @@
 					disabled={!wsService.isConnected()}
 				/>
 			{:else}
-				<div
-					class="animate-fade-in flex flex-1 items-center justify-center"
-					style="color: var(--text-secondary);"
-				>
-					<div class="text-center">
-						<div
-							class="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-2xl"
-							style="background: var(--bg-tertiary); border: 1px solid var(--border-subtle);"
-						>
-							<svg
-								class="h-12 w-12"
-								style="color: var(--text-tertiary);"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-								/>
-							</svg>
-						</div>
-						<h3 class="mb-2 text-xl font-semibold" style="color: var(--text-primary);">
-							No conversation selected
-						</h3>
-						<p class="text-sm" style="color: var(--text-tertiary);">
-							Choose a conversation from the sidebar to start chatting
-						</p>
-					</div>
-				</div>
+				<!-- Conversation list (full-width) as the default first interaction screen -->
+				<ChatList
+					class="w-full flex-1"
+					{conversations}
+					selectedUserId={selectedConversation?.userId || null}
+					currentUserId={$user?._id || null}
+					currentUsername={$user?.username || ''}
+					loading={loading.conversations}
+					on:select={(e) => selectConversation(e.detail)}
+					on:create={(e) => createConversation(e.detail)}
+				/>
 			{/if}
 		</div>
 	</div>
