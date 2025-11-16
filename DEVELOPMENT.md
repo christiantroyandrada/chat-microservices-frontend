@@ -1,5 +1,38 @@
 # Chat Application - Development Guide
 
+## 🤖 Development Philosophy
+
+This project follows a **hybrid AI-assisted development approach** where human expertise and AI capabilities work in synergy:
+
+### Division of Labor
+
+**👨‍💻 Developer's Primary Role:**
+- **System Architecture Design**: Designing the overall application architecture, component hierarchy, and data flow patterns
+- **Code Review & Guidance**: Ensuring AI-generated code follows best practices, security standards, and performance optimization
+- **Strategic Direction**: Defining feature requirements, user experience goals, and technical roadmap
+- **Quality Assurance**: Validating implementations meet production standards and business requirements
+
+**🤖 AI's Primary Role:**
+- **Code Scaffolding**: Generating components, services, stores, and TypeScript types
+- **Code Integration**: Integrating complex libraries (Signal Protocol, Socket.IO, WebSocket management)
+- **Local Deployment**: Setting up development environments, build pipelines, and testing frameworks
+- **Troubleshooting**: Debugging issues, analyzing error logs, and implementing fixes
+- **Documentation**: Creating detailed documentation and developer guides
+
+### Best Practices Guidance
+
+The AI is guided by the developer to follow:
+- Modern Svelte/SvelteKit patterns and reactive programming
+- Type-safe development with TypeScript strict mode
+- Security-first approach (E2EE, authentication, XSS prevention)
+- Clean code principles and component modularity
+- Comprehensive testing strategies
+- Responsive design and accessibility compliance
+
+This **collaborative methodology** leverages the **developer's architectural vision and domain expertise** alongside the **AI's rapid implementation and integration capabilities**, achieving accelerated development while maintaining enterprise-grade quality and security.
+
+---
+
 ## 🎉 Project Overview
 
 Full-featured **real-time chat application** with **end-to-end encryption** built using SvelteKit, TypeScript, and Tailwind CSS. Connects to microservices backend via nginx reverse proxy on port 85.

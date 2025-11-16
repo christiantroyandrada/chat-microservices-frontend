@@ -2,6 +2,37 @@
 
 Modern, responsive real-time chat application built with SvelteKit, TypeScript, and Tailwind CSS. Features end-to-end encryption using the Signal Protocol for secure messaging.
 
+## 🤖 Development Philosophy
+
+This project follows a **hybrid AI-assisted development approach** where human expertise and AI capabilities work together:
+
+### Division of Labor
+
+**👨‍💻 Developer's Primary Role:**
+- **System Architecture Design**: Designing the frontend architecture, component structure, and state management patterns
+- **Code Review & Guidance**: Reviewing AI-generated code for correctness, performance, and adherence to best practices
+- **Strategic Direction**: Defining UI/UX requirements, features, and technical direction
+- **Quality Assurance**: Ensuring code meets production standards, accessibility requirements, and user experience goals
+
+**🤖 AI's Primary Role:**
+- **Code Scaffolding**: Generating Svelte components, TypeScript types, and project structure
+- **Code Integration**: Integrating libraries (Signal Protocol, Socket.IO, Tailwind CSS)
+- **Local Deployment**: Setting up development environments, build configurations, and deployment scripts
+- **Troubleshooting**: Debugging frontend issues, WebSocket connections, and encryption logic
+- **Documentation**: Creating and maintaining comprehensive documentation
+
+### Best Practices Guidance
+
+The AI tool is guided by the developer to follow:
+- Svelte/SvelteKit best practices and reactive patterns
+- TypeScript type safety and strict mode
+- Responsive design and accessibility standards
+- Security-first frontend development (XSS prevention, secure authentication)
+- Component reusability and modularity
+- Comprehensive testing (unit tests with Vitest, E2E with Playwright)
+
+This collaborative approach combines the **strategic thinking and UX expertise of human developers** with the **rapid scaffolding and implementation capabilities of AI**, resulting in faster development cycles while maintaining high code quality and user experience standards.
+
 ## ✨ Features
 
 - 🔐 **End-to-End Encryption**: Signal Protocol implementation for secure messaging
