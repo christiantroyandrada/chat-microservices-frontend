@@ -474,16 +474,17 @@
 				/>
 			{:else}
 				<!-- Conversation list (full-width) as the default first interaction screen -->
-				<ChatList
-					class="w-full flex-1"
-					{conversations}
-					selectedUserId={selectedConversation?.userId || null}
-					currentUserId={$user?._id || null}
-					currentUsername={$user?.username || ''}
-					loading={loading.conversations}
-					on:select={(e) => selectConversation(e.detail)}
-					on:create={(e) => createConversation(e.detail)}
-				/>
+				<div class="w-full flex-1">
+					<ChatList
+						{conversations}
+						selectedUserId={selectedConversation ? (selectedConversation as ChatConversation).userId : null}
+						currentUserId={$user?._id || null}
+						currentUsername={$user?.username || ''}
+						loading={loading.conversations}
+						onSelect={selectConversation}
+						onCreate={createConversation}
+					/>
+				</div>
 			{/if}
 		</div>
 	</div>

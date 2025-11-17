@@ -1,24 +1,20 @@
 <script lang="ts">
 	import type { ChatConversation } from '$lib/types';
-	import { createEventDispatcher } from 'svelte';
 	import { chatService } from '$lib/services/chat.service';
 	import { debounce } from '$lib/utils';
 	import { toastStore } from '$lib/stores/toast.store';
 
-	// Props for runes mode
+	// Props for runes mode - using callback props instead of createEventDispatcher (Svelte 5)
 	let {
 		conversations = [] as ChatConversation[],
 		selectedUserId = null as string | null,
 		loading = false,
 		currentUserId = null as string | null,
 		currentUsername = '' as string,
-		onClose = null as (() => void) | null
+		onClose = null as (() => void) | null,
+		onSelect = null as ((userId: string) => void) | null,
+		onCreate = null as ((conversation: ChatConversation) => void) | null
 	} = $props();
-
-	const dispatch = createEventDispatcher<{
-		select: string;
-		create: ChatConversation;
-	}>();
 
 	// Create-conversation UI state (runes)
 	let showCreate = $state(false);
@@ -73,8 +69,8 @@
 
 	function confirmCreate() {
 		if (!selectedUser) return;
-		// Emit create event with the selected user; parent will handle selecting/creating the thread
-		dispatch('create', selectedUser);
+		// Call onCreate callback prop instead of dispatching event (Svelte 5)
+		onCreate?.(selectedUser);
 		closeCreate();
 	}
 
@@ -228,7 +224,7 @@
 				{#each conversations as conversation (conversation.userId)}
 					<li class="conversation-item" role="listitem">
 						<button
-							onclick={() => dispatch('select', conversation.userId)}
+							onclick={() => onSelect?.(conversation.userId)}
 							aria-label="Chat with {conversation.username}{conversation.unreadCount
 								? `, ${conversation.unreadCount} unread messages`
 								: ''}"
