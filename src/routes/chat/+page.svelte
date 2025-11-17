@@ -19,25 +19,29 @@
 	import MessageInput from '$lib/components/MessageInput.svelte';
 	import NotificationModal from '$lib/components/NotificationModal.svelte';
 
-	let conversations: ChatConversation[] = [];
-	let messages: Message[] = [];
-	let selectedConversation: ChatConversation | null = null;
-	let typingUsers = new Set<string>();
-	let loading = {
+	let conversations: ChatConversation[] = $state([]);
+	let messages: Message[] = $state([]);
+	let selectedConversation: ChatConversation | null = $state(null);
+	let typingUsers = $state(new Set<string>());
+	let loading = $state({
 		conversations: false,
 		messages: false
-	};
-	let showNotificationModal = false;
+	});
+	let showNotificationModal = $state(false);
 
 	// Strongly-typed reference to MessageList component for programmatic scrolling
-	let messageListComponent: MessageListHandle | null = null;
+	let messageListComponent: MessageListHandle | null = $state(null);
 
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
 	let unsubscribeWsStatus: (() => void) | null = null;
+	let unsubscribeWsPresence: (() => void) | null = null;
 
 	// Track if we've done the initial message prefetch to avoid recursion
 	let hasPreloadedMessages = false;
+
+	// Store presence updates that arrive before conversations are loaded
+	const pendingPresenceUpdates = new Map<string, { online: boolean; lastSeen?: string }>();
 
 	onMount(async () => {
 		// Check authentication
@@ -88,6 +92,7 @@
 		unsubscribeWsMessage = wsService.onMessage(handleIncomingMessage);
 		unsubscribeWsTyping = wsService.onTyping(handleTypingIndicator);
 		unsubscribeWsStatus = wsService.onStatusChange(handleConnectionStatus);
+		unsubscribeWsPresence = wsService.onPresence(handlePresenceUpdate);
 
 		// Load initial data (Signal Protocol is now ready for decryption)
 		await loadConversations();
@@ -99,6 +104,7 @@
 		if (unsubscribeWsMessage) unsubscribeWsMessage();
 		if (unsubscribeWsTyping) unsubscribeWsTyping();
 		if (unsubscribeWsStatus) unsubscribeWsStatus();
+		if (unsubscribeWsPresence) unsubscribeWsPresence();
 
 		wsService.disconnect();
 	});
@@ -108,12 +114,44 @@
 		try {
 			const currentUserId = $user?._id as string | undefined;
 			const loadedConversations = await chatService.getConversations(currentUserId);
-			
-			// Normalize unreadCount to ensure it's always a number
-			conversations = loadedConversations.map(conv => ({
-				...conv,
-				unreadCount: Number(conv.unreadCount || 0)
-			}));
+
+			// Preserve existing presence data (online/lastSeen) from WebSocket updates
+			// Server doesn't send presence data, only WebSocket events do
+			const presenceMap = new Map<string, { online?: boolean; lastSeen?: string }>();
+			conversations.forEach((conv) => {
+				if (conv.online !== undefined || conv.lastSeen !== undefined) {
+					presenceMap.set(conv.userId, {
+						online: conv.online,
+						lastSeen: conv.lastSeen
+					});
+				}
+			});
+
+			// Normalize unreadCount to ensure it's always a number and merge presence data
+			conversations = loadedConversations.map((conv) => {
+				const existingPresence = presenceMap.get(conv.userId);
+				return {
+					...conv,
+					unreadCount: Number(conv.unreadCount || 0),
+					// Restore presence data from before the reload
+					...(existingPresence && existingPresence)
+				};
+			});
+
+			// Apply any pending presence updates that arrived before conversations loaded
+			if (pendingPresenceUpdates.size > 0) {
+				logger.debug(
+					'[Chat] Applying pending presence updates',
+					Array.from(pendingPresenceUpdates.entries())
+				);
+				conversations = conversations.map((conv) => {
+					const presenceData = pendingPresenceUpdates.get(conv.userId);
+					if (presenceData) {
+						return { ...conv, ...presenceData };
+					}
+					return conv;
+				});
+			}
 
 			// Proactively fetch the latest message for each conversation to populate
 			// local storage with decrypted content. This ensures conversation previews
@@ -155,9 +193,7 @@
 		loading.messages = true;
 
 		// Immediately reset unread count for this conversation
-		conversations = conversations.map(c => 
-			c.userId === userId ? { ...c, unreadCount: 0 } : c
-		);
+		conversations = conversations.map((c) => (c.userId === userId ? { ...c, unreadCount: 0 } : c));
 
 		const currentUserId = $user._id as string;
 
@@ -168,6 +204,13 @@
 			// After loading and decrypting messages, refresh conversation list
 			// to update the preview with the latest decrypted message from local storage
 			await loadConversations();
+
+			// Update selectedConversation reference to point to the refreshed object
+			// This ensures presence data from WebSocket is preserved
+			const refreshedConversation = conversations.find((c) => c.userId === userId);
+			if (refreshedConversation) {
+				selectedConversation = refreshedConversation;
+			}
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to load messages';
 			toastStore.error(message);
@@ -234,7 +277,7 @@
 
 		// Decrypt message content if encrypted
 		let displayContent = message.content;
-		let decryptionFailed = false;
+		let _decryptionFailed = false;
 		try {
 			const parsed = JSON.parse(message.content);
 			if (parsed && parsed.__encrypted && $user) {
@@ -249,7 +292,7 @@
 			}
 		} catch (decryptError) {
 			logger.error('[Chat] Decryption failed:', decryptError);
-			decryptionFailed = true;
+			_decryptionFailed = true;
 			// Show user-friendly error message instead of encrypted JSON
 			message.content = '🔒 [Message could not be decrypted - encryption keys may be out of sync]';
 		}
@@ -293,8 +336,8 @@
 							lastMessage: displayContent,
 							lastMessageTime: message.timestamp,
 							unreadCount:
-								selectedConversation?.userId !== message.senderId 
-									? Number(c.unreadCount || 0) + 1 
+								selectedConversation?.userId !== message.senderId
+									? Number(c.unreadCount || 0) + 1
 									: 0
 						}
 					: c
@@ -337,6 +380,41 @@
 		if (selectedConversation && wsService.isConnected()) {
 			wsService.sendTyping(selectedConversation.userId, isTyping);
 		}
+	}
+
+	function handleBack() {
+		// Close the active conversation and show the conversation list (mobile behavior)
+		selectedConversation = null;
+		messages = [];
+	}
+
+	function handlePresenceUpdate(userId: string, online: boolean, lastSeen?: string) {
+		// Debug info (uses dev-logger which is a no-op in prod)
+		logger.debug('[Chat] handlePresenceUpdate', { userId, online, lastSeen });
+
+		// Store presence update for later if conversations haven't loaded yet
+		if (conversations.length === 0) {
+			logger.debug('[Chat] Conversations not loaded yet, storing presence update for later');
+			pendingPresenceUpdates.set(userId, { online, lastSeen });
+			return;
+		}
+
+		// Update the conversation's presence status
+		conversations = conversations.map((conv) =>
+			conv.userId === userId ? { ...conv, online, lastSeen } : conv
+		);
+
+		// If the updated user is the currently selected conversation, trigger a re-render
+		if (selectedConversation && selectedConversation.userId === userId) {
+			selectedConversation = { ...selectedConversation, online, lastSeen };
+			logger.debug('[Chat] Updated selectedConversation to:', {
+				userId: selectedConversation.userId,
+				online: selectedConversation.online,
+				lastSeen: selectedConversation.lastSeen
+			});
+		}
+
+		logger.debug('[Chat] Presence updated:', { userId, online, lastSeen });
 	}
 
 	/**
@@ -507,17 +585,23 @@
 		<!-- Primary area: conversation list is the default initial view (full-width). On select, show chat thread. -->
 		<div class="flex flex-1 flex-col" style="background: var(--bg-primary);">
 			{#if selectedConversation}
-				<ChatHeader recipient={selectedConversation} {typingUsers} />
+				<ChatHeader
+					recipient={selectedConversation}
+					isTyping={typingUsers.has(selectedConversation.userId)}
+					back={handleBack}
+				/>
 				<MessageList
 					bind:this={messageListComponent}
 					{messages}
 					currentUserId={$user?._id || ''}
 					loading={loading.messages}
 					conversationId={selectedConversation.userId}
+					{typingUsers}
+					typingUsername={selectedConversation.username}
 				/>
 				<MessageInput
-					on:send={(e) => sendMessage(e.detail)}
-					on:typing={(e) => handleTyping(e.detail)}
+					send={sendMessage}
+					typing={handleTyping}
 					disabled={!wsService.isConnected()}
 				/>
 			{:else}

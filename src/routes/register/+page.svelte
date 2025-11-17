@@ -1,19 +1,34 @@
 <script lang="ts">
 	import { authStore } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
+	import { logger } from '$lib/services/dev-logger';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import type { ApiError } from '$lib/types';
 
-	let username = '';
-	let email = '';
-	let password = '';
-	let confirmPassword = '';
-	let showPassword = false;
-	let showConfirmPassword = false;
-	let loading = false;
-	let error = '';
-	let fieldErrors: Record<string, string> = {};
+	// use Svelte 5 runes for reactive state
+	let username = $state('');
+	let email = $state('');
+	let password = $state('');
+	let confirmPassword = $state('');
+	let showPassword = $state(false);
+	let showConfirmPassword = $state(false);
+	let loading = $state(false);
+	let error = $state('');
+	let fieldErrors = $state<Record<string, string>>({});
+
+	// Password validation state for live feedback (derived runes)
+	const passwordRequirements = $derived.by(() => ({
+		minLength: password.length >= 8,
+		hasUpperCase: /[A-Z]/.test(password),
+		hasLowerCase: /[a-z]/.test(password),
+		hasNumber: /\d/.test(password),
+		hasSpecialChar: /[@$!%*?&]/.test(password)
+	}));
+
+	const passwordStrength = $derived.by(
+		() => Object.values(passwordRequirements).filter(Boolean).length
+	);
 
 	onMount(() => {
 		// Redirect if already authenticated
@@ -26,7 +41,7 @@
 		return unsubscribe;
 	});
 
-	async function handleSubmit() {
+	async function handleSubmit(event?: Event) {
 		event?.preventDefault();
 		error = '';
 		fieldErrors = {};
@@ -45,6 +60,21 @@
 		if (password.length < 8) {
 			error = 'Password must be at least 8 characters';
 			fieldErrors = { password: 'Password must be at least 8 characters' };
+			return;
+		}
+
+		// Validate username format: no spaces, 3-30 chars, letters, numbers, _ or -
+		const usernameClean = String(username || '')
+			.trim()
+			.toLowerCase();
+		if (/\s/.test(usernameClean)) {
+			error = 'Username cannot contain spaces';
+			fieldErrors = { username: error };
+			return;
+		}
+		if (!/^[a-z0-9_-]{3,30}$/.test(usernameClean)) {
+			error = 'Username invalid. Use 3-30 characters: letters, numbers, _ or -';
+			fieldErrors = { username: error };
 			return;
 		}
 
@@ -70,9 +100,7 @@
 			// This ensures prekey bundles are published and available for other users
 			// Without this, messages sent before first login cannot be decrypted
 			try {
-				const { initSignalWithRestore, generateAndPublishIdentity } = await import(
-					'$lib/crypto/signal'
-				);
+				const { generateAndPublishIdentity } = await import('$lib/crypto/signal');
 				const { env } = await import('$env/dynamic/public');
 
 				const userId = createdUser._id;
@@ -89,9 +117,9 @@
 
 				// Initialize and publish prekeys immediately
 				await generateAndPublishIdentity(apiBase, userId, deviceId);
-				console.log('[Registration] Signal Protocol keys published successfully');
+				logger.success('[Registration] Signal Protocol keys published successfully');
 			} catch (signalError) {
-				console.error('[Registration] Failed to initialize Signal keys:', signalError);
+				logger.error('[Registration] Failed to initialize Signal keys:', signalError);
 				// Don't block registration - keys will be generated on first chat login
 			}
 
@@ -218,9 +246,13 @@
 							: 'var(--border-subtle)'}; color: var(--text-primary);"
 						placeholder="johndoe"
 					/>
-					{#if fieldErrors.username || fieldErrors.name}
+					<p class="mt-2 text-xs" style="color: var(--text-secondary);">
+						Choose a unique username (3–30 characters). Allowed: lowercase letters, numbers,
+						underscores (_) and hyphens (-). No spaces allowed.
+					</p>
+					{#if fieldErrors.username}
 						<p class="mt-2 text-sm" style="color: var(--color-error);">
-							{fieldErrors.username || fieldErrors.name}
+							{fieldErrors.username}
 						</p>
 					{/if}
 				</div>
@@ -283,6 +315,175 @@
 							<span class="text-sm font-medium">{showPassword ? 'Hide' : 'Show'}</span>
 						</button>
 					</div>
+
+					<!-- Password Requirements Helper -->
+					{#if password.length > 0}
+						<div class="mt-3 space-y-2">
+							<div class="flex items-center justify-between">
+								<span class="text-xs font-medium" style="color: var(--text-secondary);">
+									Password strength
+								</span>
+								<span
+									class="text-xs font-medium"
+									style="color: {passwordStrength === 5
+										? 'var(--color-success)'
+										: passwordStrength >= 3
+											? '#f59e0b'
+											: 'var(--color-error)'};"
+								>
+									{passwordStrength === 5 ? 'Strong' : passwordStrength >= 3 ? 'Medium' : 'Weak'}
+								</span>
+							</div>
+							<div class="flex gap-1">
+								{#each Array(5) as _, i (i)}
+									<div
+										class="h-1 flex-1 rounded-full transition-colors duration-200"
+										style="background: {i < passwordStrength
+											? passwordStrength === 5
+												? 'var(--color-success)'
+												: passwordStrength >= 3
+													? '#f59e0b'
+													: 'var(--color-error)'
+											: 'var(--border-subtle)'};"
+									></div>
+								{/each}
+							</div>
+							<ul class="space-y-1.5 text-xs">
+								<li class="flex items-center gap-2">
+									<svg
+										class="h-4 w-4 shrink-0"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										style="color: {passwordRequirements.minLength
+											? 'var(--color-success)'
+											: 'var(--text-tertiary)'};"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d={passwordRequirements.minLength ? 'M5 13l4 4L19 7' : 'M6 18L18 6M6 6l12 12'}
+										/>
+									</svg>
+									<span
+										style="color: {passwordRequirements.minLength
+											? 'var(--text-primary)'
+											: 'var(--text-secondary)'};"
+									>
+										At least 8 characters
+									</span>
+								</li>
+								<li class="flex items-center gap-2">
+									<svg
+										class="h-4 w-4 shrink-0"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										style="color: {passwordRequirements.hasUpperCase
+											? 'var(--color-success)'
+											: 'var(--text-tertiary)'};"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d={passwordRequirements.hasUpperCase
+												? 'M5 13l4 4L19 7'
+												: 'M6 18L18 6M6 6l12 12'}
+										/>
+									</svg>
+									<span
+										style="color: {passwordRequirements.hasUpperCase
+											? 'var(--text-primary)'
+											: 'var(--text-secondary)'};"
+									>
+										One uppercase letter (A-Z)
+									</span>
+								</li>
+								<li class="flex items-center gap-2">
+									<svg
+										class="h-4 w-4 shrink-0"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										style="color: {passwordRequirements.hasLowerCase
+											? 'var(--color-success)'
+											: 'var(--text-tertiary)'};"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d={passwordRequirements.hasLowerCase
+												? 'M5 13l4 4L19 7'
+												: 'M6 18L18 6M6 6l12 12'}
+										/>
+									</svg>
+									<span
+										style="color: {passwordRequirements.hasLowerCase
+											? 'var(--text-primary)'
+											: 'var(--text-secondary)'};"
+									>
+										One lowercase letter (a-z)
+									</span>
+								</li>
+								<li class="flex items-center gap-2">
+									<svg
+										class="h-4 w-4 shrink-0"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										style="color: {passwordRequirements.hasNumber
+											? 'var(--color-success)'
+											: 'var(--text-tertiary)'};"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d={passwordRequirements.hasNumber ? 'M5 13l4 4L19 7' : 'M6 18L18 6M6 6l12 12'}
+										/>
+									</svg>
+									<span
+										style="color: {passwordRequirements.hasNumber
+											? 'var(--text-primary)'
+											: 'var(--text-secondary)'};"
+									>
+										One number (0-9)
+									</span>
+								</li>
+								<li class="flex items-center gap-2">
+									<svg
+										class="h-4 w-4 shrink-0"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										style="color: {passwordRequirements.hasSpecialChar
+											? 'var(--color-success)'
+											: 'var(--text-tertiary)'};"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d={passwordRequirements.hasSpecialChar
+												? 'M5 13l4 4L19 7'
+												: 'M6 18L18 6M6 6l12 12'}
+										/>
+									</svg>
+									<span
+										style="color: {passwordRequirements.hasSpecialChar
+											? 'var(--text-primary)'
+											: 'var(--text-secondary)'};"
+									>
+										One special character (@$!%*?&)
+									</span>
+								</li>
+							</ul>
+						</div>
+					{/if}
+
 					{#if fieldErrors.password}
 						<p class="mt-2 text-sm" style="color: var(--color-error);">{fieldErrors.password}</p>
 					{/if}

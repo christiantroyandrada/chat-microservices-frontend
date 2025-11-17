@@ -1,16 +1,17 @@
 <script lang="ts">
-	import { authStore, user } from '$lib/stores/auth.store';
+	import { authStore } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
+	import { logger } from '$lib/services/dev-logger';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import type { ApiError } from '$lib/types';
 
-	let email = '';
-	let password = '';
-	let showPassword = false;
-	let loading = false;
-	let error = '';
-	let fieldErrors: Record<string, string> = {};
+	let email = $state('');
+	let password = $state('');
+	let showPassword = $state(false);
+	let loading = $state(false);
+	let error = $state('');
+	let fieldErrors: Record<string, string> = $state({});
 
 	onMount(() => {
 		// Redirect if already authenticated
@@ -23,7 +24,7 @@
 		return unsubscribe;
 	});
 
-	async function handleSubmit() {
+	async function handleSubmit(event?: Event) {
 		event?.preventDefault();
 		error = '';
 		fieldErrors = {};
@@ -41,9 +42,7 @@
 			// SECURITY FIX: Ensure Signal Protocol keys are published immediately
 			// This makes prekey bundles available for incoming messages even before navigating to chat
 			try {
-				const { initSignalWithRestore, generateAndPublishIdentity } = await import(
-					'$lib/crypto/signal'
-				);
+				const { initSignalWithRestore } = await import('$lib/crypto/signal');
 				const { env } = await import('$env/dynamic/public');
 
 				const userId = loggedInUser._id;
@@ -60,9 +59,9 @@
 
 				// Initialize keys if needed and publish prekeys
 				await initSignalWithRestore(userId, deviceId, apiBase, undefined);
-				console.log('[Login] Signal Protocol keys ensured and published');
+				logger.success('[Login] Signal Protocol keys ensured and published');
 			} catch (signalError) {
-				console.error('[Login] Failed to initialize Signal keys:', signalError);
+				logger.error('[Login] Failed to initialize Signal keys:', signalError);
 				// Don't block login - keys will be generated on chat page
 			}
 

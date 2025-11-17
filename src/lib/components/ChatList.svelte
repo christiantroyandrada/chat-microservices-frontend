@@ -10,8 +10,6 @@
 		selectedUserId = null as string | null,
 		loading = false,
 		currentUserId = null as string | null,
-		currentUsername = '' as string,
-		onClose = null as (() => void) | null,
 		onSelect = null as ((userId: string) => void) | null,
 		onCreate = null as ((conversation: ChatConversation) => void) | null
 	} = $props();
@@ -95,39 +93,14 @@
 		if (message.length <= maxLength) return message;
 		return message.substring(0, maxLength) + '...';
 	}
+
+	function getConversationAriaLabel(conversation: ChatConversation) {
+		const unread = conversation.unreadCount ? `, ${conversation.unreadCount} unread messages` : '';
+		return `Chat with ${conversation.username}${unread}`;
+	}
 </script>
 
 <div class="chat-list-container flex h-full flex-col">
-	<!-- User Info Header -->
-	<div class="chat-list-header p-4">
-		<div class="flex items-center justify-between">
-			<div class="chat-list-user-info flex items-center gap-3">
-				<div
-					class="avatar-circle flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-semibold text-white"
-				>
-					{(currentUsername?.[0] ?? 'U').toUpperCase()}
-				</div>
-				<span class="user-name text-sm font-semibold">{currentUsername || 'User'}</span>
-			</div>
-			{#if onClose}
-				<button
-					onclick={onClose}
-					class="close-button inline-flex items-center justify-center rounded-md p-2 lg:hidden"
-					aria-label="Close sidebar"
-				>
-					<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M6 18L18 6M6 6l12 12"
-						/>
-					</svg>
-				</button>
-			{/if}
-		</div>
-	</div>
-
 	<!-- Messages Header -->
 	<div class="messages-header p-4">
 		<div class="flex items-center justify-between">
@@ -225,9 +198,7 @@
 					<li class="conversation-item" role="listitem">
 						<button
 							onclick={() => onSelect?.(conversation.userId)}
-							aria-label="Chat with {conversation.username}{conversation.unreadCount
-								? `, ${conversation.unreadCount} unread messages`
-								: ''}"
+							aria-label={getConversationAriaLabel(conversation)}
 							aria-current={selectedUserId === conversation.userId ? 'true' : 'false'}
 							class="conversation-button w-full p-4 text-left focus:outline-none"
 							class:selected={selectedUserId === conversation.userId}
@@ -278,25 +249,12 @@
 		background: var(--bg-primary);
 		border-right: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
 
-		.chat-list-user-info {
-			animation: fadeIn 0.3s ease-out;
-		}
-
 		.avatar-circle {
 			background: var(--gradient-accent);
 		}
 
 		.user-name {
 			color: var(--text-primary);
-		}
-
-		.close-button {
-			color: var(--text-secondary);
-			transition: all 150ms;
-			background: transparent;
-		}
-		.close-button:hover {
-			background: var(--bg-hover, rgba(255, 255, 255, 0.05));
 		}
 
 		.messages-header {
@@ -430,11 +388,6 @@
 		.unread-badge {
 			background: var(--gradient-accent);
 			animation: scaleIn 0.2s ease-out;
-		}
-
-		.chat-list-header {
-			border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-			background: var(--bg-secondary, rgba(255, 255, 255, 0.02));
 		}
 	}
 
