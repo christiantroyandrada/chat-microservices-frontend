@@ -237,10 +237,25 @@ class IndexedDBSignalProtocolStore {
 let store: IndexedDBSignalProtocolStore | null = null;
 let initialized = false;
 let currentUserId: string | null = null;
+let initializationPromise: Promise<void> | null = null;
+let restorePromise: Promise<boolean> | null = null;
 
 export async function initSignal(userId?: string): Promise<void> {
+	// If there's an ongoing initialization, wait for it to complete
+	if (initializationPromise) {
+		logger.info('[Signal] Waiting for ongoing initialization to complete...');
+		await initializationPromise;
+		// After waiting, check if we need a different userId
+		if (userId && userId !== currentUserId) {
+			// Need to re-initialize with different user, continue below
+		} else {
+			return; // Same user or no user specified, we're done
+		}
+	}
+
 	// If userId is provided and different from current, reinitialize store
 	if (userId && userId !== currentUserId) {
+		logger.info(`[Signal] Switching user from ${currentUserId} to ${userId}`);
 		store = new IndexedDBSignalProtocolStore(userId);
 		currentUserId = userId;
 		initialized = false;
@@ -256,8 +271,19 @@ export async function initSignal(userId?: string): Promise<void> {
 	}
 
 	if (initialized) return;
-	await store.init();
-	initialized = true;
+
+	// Create initialization promise to prevent concurrent calls
+	initializationPromise = (async () => {
+		try {
+			await store!.init();
+			initialized = true;
+			logger.info('[Signal] Initialization complete for userId:', currentUserId);
+		} finally {
+			initializationPromise = null;
+		}
+	})();
+
+	await initializationPromise;
 }
 
 /**
@@ -729,74 +755,94 @@ export async function initSignalWithRestore(
 	deviceId: string,
 	apiBase: string
 ): Promise<boolean> {
+	// If there's an ongoing restore, wait for it to complete
+	if (restorePromise) {
+		logger.info('[Signal] Waiting for ongoing restore to complete...');
+		return await restorePromise;
+	}
+
 	logger.info('[Signal] Initializing with restore for userId:', userId);
 
-	await initSignal(userId);
-
-	// ALWAYS check backend first to ensure consistency across tabs/devices
-	logger.info('[Signal] Checking backend for authoritative keys...');
-	try {
-		const { authService } = await import('$lib/services/auth.service');
-		const keySet = await authService.fetchSignalKeys();
-
-		if (keySet) {
-			logger.info('[Signal] Found keys on backend, clearing local storage and restoring...');
-			
-			// Clear local IndexedDB to ensure we start fresh with backend keys
-			await clearSignalState(userId);
-			
-			// Re-initialize store with empty state
+	// Create restore promise to prevent concurrent restore operations
+	restorePromise = (async () => {
+		try {
 			await initSignal(userId);
-			
-			// Import backend keys
-			await importSignalKeys(userId, keySet);
-			logger.info('[Signal] Successfully restored keys from backend');
-			
-			// Re-initialize the store to load the imported keys into memory cache
-			store = null;
-			initialized = false;
-			await initSignal(userId);
-			logger.info('[Signal] Store reinitialized with restored keys');
-			
-			return true;
+
+			// ALWAYS check backend first to ensure consistency across tabs/devices
+			logger.info('[Signal] Checking backend for authoritative keys...');
+			try {
+				const { authService } = await import('$lib/services/auth.service');
+				const keySet = await authService.fetchSignalKeys();
+
+				if (keySet) {
+					logger.info('[Signal] Found keys on backend, clearing local storage and restoring...');
+					
+					// Clear local IndexedDB to ensure we start fresh with backend keys
+					await clearSignalState(userId);
+					
+					// Re-initialize store with empty state
+					store = new IndexedDBSignalProtocolStore(userId);
+					currentUserId = userId;
+					initialized = false;
+					initializationPromise = null; // Reset initialization promise
+					await initSignal(userId);
+					
+					// Import backend keys
+					await importSignalKeys(userId, keySet);
+					logger.info('[Signal] Successfully restored keys from backend');
+					
+					// Re-initialize the store to load the imported keys into memory cache
+					store = null;
+					initialized = false;
+					initializationPromise = null; // Reset initialization promise
+					await initSignal(userId);
+					logger.info('[Signal] Store reinitialized with restored keys');
+					
+					return true;
+				}
+
+				// No keys on backend - check if we have local keys as fallback
+				logger.info('[Signal] No keys on backend, checking local storage...');
+				const hasKeys = await hasLocalKeys(userId);
+				
+				if (hasKeys) {
+					logger.info('[Signal] Found local keys, backing them up to backend...');
+					// We have local keys but backend doesn't - back them up
+					const existingKeySet = await exportSignalKeys(userId);
+					await authService.storeSignalKeys(deviceId, existingKeySet);
+					logger.info('[Signal] Successfully backed up local keys to backend');
+					return true;
+				}
+
+				// No keys anywhere, generate new keys
+				logger.info('[Signal] No keys found anywhere, generating new keys...');
+				await generateAndPublishIdentity(apiBase, userId, deviceId);
+
+				// Export and store the newly generated keys on backend
+				logger.info('[Signal] Backing up newly generated keys to backend...');
+				const newKeySet = await exportSignalKeys(userId);
+				await authService.storeSignalKeys(deviceId, newKeySet);
+				logger.info('[Signal] Successfully backed up keys to backend');
+
+				return true;
+			} catch (error) {
+				logger.error('[Signal] Error during key initialization/restore:', error);
+				
+				// Fallback: check if we have local keys we can use
+				const hasKeys = await hasLocalKeys(userId);
+				if (hasKeys) {
+					logger.warning('[Signal] Backend fetch failed, using local keys as fallback');
+					return true;
+				}
+				
+				return false;
+			}
+		} finally {
+			restorePromise = null;
 		}
+	})();
 
-		// No keys on backend - check if we have local keys as fallback
-		logger.info('[Signal] No keys on backend, checking local storage...');
-		const hasKeys = await hasLocalKeys(userId);
-		
-		if (hasKeys) {
-			logger.info('[Signal] Found local keys, backing them up to backend...');
-			// We have local keys but backend doesn't - back them up
-			const existingKeySet = await exportSignalKeys(userId);
-			await authService.storeSignalKeys(deviceId, existingKeySet);
-			logger.info('[Signal] Successfully backed up local keys to backend');
-			return true;
-		}
-
-		// No keys anywhere, generate new keys
-		logger.info('[Signal] No keys found anywhere, generating new keys...');
-		await generateAndPublishIdentity(apiBase, userId, deviceId);
-
-		// Export and store the newly generated keys on backend
-		logger.info('[Signal] Backing up newly generated keys to backend...');
-		const newKeySet = await exportSignalKeys(userId);
-		await authService.storeSignalKeys(deviceId, newKeySet);
-		logger.info('[Signal] Successfully backed up keys to backend');
-
-		return true;
-	} catch (error) {
-		logger.error('[Signal] Error during key initialization/restore:', error);
-		
-		// Fallback: check if we have local keys we can use
-		const hasKeys = await hasLocalKeys(userId);
-		if (hasKeys) {
-			logger.warning('[Signal] Backend fetch failed, using local keys as fallback');
-			return true;
-		}
-		
-		return false;
-	}
+	return await restorePromise;
 }
 
 /**

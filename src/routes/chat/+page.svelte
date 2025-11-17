@@ -35,6 +35,9 @@
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
 	let unsubscribeWsStatus: (() => void) | null = null;
+	
+	// Track if we've done the initial message prefetch to avoid recursion
+	let hasPreloadedMessages = false;
 
 	onMount(async () => {
 		// Check authentication
@@ -46,8 +49,8 @@
 			}
 		}
 
-		// Initialize Signal Protocol keys (non-blocking background task)
-		// This ensures encryption keys are ready before sending/receiving messages
+		// Initialize Signal Protocol keys (MUST complete before loading messages)
+		// This ensures encryption keys are ready before attempting to decrypt any messages
 		if (typeof window !== 'undefined' && $user) {
 			const userId = $user._id as string;
 			let deviceId: string = localStorage.getItem('deviceId') ?? '';
@@ -60,19 +63,19 @@
 			}
 			const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
 			
-			// Initialize in background - don't block page load
-			initSignalWithRestore(userId, deviceId, apiBase)
-				.then(success => {
-					if (success) {
-						logger.success('[Chat] Signal Protocol initialized successfully');
-					} else {
-						logger.warning('[Chat] Signal Protocol initialization failed');
-						toastStore.warning('Encryption setup incomplete. Messages may not be encrypted.');
-					}
-				})
-				.catch(err => {
-					logger.error('[Chat] Signal Protocol initialization error:', err);
-				});
+			// AWAIT initialization to prevent race conditions with message decryption
+			try {
+				const success = await initSignalWithRestore(userId, deviceId, apiBase);
+				if (success) {
+					logger.success('[Chat] Signal Protocol initialized successfully');
+				} else {
+					logger.warning('[Chat] Signal Protocol initialization failed');
+					toastStore.warning('Encryption setup incomplete. Messages may not be encrypted.');
+				}
+			} catch (err) {
+				logger.error('[Chat] Signal Protocol initialization error:', err);
+				toastStore.error('Failed to initialize encryption');
+			}
 		}
 
 		// Connect WebSocket (auth handled via httpOnly cookie)
@@ -83,7 +86,7 @@
 		unsubscribeWsTyping = wsService.onTyping(handleTypingIndicator);
 		unsubscribeWsStatus = wsService.onStatusChange(handleConnectionStatus);
 
-		// Load initial data
+		// Load initial data (Signal Protocol is now ready for decryption)
 		await loadConversations();
 		await notificationStore.fetch();
 	});
@@ -102,6 +105,31 @@
 		try {
 			const currentUserId = $user?._id as string | undefined;
 			conversations = await chatService.getConversations(currentUserId);
+			
+			// Proactively fetch the latest message for each conversation to populate
+			// local storage with decrypted content. This ensures conversation previews
+			// show the correct decrypted message on first load (e.g., after User B logs in).
+			// Only do this once on initial load to avoid infinite recursion.
+			if (currentUserId && conversations.length > 0 && !hasPreloadedMessages) {
+				hasPreloadedMessages = true;
+				
+				// Fetch messages in background (don't await, don't block UI)
+				void Promise.all(
+					conversations.map(async (conv) => {
+						try {
+							// Fetch just 1 latest message to decrypt and cache it
+							await chatService.getMessages(conv.userId, 1, 0, currentUserId);
+						} catch (err) {
+							// Silently fail - non-critical background operation
+							logger.warning(`[Chat] Failed to prefetch messages for ${conv.userId}:`, err);
+						}
+					})
+				).then(() => {
+					// After all messages are fetched and decrypted, reload conversations
+					// to pick up the decrypted previews from local storage
+					void loadConversations();
+				});
+			}
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to load conversations';
 			toastStore.error(message);
@@ -122,6 +150,10 @@
 		try {
 			messages = await chatService.getMessages(userId, 50, 0, currentUserId);
 			await chatService.markAsRead(userId);
+			
+			// After loading and decrypting messages, refresh conversation list
+			// to update the preview with the latest decrypted message from local storage
+			await loadConversations();
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to load messages';
 			toastStore.error(message);
@@ -252,8 +284,8 @@
 					: c
 			);
 		} else {
-			// New conversation
-			void loadConversations();
+			// New conversation - reload the full list from server and local storage
+			await loadConversations();
 		}
 
 		// Show notification with decrypted content
