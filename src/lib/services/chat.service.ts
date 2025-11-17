@@ -101,14 +101,16 @@ export const chatService = {
 			`/chat/get/${userId}?limit=${limit}&offset=${offset}`
 		);
 		const data = response.data || [];
-		
+
 		if (data.length === 0) {
 			// No messages on server, check if we have anything locally
 			const localMessages = await messageStore.getMessages(userId, currentUserId, limit);
-			logger.info(`[ChatService] Server has no messages, loaded ${localMessages.length} from local storage`);
+			logger.info(
+				`[ChatService] Server has no messages, loaded ${localMessages.length} from local storage`
+			);
 			return localMessages;
 		}
-		
+
 		const normalized = data.map(normalizeMessage);
 
 		// Decrypt and store messages locally
@@ -159,13 +161,10 @@ export const chatService = {
 						return placeholderMsg;
 					}
 
-					logger.info(
-						'[ChatService] Decrypting message from sender:',{
-							sender_id:	msg.senderId,
-							type: String(parsed.type),
-						}
-						
-					);
+					logger.info('[ChatService] Decrypting message from sender:', {
+						sender_id: msg.senderId,
+						type: String(parsed.type)
+					});
 
 					// Decrypt the message using the sender's ID
 					const ctObj = { type: parsed.type, body: parsed.body };

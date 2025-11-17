@@ -7,12 +7,14 @@ This project follows a **hybrid AI-assisted development approach** where human e
 ### Division of Labor
 
 **👨‍💻 Developer's Primary Role:**
+
 - **System Architecture Design**: Designing the overall application architecture, component hierarchy, and data flow patterns
 - **Code Review & Guidance**: Ensuring AI-generated code follows best practices, security standards, and performance optimization
 - **Strategic Direction**: Defining feature requirements, user experience goals, and technical roadmap
 - **Quality Assurance**: Validating implementations meet production standards and business requirements
 
 **🤖 AI's Primary Role:**
+
 - **Code Scaffolding**: Generating components, services, stores, and TypeScript types
 - **Code Integration**: Integrating complex libraries (Signal Protocol, Socket.IO, WebSocket management)
 - **Local Deployment**: Setting up development environments, build pipelines, and testing frameworks
@@ -22,6 +24,7 @@ This project follows a **hybrid AI-assisted development approach** where human e
 ### Best Practices Guidance
 
 The AI is guided by the developer to follow:
+
 - Modern Svelte/SvelteKit patterns and reactive programming
 - Type-safe development with TypeScript strict mode
 - Security-first approach (E2EE, authentication, XSS prevention)
@@ -259,8 +262,8 @@ pnpm format
 2. **Publish keys**: Upload public keys to server for others to fetch
 3. **Key backup** (if password provided): Encrypt keys client-side, store on server
 4. **Send message**: Fetch recipient's prekey bundle, establish session, encrypt message
-4. **Receive message**: Decrypt using stored session keys
-5. **History**: Messages are decrypted when fetching conversation history
+5. **Receive message**: Decrypt using stored session keys
+6. **History**: Messages are decrypted when fetching conversation history
 
 **Files:**
 

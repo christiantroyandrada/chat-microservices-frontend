@@ -9,12 +9,14 @@ This project follows a **hybrid AI-assisted development approach** where human e
 ### Division of Labor
 
 **👨‍💻 Developer's Primary Role:**
+
 - **System Architecture Design**: Designing the frontend architecture, component structure, and state management patterns
 - **Code Review & Guidance**: Reviewing AI-generated code for correctness, performance, and adherence to best practices
 - **Strategic Direction**: Defining UI/UX requirements, features, and technical direction
 - **Quality Assurance**: Ensuring code meets production standards, accessibility requirements, and user experience goals
 
 **🤖 AI's Primary Role:**
+
 - **Code Scaffolding**: Generating Svelte components, TypeScript types, and project structure
 - **Code Integration**: Integrating libraries (Signal Protocol, Socket.IO, Tailwind CSS)
 - **Local Deployment**: Setting up development environments, build configurations, and deployment scripts
@@ -24,6 +26,7 @@ This project follows a **hybrid AI-assisted development approach** where human e
 ### Best Practices Guidance
 
 The AI tool is guided by the developer to follow:
+
 - Svelte/SvelteKit best practices and reactive patterns
 - TypeScript type safety and strict mode
 - Responsive design and accessibility standards

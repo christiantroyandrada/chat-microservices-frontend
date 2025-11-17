@@ -35,7 +35,7 @@
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
 	let unsubscribeWsStatus: (() => void) | null = null;
-	
+
 	// Track if we've done the initial message prefetch to avoid recursion
 	let hasPreloadedMessages = false;
 
@@ -62,7 +62,7 @@
 				localStorage.setItem('deviceId', deviceId);
 			}
 			const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
-			
+
 			// AWAIT initialization to prevent race conditions with message decryption
 			// NOTE: No encryption password provided - keys will NOT be backed up to server
 			// For production: prompt user for encryption password to enable secure cloud backup
@@ -108,14 +108,14 @@
 		try {
 			const currentUserId = $user?._id as string | undefined;
 			conversations = await chatService.getConversations(currentUserId);
-			
+
 			// Proactively fetch the latest message for each conversation to populate
 			// local storage with decrypted content. This ensures conversation previews
 			// show the correct decrypted message on first load (e.g., after User B logs in).
 			// Only do this once on initial load to avoid infinite recursion.
 			if (currentUserId && conversations.length > 0 && !hasPreloadedMessages) {
 				hasPreloadedMessages = true;
-				
+
 				// Fetch messages in background (don't await, don't block UI)
 				void Promise.all(
 					conversations.map(async (conv) => {
@@ -153,7 +153,7 @@
 		try {
 			messages = await chatService.getMessages(userId, 50, 0, currentUserId);
 			await chatService.markAsRead(userId);
-			
+
 			// After loading and decrypting messages, refresh conversation list
 			// to update the preview with the latest decrypted message from local storage
 			await loadConversations();
@@ -512,7 +512,9 @@
 				<div class="w-full flex-1">
 					<ChatList
 						{conversations}
-						selectedUserId={selectedConversation ? (selectedConversation as ChatConversation).userId : null}
+						selectedUserId={selectedConversation
+							? (selectedConversation as ChatConversation).userId
+							: null}
 						currentUserId={$user?._id || null}
 						currentUsername={$user?.username || ''}
 						loading={loading.conversations}

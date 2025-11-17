@@ -1,6 +1,12 @@
 import { apiClient } from './api';
 import { logger } from './dev-logger';
-import type { AuthUser, LoginCredentials, RegisterCredentials, User, EncryptedKeyBundle } from '$lib/types';
+import type {
+	AuthUser,
+	LoginCredentials,
+	RegisterCredentials,
+	User,
+	EncryptedKeyBundle
+} from '$lib/types';
 
 export const authService = {
 	/**
@@ -94,7 +100,9 @@ export const authService = {
 	 */
 	async fetchSignalKeys(deviceId: string): Promise<EncryptedKeyBundle | null> {
 		try {
-			const response = await apiClient.get<{ encryptedBundle: EncryptedKeyBundle }>(`/user/signal-keys?deviceId=${deviceId}`);
+			const response = await apiClient.get<{ encryptedBundle: EncryptedKeyBundle }>(
+				`/user/signal-keys?deviceId=${deviceId}`
+			);
 			return response.data?.encryptedBundle || null;
 		} catch (error: unknown) {
 			// 404 means no keys stored yet - this is expected for new users

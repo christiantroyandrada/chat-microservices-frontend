@@ -81,7 +81,7 @@ class Logger {
 			if (typeof msg === 'object' && msg !== null && Object.keys(msg).length > 0) {
 				const titleText = Array.isArray(title) ? title[0] : title;
 				const titleExtra = Array.isArray(title) ? title[1] : '';
-				
+
 				console.groupCollapsed(`%c⛬ ${titleText}`, 'color:#74959A');
 				console.log({ caller, value: titleExtra });
 
@@ -105,7 +105,7 @@ class Logger {
 			if (typeof msg === 'object' && msg !== null && Object.keys(msg).length > 0) {
 				const titleText = Array.isArray(title) ? title[0] : title;
 				const titleExtra = Array.isArray(title) ? title[1] : '';
-				
+
 				console.groupCollapsed(`%c⛬ ${titleText}`, 'color:#00e5ff');
 				console.log({ caller, value: titleExtra });
 
@@ -128,7 +128,7 @@ class Logger {
 
 			if (typeof msg === 'object' && msg !== null && Object.keys(msg).length > 0) {
 				const titleText = Array.isArray(title) ? title[0] : title;
-				
+
 				console.groupCollapsed(`%c⛛ ${titleText}`, 'color:#40ff00');
 				console.log({ caller, value: msg });
 

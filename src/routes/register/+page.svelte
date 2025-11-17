@@ -70,20 +70,23 @@
 			// This ensures prekey bundles are published and available for other users
 			// Without this, messages sent before first login cannot be decrypted
 			try {
-				const { initSignalWithRestore, generateAndPublishIdentity } = await import('$lib/crypto/signal');
+				const { initSignalWithRestore, generateAndPublishIdentity } = await import(
+					'$lib/crypto/signal'
+				);
 				const { env } = await import('$env/dynamic/public');
-				
+
 				const userId = createdUser._id;
 				let deviceId = localStorage.getItem('deviceId') || '';
 				if (!deviceId) {
-					deviceId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-						? crypto.randomUUID()
-						: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+					deviceId =
+						typeof crypto !== 'undefined' && 'randomUUID' in crypto
+							? crypto.randomUUID()
+							: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 					localStorage.setItem('deviceId', deviceId);
 				}
-				
+
 				const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
-				
+
 				// Initialize and publish prekeys immediately
 				await generateAndPublishIdentity(apiBase, userId, deviceId);
 				console.log('[Registration] Signal Protocol keys published successfully');

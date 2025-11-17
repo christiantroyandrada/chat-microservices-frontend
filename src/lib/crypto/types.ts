@@ -5,9 +5,9 @@
  * encryption/decryption operations, and related data structures.
  */
 
-import type { 
-	EncryptionResultMessageType, 
-	KeyPairType 
+import type {
+	EncryptionResultMessageType,
+	KeyPairType
 } from '@privacyresearch/libsignal-protocol-typescript';
 
 // ============================================================================
@@ -19,7 +19,7 @@ import type {
  * Used by: signal.ts - generateSignalIdentity()
  */
 export interface Identity {
-	publicKey: string;  // Base64-encoded public key
+	publicKey: string; // Base64-encoded public key
 	privateKey: string; // Base64-encoded private key
 }
 

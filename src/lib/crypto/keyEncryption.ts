@@ -1,8 +1,8 @@
 /**
  * Client-Side Key Encryption Utilities
- * 
+ *
  * Implements Option 2: Client-Side Encrypted Key Backup
- * 
+ *
  * Security Features:
  * - Uses Web Crypto API for encryption (AES-256-GCM)
  * - Derives encryption key from user password using PBKDF2 (100,000 iterations)
@@ -27,26 +27,26 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 
 	// Import password as key material
 	const keyMaterial = await crypto.subtle.importKey(
-'raw',
-passwordBuffer,
-{ name: 'PBKDF2' },
-false,
-['deriveKey']
-);
+		'raw',
+		passwordBuffer,
+		{ name: 'PBKDF2' },
+		false,
+		['deriveKey']
+	);
 
 	// Derive AES-GCM key from password
 	return crypto.subtle.deriveKey(
-{
-name: 'PBKDF2',
-salt: salt as BufferSource, // Type assertion for Web Crypto API
-iterations: PBKDF2_ITERATIONS,
-hash: 'SHA-256'
-},
-keyMaterial,
-{ name: 'AES-GCM', length: KEY_LENGTH },
-false, // Not extractable
-['encrypt', 'decrypt']
-);
+		{
+			name: 'PBKDF2',
+			salt: salt as BufferSource, // Type assertion for Web Crypto API
+			iterations: PBKDF2_ITERATIONS,
+			hash: 'SHA-256'
+		},
+		keyMaterial,
+		{ name: 'AES-GCM', length: KEY_LENGTH },
+		false, // Not extractable
+		['encrypt', 'decrypt']
+	);
 }
 
 /**
@@ -75,16 +75,16 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 
 /**
  * Encrypt Signal key set with user password
- * 
+ *
  * @param keySet - Plaintext Signal keys to encrypt
  * @param password - User password for encryption
  * @param deviceId - Device ID for key isolation
  * @returns Encrypted bundle safe for backend storage
  */
 export async function encryptKeySet(
-keySet: SignalKeySet,
-password: string,
-deviceId: string
+	keySet: SignalKeySet,
+	password: string,
+	deviceId: string
 ): Promise<EncryptedKeyBundle> {
 	logger.info('[KeyEncryption] Encrypting key set for device:', deviceId);
 
@@ -99,16 +99,12 @@ deviceId: string
 	const encoder = new TextEncoder();
 	const plaintext = encoder.encode(JSON.stringify(keySet));
 
-	const encrypted = await crypto.subtle.encrypt(
-{ name: 'AES-GCM', iv },
-encryptionKey,
-plaintext
-);
+	const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, encryptionKey, plaintext);
 
 	logger.info('[KeyEncryption] Encryption successful', {
-encryptedSize: encrypted.byteLength,
-version: ENCRYPTION_VERSION
-});
+		encryptedSize: encrypted.byteLength,
+		version: ENCRYPTION_VERSION
+	});
 
 	return {
 		encrypted: arrayBufferToBase64(encrypted),
@@ -121,15 +117,15 @@ version: ENCRYPTION_VERSION
 
 /**
  * Decrypt Signal key set with user password
- * 
+ *
  * @param bundle - Encrypted key bundle from backend
  * @param password - User password for decryption
  * @returns Decrypted Signal keys
  * @throws Error if decryption fails (wrong password or tampered data)
  */
 export async function decryptKeySet(
-bundle: EncryptedKeyBundle,
-password: string
+	bundle: EncryptedKeyBundle,
+	password: string
 ): Promise<SignalKeySet> {
 	logger.info('[KeyEncryption] Decrypting key set for device:', bundle.deviceId);
 
@@ -149,10 +145,10 @@ password: string
 	try {
 		// Decrypt with AES-256-GCM
 		const decrypted = await crypto.subtle.decrypt(
-{ name: 'AES-GCM', iv },
-decryptionKey,
-encrypted
-);
+			{ name: 'AES-GCM', iv },
+			decryptionKey,
+			encrypted
+		);
 
 		const decoder = new TextDecoder();
 		const json = decoder.decode(decrypted);
@@ -168,7 +164,7 @@ encrypted
 
 /**
  * Validate password strength
- * 
+ *
  * Minimum requirements:
  * - At least 12 characters
  * - Contains uppercase and lowercase

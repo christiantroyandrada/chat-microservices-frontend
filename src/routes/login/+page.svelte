@@ -41,20 +41,23 @@
 			// SECURITY FIX: Ensure Signal Protocol keys are published immediately
 			// This makes prekey bundles available for incoming messages even before navigating to chat
 			try {
-				const { initSignalWithRestore, generateAndPublishIdentity } = await import('$lib/crypto/signal');
+				const { initSignalWithRestore, generateAndPublishIdentity } = await import(
+					'$lib/crypto/signal'
+				);
 				const { env } = await import('$env/dynamic/public');
-				
+
 				const userId = loggedInUser._id;
 				let deviceId = localStorage.getItem('deviceId') || '';
 				if (!deviceId) {
-					deviceId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-						? crypto.randomUUID()
-						: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+					deviceId =
+						typeof crypto !== 'undefined' && 'randomUUID' in crypto
+							? crypto.randomUUID()
+							: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 					localStorage.setItem('deviceId', deviceId);
 				}
-				
+
 				const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
-				
+
 				// Initialize keys if needed and publish prekeys
 				await initSignalWithRestore(userId, deviceId, apiBase, undefined);
 				console.log('[Login] Signal Protocol keys ensured and published');

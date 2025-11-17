@@ -40,9 +40,9 @@ import type {
 	KeyPairType,
 	StorageType
 } from '@privacyresearch/libsignal-protocol-typescript';
-import type { 
-	Identity, 
-	PrekeyBundleData, 
+import type {
+	Identity,
+	PrekeyBundleData,
 	PrekeyBundlePayload,
 	StoredSignedPreKey,
 	SignalCache,
@@ -550,7 +550,10 @@ export async function generateSignalIdentity(): Promise<GeneratedIdentity> {
 	}
 
 	// Generate signed prekey (proves identity key ownership)
-	const signedPreKey = await KeyHelper.generateSignedPreKey(identityKeyPair, DEFAULT_SIGNED_PREKEY_ID);
+	const signedPreKey = await KeyHelper.generateSignedPreKey(
+		identityKeyPair,
+		DEFAULT_SIGNED_PREKEY_ID
+	);
 
 	// Store locally in IndexedDB
 	await storeInstance.storeIdentityKeyPair(identityKeyPair);
@@ -663,8 +666,7 @@ export async function createSessionWithPrekeyBundle(
 
 	// Narrow unknown payload to expected shape with runtime validation
 	const payload = prekeyBundle as PrekeyBundlePayload;
-	const bundleData: PrekeyBundleData =
-		payload?.bundle ?? (prekeyBundle as PrekeyBundleData);
+	const bundleData: PrekeyBundleData = payload?.bundle ?? (prekeyBundle as PrekeyBundleData);
 	const userId = payload?.userId ?? bundleData.userId ?? 'unknown';
 
 	logger.info('[Signal] Creating session with prekey bundle:', {
@@ -908,7 +910,9 @@ export async function clearSignalState(userId: string): Promise<void> {
 		};
 
 		request.onblocked = () => {
-			logger.warning(`[Signal] Database ${dbName} deletion blocked - this can happen if other tabs are open`);
+			logger.warning(
+				`[Signal] Database ${dbName} deletion blocked - this can happen if other tabs are open`
+			);
 			// Resolve anyway - the database will be deleted once other connections close
 			resolve();
 		};
@@ -1142,7 +1146,11 @@ export async function initSignalWithRestore(
 				if (hasKeys && encryptionPassword) {
 					logger.info('[Signal] Found local keys, encrypting and backing them up to backend...');
 					// We have local keys but backend doesn't - back them up (ENCRYPTED)
-					const encryptedBundle = await exportAndEncryptSignalKeys(userId, deviceId, encryptionPassword);
+					const encryptedBundle = await exportAndEncryptSignalKeys(
+						userId,
+						deviceId,
+						encryptionPassword
+					);
 					await authService.storeSignalKeys(deviceId, encryptedBundle);
 					logger.info('[Signal] Successfully backed up encrypted keys to backend');
 					return true;
@@ -1155,11 +1163,17 @@ export async function initSignalWithRestore(
 				// Export and store the newly generated keys on backend (ENCRYPTED)
 				if (encryptionPassword) {
 					logger.info('[Signal] Encrypting and backing up newly generated keys to backend...');
-					const encryptedBundle = await exportAndEncryptSignalKeys(userId, deviceId, encryptionPassword);
+					const encryptedBundle = await exportAndEncryptSignalKeys(
+						userId,
+						deviceId,
+						encryptionPassword
+					);
 					await authService.storeSignalKeys(deviceId, encryptedBundle);
 					logger.info('[Signal] Successfully backed up encrypted keys to backend');
 				} else {
-					logger.warning('[Signal] No encryption password provided - keys will NOT be backed up to backend');
+					logger.warning(
+						'[Signal] No encryption password provided - keys will NOT be backed up to backend'
+					);
 				}
 
 				return true;
