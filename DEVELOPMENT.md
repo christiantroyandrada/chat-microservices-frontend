@@ -41,11 +41,14 @@ Full-featured **real-time chat application** with **end-to-end encryption** buil
 
 ✅ **End-to-End Encryption (E2EE)**
 
-- Signal Protocol implementation
-- Client-side message encryption/decryption
+- Signal Protocol implementation with X3DH and Double Ratchet
+- **Client-side AES-256-GCM key encryption** before backend storage
+- **PBKDF2 (100k iterations)** for password-based key derivation
 - Automatic prekey bundle generation and publishing
-- IndexedDB-based key storage
-- Secure session establishment
+- IndexedDB-based key storage with device isolation
+- Secure session establishment with prekey bundles
+- **Server never sees plaintext keys** - zero-knowledge architecture
+- Device-specific encrypted backups with rate limiting
 
 ✅ **Authentication**
 
@@ -96,7 +99,9 @@ src/
 │   │   └── Toast.svelte            # Toast notifications
 │   │
 │   ├── crypto/              # End-to-end encryption
-│   │   └── signal.ts               # Signal Protocol implementation
+│   │   ├── signal.ts               # Signal Protocol (X3DH, Double Ratchet)
+│   │   ├── keyEncryption.ts        # Client-side key encryption (NEW)
+│   │   └── types.ts                # Crypto type definitions
 │   │
 │   ├── services/            # API and WebSocket services
 │   │   ├── api.ts                  # Base API client with auth
@@ -230,19 +235,30 @@ pnpm format
 
 **Implementation**: Signal Protocol via `@privacyresearch/libsignal-protocol-typescript`
 
-**Key Features:**
+**Security Architecture:**
 
 - **Client-side encryption**: Messages encrypted before sending to server
-- **Automatic setup**: Prekey bundles generated on registration/login
+- **Zero-knowledge backend**: Server stores encrypted key bundles, never sees plaintext
+- **AES-256-GCM encryption**: Client-side key encryption with authenticated encryption
+- **PBKDF2 key derivation**: 100,000 iterations (OWASP compliant)
+- **Device isolation**: Each device has separate encrypted key backup
+- **Rate limiting**: 1 key backup per 24 hours to prevent abuse
+- **Audit logging**: All key operations logged for security monitoring
+
+**Key Features:**
+
+- **Automatic setup**: Prekey bundles generated and published on registration/login
 - **Device ID management**: Each browser/device gets unique encryption keys
-- **Session establishment**: Automatic when messaging new contacts
-- **IndexedDB storage**: Keys stored locally, never sent to server
+- **Session establishment**: Automatic X3DH key exchange when messaging new contacts
+- **IndexedDB storage**: Keys stored locally with device-specific database
+- **Encrypted backups**: Optional password-protected cloud backup (currently disabled)
 
 **Flow:**
 
 1. **Registration/Login**: Generate identity keypair and prekey bundles
 2. **Publish keys**: Upload public keys to server for others to fetch
-3. **Send message**: Fetch recipient's prekey bundle, establish session, encrypt message
+3. **Key backup** (if password provided): Encrypt keys client-side, store on server
+4. **Send message**: Fetch recipient's prekey bundle, establish session, encrypt message
 4. **Receive message**: Decrypt using stored session keys
 5. **History**: Messages are decrypted when fetching conversation history
 

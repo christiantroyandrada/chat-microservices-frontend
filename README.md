@@ -35,10 +35,12 @@ This collaborative approach combines the **strategic thinking and UX expertise o
 
 ## ✨ Features
 
-- 🔐 **End-to-End Encryption**: Signal Protocol implementation for secure messaging
+- 🔐 **End-to-End Encryption**: Signal Protocol (X3DH + Double Ratchet) with client-side key encryption
+- 🔒 **Zero-Knowledge Architecture**: Server never sees plaintext keys - AES-256-GCM encryption
 - 🔑 **User Authentication**: JWT-based auth with httpOnly cookies
 - 💬 **Real-time Messaging**: WebSocket connections via Socket.IO
 - 🔔 **Push Notifications**: Real-time notification system
+- 🛡️ **Security Hardening**: PBKDF2 (100k iterations), rate limiting, audit logging
 - 📱 **Responsive Design**: Mobile-first UI with Tailwind CSS
 - ⚡ **Fast & Lightweight**: SvelteKit for optimal performance
 - 🧪 **Test Coverage**: Unit tests (Vitest) and E2E tests (Playwright)
