@@ -256,11 +256,11 @@
 								</div>
 
 								<!-- Unread Badge -->
-								{#if conversation.unreadCount && conversation.unreadCount > 0}
+								{#if conversation.unreadCount && Number(conversation.unreadCount) > 0}
 									<div
 										class="unread-badge flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold text-white"
 									>
-										{conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
+										{Number(conversation.unreadCount) > 9 ? '9+' : Number(conversation.unreadCount)}
 									</div>
 								{/if}
 							</div>

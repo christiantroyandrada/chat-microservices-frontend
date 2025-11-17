@@ -107,7 +107,13 @@
 		loading.conversations = true;
 		try {
 			const currentUserId = $user?._id as string | undefined;
-			conversations = await chatService.getConversations(currentUserId);
+			const loadedConversations = await chatService.getConversations(currentUserId);
+			
+			// Normalize unreadCount to ensure it's always a number
+			conversations = loadedConversations.map(conv => ({
+				...conv,
+				unreadCount: Number(conv.unreadCount || 0)
+			}));
 
 			// Proactively fetch the latest message for each conversation to populate
 			// local storage with decrypted content. This ensures conversation previews
@@ -147,6 +153,11 @@
 
 		selectedConversation = conversation;
 		loading.messages = true;
+
+		// Immediately reset unread count for this conversation
+		conversations = conversations.map(c => 
+			c.userId === userId ? { ...c, unreadCount: 0 } : c
+		);
 
 		const currentUserId = $user._id as string;
 
@@ -282,7 +293,9 @@
 							lastMessage: displayContent,
 							lastMessageTime: message.timestamp,
 							unreadCount:
-								selectedConversation?.userId !== message.senderId ? (c.unreadCount || 0) + 1 : 0
+								selectedConversation?.userId !== message.senderId 
+									? Number(c.unreadCount || 0) + 1 
+									: 0
 						}
 					: c
 			);
