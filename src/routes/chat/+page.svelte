@@ -64,10 +64,13 @@
 			const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
 			
 			// AWAIT initialization to prevent race conditions with message decryption
+			// NOTE: No encryption password provided - keys will NOT be backed up to server
+			// For production: prompt user for encryption password to enable secure cloud backup
 			try {
-				const success = await initSignalWithRestore(userId, deviceId, apiBase);
+				const success = await initSignalWithRestore(userId, deviceId, apiBase, undefined);
 				if (success) {
 					logger.success('[Chat] Signal Protocol initialized successfully');
+					logger.info('[Chat] Key backup disabled - no encryption password provided');
 				} else {
 					logger.warning('[Chat] Signal Protocol initialization failed');
 					toastStore.warning('Encryption setup incomplete. Messages may not be encrypted.');

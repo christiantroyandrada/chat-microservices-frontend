@@ -211,3 +211,13 @@ export interface SignalKeySet {
 		};
 	}>;
 }
+
+// Encrypted key bundle for secure backend storage
+// Client-side encryption ensures server never sees plaintext keys
+export interface EncryptedKeyBundle {
+	encrypted: string; // Base64-encoded encrypted data
+	iv: string; // Base64-encoded initialization vector
+	salt: string; // Base64-encoded salt for key derivation
+	version: number; // Encryption version for future upgrades
+	deviceId: string; // Device ID for key isolation
+}

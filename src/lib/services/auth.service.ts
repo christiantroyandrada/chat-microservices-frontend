@@ -1,6 +1,6 @@
 import { apiClient } from './api';
 import { logger } from './dev-logger';
-import type { AuthUser, LoginCredentials, RegisterCredentials, User, SignalKeySet } from '$lib/types';
+import type { AuthUser, LoginCredentials, RegisterCredentials, User, EncryptedKeyBundle } from '$lib/types';
 
 export const authService = {
 	/**
@@ -80,20 +80,22 @@ export const authService = {
 	},
 
 	/**
-	 * Store Signal Protocol keys on the backend for persistence across devices/tabs
+	 * Store encrypted Signal Protocol keys on the backend for persistence across devices/tabs
+	 * Keys are encrypted CLIENT-SIDE before transmission - server never sees plaintext keys
 	 */
-	async storeSignalKeys(deviceId: string, keySet: SignalKeySet): Promise<void> {
-		await apiClient.post('/user/signal-keys', { deviceId, keySet });
+	async storeSignalKeys(deviceId: string, encryptedBundle: EncryptedKeyBundle): Promise<void> {
+		await apiClient.post('/user/signal-keys', { deviceId, encryptedBundle });
 	},
 
 	/**
-	 * Fetch Signal Protocol keys from the backend
+	 * Fetch encrypted Signal Protocol keys from the backend
 	 * Returns null if no keys are stored
+	 * Keys must be decrypted CLIENT-SIDE after retrieval
 	 */
-	async fetchSignalKeys(): Promise<SignalKeySet | null> {
+	async fetchSignalKeys(deviceId: string): Promise<EncryptedKeyBundle | null> {
 		try {
-			const response = await apiClient.get<{ keySet: SignalKeySet }>('/user/signal-keys');
-			return response.data?.keySet || null;
+			const response = await apiClient.get<{ encryptedBundle: EncryptedKeyBundle }>(`/user/signal-keys?deviceId=${deviceId}`);
+			return response.data?.encryptedBundle || null;
 		} catch (error: unknown) {
 			// 404 means no keys stored yet - this is expected for new users
 			if (typeof error === 'object' && error !== null && 'response' in error) {

@@ -25,6 +25,8 @@ import type {
 } from '@privacyresearch/libsignal-protocol-typescript';
 import type { Identity, PrekeyBundleData, PrekeyBundlePayload } from './types';
 import { logger } from '$lib/services/dev-logger';
+import { encryptKeySet, decryptKeySet } from './keyEncryption';
+import type { EncryptedKeyBundle } from '$lib/types';
 
 // IndexedDB-backed store implementation
 // Implement the StorageType-compatible store expected by the library.
@@ -640,6 +642,9 @@ export async function clearSignalState(userId: string): Promise<void> {
 /**
  * Export complete Signal key set for backup to backend
  * Returns all keys needed to restore Signal Protocol state
+ * 
+ * NOTE: This function returns PLAINTEXT keys. Always wrap with encryptKeySet()
+ * before sending to backend. See exportAndEncryptSignalKeys() for secure version.
  */
 export async function exportSignalKeys(userId: string): Promise<any> {
 	await initSignal(userId);
@@ -744,16 +749,76 @@ export async function importSignalKeys(userId: string, keySet: any): Promise<voi
 }
 
 /**
+ * Export and encrypt Signal keys for secure backend storage
+ * 
+ * SECURE VERSION - Use this instead of exportSignalKeys() for backend storage
+ * 
+ * @param userId - User ID
+ * @param deviceId - Device ID for key isolation
+ * @param password - Encryption password (user must remember this!)
+ * @returns Encrypted key bundle safe for backend storage
+ */
+export async function exportAndEncryptSignalKeys(
+	userId: string,
+	deviceId: string,
+	password: string
+): Promise<EncryptedKeyBundle> {
+	logger.info('[Signal] Exporting and encrypting keys for device:', deviceId);
+	
+	// Export plaintext keys
+	const plaintextKeys = await exportSignalKeys(userId);
+	
+	// Encrypt with user password
+	const encryptedBundle = await encryptKeySet(plaintextKeys, password, deviceId);
+	
+	logger.info('[Signal] Keys encrypted and ready for backend storage');
+	return encryptedBundle;
+}
+
+/**
+ * Decrypt and import Signal keys from backend
+ * 
+ * SECURE VERSION - Decrypts client-side encrypted keys
+ * 
+ * @param userId - User ID
+ * @param encryptedBundle - Encrypted bundle from backend
+ * @param password - Decryption password
+ */
+export async function decryptAndImportSignalKeys(
+	userId: string,
+	encryptedBundle: EncryptedKeyBundle,
+	password: string
+): Promise<void> {
+	logger.info('[Signal] Decrypting and importing keys for device:', encryptedBundle.deviceId);
+	
+	// Decrypt with user password
+	const plaintextKeys = await decryptKeySet(encryptedBundle, password);
+	
+	// Import to IndexedDB
+	await importSignalKeys(userId, plaintextKeys);
+	
+	logger.info('[Signal] Keys decrypted and imported successfully');
+}
+
+/**
  * Initialize Signal Protocol with key restoration from backend if available
  * This should be called during login to ensure consistent keys across tabs/devices
  * 
  * IMPORTANT: Always checks backend first to ensure cross-tab/cross-device consistency.
  * Local keys are only used as fallback if backend fetch fails.
+ * 
+ * SECURITY: Now uses client-side encryption - server never sees plaintext keys
+ * 
+ * @param userId - User ID
+ * @param deviceId - Device ID  
+ * @param apiBase - API base URL
+ * @param encryptionPassword - Optional password for key encryption (if null, skip backup)
  */
 export async function initSignalWithRestore(
 	userId: string,
 	deviceId: string,
-	apiBase: string
+	apiBase: string,
+	encryptionPassword?: string
 ): Promise<boolean> {
 	// If there's an ongoing restore, wait for it to complete
 	if (restorePromise) {
@@ -769,13 +834,13 @@ export async function initSignalWithRestore(
 			await initSignal(userId);
 
 			// ALWAYS check backend first to ensure consistency across tabs/devices
-			logger.info('[Signal] Checking backend for authoritative keys...');
+			logger.info('[Signal] Checking backend for authoritative encrypted keys...');
 			try {
 				const { authService } = await import('$lib/services/auth.service');
-				const keySet = await authService.fetchSignalKeys();
+				const encryptedBundle = await authService.fetchSignalKeys(deviceId);
 
-				if (keySet) {
-					logger.info('[Signal] Found keys on backend, clearing local storage and restoring...');
+				if (encryptedBundle && encryptionPassword) {
+					logger.info('[Signal] Found encrypted keys on backend, decrypting and restoring...');
 					
 					// Clear local IndexedDB to ensure we start fresh with backend keys
 					await clearSignalState(userId);
@@ -787,9 +852,9 @@ export async function initSignalWithRestore(
 					initializationPromise = null; // Reset initialization promise
 					await initSignal(userId);
 					
-					// Import backend keys
-					await importSignalKeys(userId, keySet);
-					logger.info('[Signal] Successfully restored keys from backend');
+					// Decrypt and import backend keys (CLIENT-SIDE DECRYPTION)
+					await decryptAndImportSignalKeys(userId, encryptedBundle, encryptionPassword);
+					logger.info('[Signal] Successfully decrypted and restored keys from backend');
 					
 					// Re-initialize the store to load the imported keys into memory cache
 					store = null;
@@ -805,12 +870,12 @@ export async function initSignalWithRestore(
 				logger.info('[Signal] No keys on backend, checking local storage...');
 				const hasKeys = await hasLocalKeys(userId);
 				
-				if (hasKeys) {
-					logger.info('[Signal] Found local keys, backing them up to backend...');
-					// We have local keys but backend doesn't - back them up
-					const existingKeySet = await exportSignalKeys(userId);
-					await authService.storeSignalKeys(deviceId, existingKeySet);
-					logger.info('[Signal] Successfully backed up local keys to backend');
+				if (hasKeys && encryptionPassword) {
+					logger.info('[Signal] Found local keys, encrypting and backing them up to backend...');
+					// We have local keys but backend doesn't - back them up (ENCRYPTED)
+					const encryptedBundle = await exportAndEncryptSignalKeys(userId, deviceId, encryptionPassword);
+					await authService.storeSignalKeys(deviceId, encryptedBundle);
+					logger.info('[Signal] Successfully backed up encrypted keys to backend');
 					return true;
 				}
 
@@ -818,11 +883,15 @@ export async function initSignalWithRestore(
 				logger.info('[Signal] No keys found anywhere, generating new keys...');
 				await generateAndPublishIdentity(apiBase, userId, deviceId);
 
-				// Export and store the newly generated keys on backend
-				logger.info('[Signal] Backing up newly generated keys to backend...');
-				const newKeySet = await exportSignalKeys(userId);
-				await authService.storeSignalKeys(deviceId, newKeySet);
-				logger.info('[Signal] Successfully backed up keys to backend');
+				// Export and store the newly generated keys on backend (ENCRYPTED)
+				if (encryptionPassword) {
+					logger.info('[Signal] Encrypting and backing up newly generated keys to backend...');
+					const encryptedBundle = await exportAndEncryptSignalKeys(userId, deviceId, encryptionPassword);
+					await authService.storeSignalKeys(deviceId, encryptedBundle);
+					logger.info('[Signal] Successfully backed up encrypted keys to backend');
+				} else {
+					logger.warning('[Signal] No encryption password provided - keys will NOT be backed up to backend');
+				}
 
 				return true;
 			} catch (error) {

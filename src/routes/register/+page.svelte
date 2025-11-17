@@ -66,8 +66,31 @@
 		try {
 			const createdUser = await authStore.register({ username, email, password });
 
-			// Signal Protocol keys will be initialized on the chat page
-			// This ensures authentication is fully established before making authenticated requests
+			// SECURITY FIX: Initialize Signal Protocol keys immediately after registration
+			// This ensures prekey bundles are published and available for other users
+			// Without this, messages sent before first login cannot be decrypted
+			try {
+				const { initSignalWithRestore, generateAndPublishIdentity } = await import('$lib/crypto/signal');
+				const { env } = await import('$env/dynamic/public');
+				
+				const userId = createdUser._id;
+				let deviceId = localStorage.getItem('deviceId') || '';
+				if (!deviceId) {
+					deviceId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+						? crypto.randomUUID()
+						: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+					localStorage.setItem('deviceId', deviceId);
+				}
+				
+				const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
+				
+				// Initialize and publish prekeys immediately
+				await generateAndPublishIdentity(apiBase, userId, deviceId);
+				console.log('[Registration] Signal Protocol keys published successfully');
+			} catch (signalError) {
+				console.error('[Registration] Failed to initialize Signal keys:', signalError);
+				// Don't block registration - keys will be generated on first chat login
+			}
 
 			toastStore.success('Registration successful!');
 		} catch (err: unknown) {
