@@ -108,9 +108,9 @@
 		try {
 			const currentUserId = $user?._id as string | undefined;
 			const loadedConversations = await chatService.getConversations(currentUserId);
-			
+
 			// Normalize unreadCount to ensure it's always a number
-			conversations = loadedConversations.map(conv => ({
+			conversations = loadedConversations.map((conv) => ({
 				...conv,
 				unreadCount: Number(conv.unreadCount || 0)
 			}));
@@ -155,9 +155,7 @@
 		loading.messages = true;
 
 		// Immediately reset unread count for this conversation
-		conversations = conversations.map(c => 
-			c.userId === userId ? { ...c, unreadCount: 0 } : c
-		);
+		conversations = conversations.map((c) => (c.userId === userId ? { ...c, unreadCount: 0 } : c));
 
 		const currentUserId = $user._id as string;
 
@@ -234,7 +232,7 @@
 
 		// Decrypt message content if encrypted
 		let displayContent = message.content;
-		let decryptionFailed = false;
+		let _decryptionFailed = false;
 		try {
 			const parsed = JSON.parse(message.content);
 			if (parsed && parsed.__encrypted && $user) {
@@ -249,7 +247,7 @@
 			}
 		} catch (decryptError) {
 			logger.error('[Chat] Decryption failed:', decryptError);
-			decryptionFailed = true;
+			_decryptionFailed = true;
 			// Show user-friendly error message instead of encrypted JSON
 			message.content = '🔒 [Message could not be decrypted - encryption keys may be out of sync]';
 		}
@@ -293,8 +291,8 @@
 							lastMessage: displayContent,
 							lastMessageTime: message.timestamp,
 							unreadCount:
-								selectedConversation?.userId !== message.senderId 
-									? Number(c.unreadCount || 0) + 1 
+								selectedConversation?.userId !== message.senderId
+									? Number(c.unreadCount || 0) + 1
 									: 0
 						}
 					: c

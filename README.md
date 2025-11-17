@@ -171,6 +171,31 @@ The application will be available at `http://localhost:5173`.
 - `pnpm test:e2e` — Run end-to-end tests (Playwright)
 - `pnpm test` — Run all tests
 
+**📖 For comprehensive testing documentation**, see [TESTING.md](../TESTING.md) which includes:
+
+- Complete testing guide for frontend and backend
+- Unit test examples and best practices
+- E2E test patterns
+- Test utilities and fixtures
+- CI/CD integration
+- Troubleshooting guide
+
+**Quick Test Commands:**
+
+```bash
+# Frontend unit tests
+pnpm test:unit              # Run once
+pnpm test:unit -- --watch   # Watch mode
+pnpm test:unit -- --coverage # With coverage
+
+# Frontend E2E tests
+pnpm build && pnpm preview &
+pnpm test:e2e
+
+# Run all tests (frontend + backend)
+cd .. && ./run-tests.sh all
+```
+
 ## Project Structure
 
 ```
@@ -305,12 +330,12 @@ src/lib/crypto/
 
 ### Benefits
 
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| Lines per file | 1,235 | ~180 avg | **-85%** |
-| Responsibilities | 8+ | 1 per module | **100%** |
-| Test complexity | High | Low | **+80%** |
-| Reusability | 0 | 7 modules | **700%** |
+| Metric           | Before | After        | Improvement |
+| ---------------- | ------ | ------------ | ----------- |
+| Lines per file   | 1,235  | ~180 avg     | **-85%**    |
+| Responsibilities | 8+     | 1 per module | **100%**    |
+| Test complexity  | High   | Low          | **+80%**    |
+| Reusability      | 0      | 7 modules    | **700%**    |
 
 ### Usage Example
 
@@ -336,6 +361,7 @@ import { generateSignalIdentity } from '$lib/crypto/signalKeyManager';
 ### Security Preserved
 
 All 8 CVE fixes remain intact:
+
 - ✅ AES-256-GCM encryption
 - ✅ PBKDF2 (100k iterations)
 - ✅ Zero-knowledge architecture
@@ -536,3 +562,4 @@ This project is private and proprietary. All rights reserved.
 ## Support
 
 For issues, questions, or contributions, please refer to the main [Chat Microservices repository](https://github.com/christiantroyandrada/chat-microservices) or contact the development team.
+````

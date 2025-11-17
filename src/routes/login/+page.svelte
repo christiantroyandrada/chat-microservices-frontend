@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { authStore, user } from '$lib/stores/auth.store';
+	import { authStore } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
@@ -41,9 +41,7 @@
 			// SECURITY FIX: Ensure Signal Protocol keys are published immediately
 			// This makes prekey bundles available for incoming messages even before navigating to chat
 			try {
-				const { initSignalWithRestore, generateAndPublishIdentity } = await import(
-					'$lib/crypto/signal'
-				);
+				const { initSignalWithRestore } = await import('$lib/crypto/signal');
 				const { env } = await import('$env/dynamic/public');
 
 				const userId = loggedInUser._id;

@@ -1,0 +1,7 @@
+# Ignore non-CSS config/scripts that stylelint may accidentally parse
+playwright.config.ts
+.playwright.config.ts
+tests/**/*.ts
+*.config.ts
+vite.config.ts
+pnpm-lock.yaml

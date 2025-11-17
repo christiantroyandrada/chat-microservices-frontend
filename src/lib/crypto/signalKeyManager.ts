@@ -19,12 +19,7 @@ import { isStoredSignedPreKey } from './types';
 import type { SignalKeySet } from '$lib/types';
 import { IndexedDBSignalProtocolStore } from './signalStore';
 import { arrayBufferToBase64, base64ToArrayBuffer } from './signalUtils';
-import {
-	DEFAULT_DEVICE_ID,
-	DEFAULT_SIGNED_PREKEY_ID,
-	PREKEY_COUNT,
-	MAX_PREKEY_SCAN
-} from './signalConstants';
+import { DEFAULT_SIGNED_PREKEY_ID, PREKEY_COUNT, MAX_PREKEY_SCAN } from './signalConstants';
 import { logger } from '$lib/services/dev-logger';
 
 /**

@@ -205,6 +205,7 @@ Open browser at: **http://localhost:5173**
 ### The Problem: God Object Anti-Pattern
 
 Originally, the Signal Protocol implementation was a **monolithic file** (1,235 lines) with 8+ distinct responsibilities:
+
 - ❌ IndexedDB storage management
 - ❌ Key generation and management
 - ❌ Session establishment
@@ -215,6 +216,7 @@ Originally, the Signal Protocol implementation was a **monolithic file** (1,235 
 - ❌ Global state management
 
 This "God Object" made the code:
+
 - Hard to understand (high cognitive load)
 - Difficult to test (tightly coupled)
 - Impossible to reuse components
@@ -271,6 +273,7 @@ The codebase has been refactored into **7 focused modules**, each with a **singl
 ### Module Responsibilities
 
 #### 1. `signal.ts` (388 lines) - Public API Facade
+
 **Purpose:** Maintains backward compatibility and orchestrates modules
 
 ```typescript
@@ -282,6 +285,7 @@ const encrypted = await encryptMessage(recipientId, plaintext);
 ```
 
 **Key Functions:**
+
 - `initSignal()` - Initialize store for user
 - `generateSignalIdentity()` - Generate complete identity
 - `createSessionWithPrekeyBundle()` - Establish session
@@ -289,6 +293,7 @@ const encrypted = await encryptMessage(recipientId, plaintext);
 - `initSignalWithRestore()` - Auto-restore from backend
 
 #### 2. `signalStore.ts` (266 lines) - IndexedDB Storage
+
 **Purpose:** Persistent storage for keys and sessions
 
 ```typescript
@@ -299,6 +304,7 @@ await store.init();
 ```
 
 **Manages:**
+
 - Identity key pairs
 - Registration IDs
 - Prekeys & signed prekeys
@@ -308,6 +314,7 @@ await store.init();
 **Interface:** Implements Signal Protocol `StorageType`
 
 #### 3. `signalSession.ts` (257 lines) - Session Management
+
 **Purpose:** Handle session establishment and message encryption
 
 ```typescript
@@ -318,6 +325,7 @@ const plaintext = await decryptMessage(store, senderId, ciphertext);
 ```
 
 **Key Functions:**
+
 - `createSessionWithPrekeyBundle()` - Establish session with remote user
 - `encryptMessage()` - Signal Protocol encryption
 - `decryptMessage()` - Signal Protocol decryption
@@ -325,6 +333,7 @@ const plaintext = await decryptMessage(store, senderId, ciphertext);
 - `removeSessionWith()` - Delete sessions
 
 #### 4. `signalKeyManager.ts` (232 lines) - Key Lifecycle
+
 **Purpose:** Generate, import, export, and publish keys
 
 ```typescript
@@ -335,12 +344,14 @@ const keySet = await exportSignalKeys(store);
 ```
 
 **Key Functions:**
+
 - `generateSignalIdentity()` - Create identity + prekeys
 - `publishSignalPrekey()` - Publish to backend
 - `exportSignalKeys()` - Extract keys for backup
 - `importSignalKeys()` - Restore keys from backup
 
 #### 5. `signalBackup.ts` (126 lines) - Backend Sync
+
 **Purpose:** Synchronize encrypted keys with backend
 
 ```typescript
@@ -351,6 +362,7 @@ await authService.storeSignalKeys(deviceId, encrypted);
 ```
 
 **Key Functions:**
+
 - `hasLocalKeys()` - Check local key existence
 - `exportAndEncryptSignalKeys()` - Encrypted export (AES-256-GCM)
 - `decryptAndImportSignalKeys()` - Encrypted import
@@ -358,6 +370,7 @@ await authService.storeSignalKeys(deviceId, encrypted);
 - `generateAndPublishIdentity()` - Complete setup flow
 
 #### 6. `signalUtils.ts` (53 lines) - Utilities
+
 **Purpose:** Data conversion and helper functions
 
 ```typescript
@@ -368,11 +381,13 @@ const buffer = base64ToArrayBuffer(base64);
 ```
 
 **Functions:**
+
 - `arrayBufferToBase64()` - Binary to base64
 - `base64ToArrayBuffer()` - Base64 to binary
 - `arrayBufferEquals()` - Safe buffer comparison
 
 #### 7. `signalConstants.ts` (25 lines) - Configuration
+
 **Purpose:** Centralized constants
 
 ```typescript
@@ -380,6 +395,7 @@ import { DEFAULT_DEVICE_ID, PREKEY_COUNT } from '$lib/crypto/signalConstants';
 ```
 
 **Constants:**
+
 - `DEFAULT_DEVICE_ID` = 1
 - `DEFAULT_SIGNED_PREKEY_ID` = 1
 - `PREKEY_COUNT` = 5
@@ -390,14 +406,18 @@ import { DEFAULT_DEVICE_ID, PREKEY_COUNT } from '$lib/crypto/signalConstants';
 ### Design Principles Applied
 
 #### ✅ Single Responsibility Principle (SRP)
+
 Each module has ONE clear job:
+
 - Storage → `signalStore`
 - Sessions → `signalSession`
 - Keys → `signalKeyManager`
 - Sync → `signalBackup`
 
 #### ✅ Separation of Concerns
+
 Clear boundaries between:
+
 - **Data Layer**: signalStore
 - **Business Logic**: signalSession, signalKeyManager
 - **Integration**: signalBackup
@@ -405,44 +425,47 @@ Clear boundaries between:
 - **Config**: signalConstants
 
 #### ✅ Dependency Inversion
+
 - Modules depend on abstractions (store interface)
 - Store instance passed as parameter
 - Easy to mock for testing
 
 #### ✅ Open/Closed Principle
+
 - Open for extension (add new modules)
 - Closed for modification (existing modules stable)
 
 ### Benefits: Before vs After
 
-| Metric | Before (God Object) | After (Modular) | Improvement |
-|--------|---------------------|-----------------|-------------|
-| **Lines per file** | 1,235 | ~180 avg | **-85%** |
-| **Responsibilities** | 8+ mixed | 1 per module | **100%** |
-| **Test complexity** | Very High | Low | **+80%** |
-| **Reusability** | None | 7 modules | **700%** |
-| **Cognitive load** | Overwhelming | Manageable | **+85%** |
-| **Maintainability** | 2/10 | 9/10 | **+350%** |
-| **Breaking changes** | N/A | **ZERO** | 100% compatible |
+| Metric               | Before (God Object) | After (Modular) | Improvement     |
+| -------------------- | ------------------- | --------------- | --------------- |
+| **Lines per file**   | 1,235               | ~180 avg        | **-85%**        |
+| **Responsibilities** | 8+ mixed            | 1 per module    | **100%**        |
+| **Test complexity**  | Very High           | Low             | **+80%**        |
+| **Reusability**      | None                | 7 modules       | **700%**        |
+| **Cognitive load**   | Overwhelming        | Manageable      | **+85%**        |
+| **Maintainability**  | 2/10                | 9/10            | **+350%**       |
+| **Breaking changes** | N/A                 | **ZERO**        | 100% compatible |
 
 ### Security Features Preserved
 
 All 8 CVE fixes remain **100% intact**:
 
-| CVE | Feature | Status |
-|-----|---------|--------|
-| CVE-001 | Password-based encryption | ✅ |
-| CVE-002 | AES-256-GCM | ✅ |
-| CVE-003 | PBKDF2 (100k iterations) | ✅ |
-| CVE-005 | Device isolation | ✅ |
-| CVE-007 | Zero-knowledge architecture | ✅ |
-| CVE-008 | Rate limiting | ✅ |
-| CVE-010 | Comprehensive audit logging | ✅ |
-| CVE-011 | Strong password validation | ✅ |
+| CVE     | Feature                     | Status |
+| ------- | --------------------------- | ------ |
+| CVE-001 | Password-based encryption   | ✅     |
+| CVE-002 | AES-256-GCM                 | ✅     |
+| CVE-003 | PBKDF2 (100k iterations)    | ✅     |
+| CVE-005 | Device isolation            | ✅     |
+| CVE-007 | Zero-knowledge architecture | ✅     |
+| CVE-008 | Rate limiting               | ✅     |
+| CVE-010 | Comprehensive audit logging | ✅     |
+| CVE-011 | Strong password validation  | ✅     |
 
 ### Testing Strategy
 
 #### Unit Tests (Module-Level)
+
 Each module can be tested independently:
 
 ```typescript
@@ -450,31 +473,32 @@ Each module can be tested independently:
 import { arrayBufferToBase64 } from '$lib/crypto/signalUtils';
 
 test('converts ArrayBuffer to base64', () => {
-  const buffer = new Uint8Array([72, 101, 108, 108, 111]).buffer;
-  expect(arrayBufferToBase64(buffer)).toBe('SGVsbG8=');
+	const buffer = new Uint8Array([72, 101, 108, 108, 111]).buffer;
+	expect(arrayBufferToBase64(buffer)).toBe('SGVsbG8=');
 });
 
 // signalStore.test.ts
 import { IndexedDBSignalProtocolStore } from '$lib/crypto/signalStore';
 
 test('stores and retrieves identity key', async () => {
-  const store = new IndexedDBSignalProtocolStore('test-user');
-  await store.init();
-  // ... test storage operations
+	const store = new IndexedDBSignalProtocolStore('test-user');
+	await store.init();
+	// ... test storage operations
 });
 ```
 
 #### Integration Tests
+
 Test module interactions:
 
 ```typescript
 import { initSignal, encryptMessage, decryptMessage } from '$lib/crypto/signal';
 
 test('complete encryption flow', async () => {
-  await initSignal(userId);
-  const encrypted = await encryptMessage(recipientId, 'Hello');
-  const decrypted = await decryptMessage(senderId, encrypted);
-  expect(decrypted).toBe('Hello');
+	await initSignal(userId);
+	const encrypted = await encryptMessage(recipientId, 'Hello');
+	const decrypted = await decryptMessage(senderId, encrypted);
+	expect(decrypted).toBe('Hello');
 });
 ```
 
@@ -484,11 +508,7 @@ test('complete encryption flow', async () => {
 
 ```typescript
 // Old code - still works perfectly!
-import { 
-  initSignal, 
-  encryptMessage, 
-  decryptMessage 
-} from '$lib/crypto/signal';
+import { initSignal, encryptMessage, decryptMessage } from '$lib/crypto/signal';
 
 await initSignal(userId);
 const encrypted = await encryptMessage(recipientId, plaintext);
@@ -511,6 +531,7 @@ const identity = await generateSignalIdentity(store);
 ### Future Enhancements
 
 The modular architecture makes it easy to:
+
 - ✅ Add alternative storage backends (SQLite, LocalStorage)
 - ✅ Implement automatic key rotation module
 - ✅ Add multi-device sync extensions
@@ -855,3 +876,4 @@ Private and proprietary. All rights reserved.
 ---
 
 **Happy Coding! 🚀**
+````

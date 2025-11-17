@@ -70,9 +70,7 @@
 			// This ensures prekey bundles are published and available for other users
 			// Without this, messages sent before first login cannot be decrypted
 			try {
-				const { initSignalWithRestore, generateAndPublishIdentity } = await import(
-					'$lib/crypto/signal'
-				);
+				const { generateAndPublishIdentity } = await import('$lib/crypto/signal');
 				const { env } = await import('$env/dynamic/public');
 
 				const userId = createdUser._id;
