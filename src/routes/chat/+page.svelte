@@ -35,9 +35,13 @@
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
 	let unsubscribeWsStatus: (() => void) | null = null;
+	let unsubscribeWsPresence: (() => void) | null = null;
 
 	// Track if we've done the initial message prefetch to avoid recursion
 	let hasPreloadedMessages = false;
+
+	// Store presence updates that arrive before conversations are loaded
+	const pendingPresenceUpdates = new Map<string, { online: boolean; lastSeen?: string }>();
 
 	onMount(async () => {
 		// Check authentication
@@ -88,6 +92,7 @@
 		unsubscribeWsMessage = wsService.onMessage(handleIncomingMessage);
 		unsubscribeWsTyping = wsService.onTyping(handleTypingIndicator);
 		unsubscribeWsStatus = wsService.onStatusChange(handleConnectionStatus);
+		unsubscribeWsPresence = wsService.onPresence(handlePresenceUpdate);
 
 		// Load initial data (Signal Protocol is now ready for decryption)
 		await loadConversations();
@@ -99,6 +104,7 @@
 		if (unsubscribeWsMessage) unsubscribeWsMessage();
 		if (unsubscribeWsTyping) unsubscribeWsTyping();
 		if (unsubscribeWsStatus) unsubscribeWsStatus();
+		if (unsubscribeWsPresence) unsubscribeWsPresence();
 
 		wsService.disconnect();
 	});
@@ -114,6 +120,18 @@
 				...conv,
 				unreadCount: Number(conv.unreadCount || 0)
 			}));
+
+			// Apply any pending presence updates that arrived before conversations loaded
+			if (pendingPresenceUpdates.size > 0) {
+				logger.debug('[Chat] Applying pending presence updates', Array.from(pendingPresenceUpdates.entries()));
+				conversations = conversations.map((conv) => {
+					const presenceData = pendingPresenceUpdates.get(conv.userId);
+					if (presenceData) {
+						return { ...conv, ...presenceData };
+					}
+					return conv;
+				});
+			}
 
 			// Proactively fetch the latest message for each conversation to populate
 			// local storage with decrypted content. This ensures conversation previews
@@ -337,6 +355,37 @@
 		}
 	}
 
+	function handlePresenceUpdate(userId: string, online: boolean, lastSeen?: string) {
+		// Debug info (uses dev-logger which is a no-op in prod)
+		logger.debug('[Chat] handlePresenceUpdate', { userId, online, lastSeen });
+
+		// Store presence update for later if conversations haven't loaded yet
+		if (conversations.length === 0) {
+			logger.debug('[Chat] Conversations not loaded yet, storing presence update for later');
+			pendingPresenceUpdates.set(userId, { online, lastSeen });
+			return;
+		}
+		
+		// Update the conversation's presence status
+		conversations = conversations.map((conv) =>
+			conv.userId === userId
+				? { ...conv, online, lastSeen }
+				: conv
+		);
+
+		// If the updated user is the currently selected conversation, trigger a re-render
+		if (selectedConversation && selectedConversation.userId === userId) {
+			selectedConversation = { ...selectedConversation, online, lastSeen };
+			logger.debug('[Chat] Updated selectedConversation to:', {
+				userId: selectedConversation.userId,
+				online: selectedConversation.online,
+				lastSeen: selectedConversation.lastSeen
+			});
+		}
+
+		logger.debug('[Chat] Presence updated:', { userId, online, lastSeen });
+	}
+
 	/**
 	 * Create a new conversation with a selected user (from ChatList create event).
 	 * If a conversation already exists, select it. Otherwise, optimistically open a new thread
@@ -505,13 +554,18 @@
 		<!-- Primary area: conversation list is the default initial view (full-width). On select, show chat thread. -->
 		<div class="flex flex-1 flex-col" style="background: var(--bg-primary);">
 			{#if selectedConversation}
-				<ChatHeader recipient={selectedConversation} {typingUsers} />
+				<ChatHeader 
+					recipient={selectedConversation} 
+					isTyping={typingUsers.has(selectedConversation.userId)}
+				/>
 				<MessageList
 					bind:this={messageListComponent}
 					{messages}
 					currentUserId={$user?._id || ''}
 					loading={loading.messages}
 					conversationId={selectedConversation.userId}
+					typingUsers={typingUsers}
+					typingUsername={selectedConversation.username}
 				/>
 				<MessageInput
 					on:send={(e) => sendMessage(e.detail)}

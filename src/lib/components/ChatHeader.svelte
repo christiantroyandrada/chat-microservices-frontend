@@ -1,11 +1,42 @@
 <script lang="ts">
 	import type { ChatConversation } from '$lib/types';
-	import { createEventDispatcher } from 'svelte';
 
 	// Props (runes mode)
-	let { recipient = null as ChatConversation | null, typingUsers = new Set<string>() } = $props();
+	let { recipient = null as ChatConversation | null, isTyping = false } = $props();
 
-	const dispatch = createEventDispatcher();
+	function getStatusText(): string {
+		if (!recipient) return '';
+		
+		// Show typing indicator if user is actively typing
+		if (isTyping) return 'typing...';
+		
+		// Prioritize real-time presence data from websocket
+		if (recipient.online !== undefined) {
+			if (recipient.online) return 'Online';
+			
+			// User is offline, format lastSeen if available
+			if (recipient.lastSeen) {
+				const diffMs = Date.now() - new Date(recipient.lastSeen).getTime();
+				const minutes = Math.floor(diffMs / 60000);
+				if (minutes < 60) return `Active ${minutes}m ago`;
+				const hours = Math.floor(minutes / 60);
+				if (hours < 24) return `Active ${hours}h ago`;
+				return `Last active ${new Date(recipient.lastSeen).toLocaleDateString()}`;
+			}
+			return 'Offline';
+		}
+		
+		// Fallback: use lastMessageTime as activity proxy (legacy behavior)
+		if (!recipient.lastMessageTime) return 'Offline';
+
+		const diffMs = Date.now() - new Date(recipient.lastMessageTime).getTime();
+		const minutes = Math.floor(diffMs / 60000);
+		if (minutes < 2) return 'Online';
+		if (minutes < 60) return `Active ${minutes}m ago`;
+		const hours = Math.floor(minutes / 60);
+		if (hours < 24) return `Active ${hours}h ago`;
+		return `Last active ${new Date(recipient.lastMessageTime).toLocaleDateString()}`;
+	}
 </script>
 
 {#if recipient}
@@ -23,45 +54,19 @@
 					<h3 class="username text-base font-semibold md:text-lg">
 						{recipient.username}
 					</h3>
-					{#if typingUsers.has(recipient.userId)}
-						<p class="typing-indicator text-sm">typing...</p>
+					{#if isTyping}
+						<div class="status-text text-sm flex items-center gap-1">
+							<span>typing</span>
+							<span class="typing-dots">
+								<span class="dot"></span>
+								<span class="dot"></span>
+								<span class="dot"></span>
+							</span>
+						</div>
 					{:else}
-						<p class="status-text text-sm">Online</p>
+						<p class="status-text text-sm">{getStatusText()}</p>
 					{/if}
 				</div>
-			</div>
-
-			<div class="flex items-center gap-2">
-				<button
-					onclick={() => dispatch('call')}
-					class="header-button hover-bg-accent rounded-full p-2 transition-all"
-					title="Video call"
-					aria-label="Start video call"
-				>
-					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-						/>
-					</svg>
-				</button>
-				<button
-					onclick={() => dispatch('info')}
-					class="header-button hover-bg-accent rounded-full p-2 transition-all"
-					title="User info"
-					aria-label="View user information"
-				>
-					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-						/>
-					</svg>
-				</button>
 			</div>
 		</div>
 	</div>
@@ -88,22 +93,50 @@
 			color: var(--text-primary);
 		}
 
-		.typing-indicator {
-			color: var(--accent-primary);
-			animation: fadeIn 0.2s ease-out;
-		}
+
 
 		.status-text {
 			color: var(--text-tertiary);
 		}
 
-		.header-button {
-			color: var(--text-secondary);
-			background: transparent;
+		.typing-dots {
+			display: inline-flex;
+			align-items: center;
+			gap: 2px;
+		}
 
-			&:hover {
-				background: var(--bg-hover);
-			}
+		.typing-dots .dot {
+			width: 4px;
+			height: 4px;
+			background-color: var(--text-tertiary);
+			border-radius: 50%;
+			display: inline-block;
+			animation: typing-bounce 1.4s infinite ease-in-out;
+		}
+
+		.typing-dots .dot:nth-child(1) {
+			animation-delay: 0s;
+		}
+
+		.typing-dots .dot:nth-child(2) {
+			animation-delay: 0.2s;
+		}
+
+		.typing-dots .dot:nth-child(3) {
+			animation-delay: 0.4s;
+		}
+	}
+
+	@keyframes typing-bounce {
+		0%,
+		60%,
+		100% {
+			transform: translateY(0);
+			opacity: 0.7;
+		}
+		30% {
+			transform: translateY(-8px);
+			opacity: 1;
 		}
 	}
 

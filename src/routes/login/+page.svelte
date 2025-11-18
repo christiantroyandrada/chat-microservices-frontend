@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { authStore } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
+	import { logger } from '$lib/services/dev-logger';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import type { ApiError } from '$lib/types';
@@ -58,9 +59,9 @@
 
 				// Initialize keys if needed and publish prekeys
 				await initSignalWithRestore(userId, deviceId, apiBase, undefined);
-				console.log('[Login] Signal Protocol keys ensured and published');
+				logger.success('[Login] Signal Protocol keys ensured and published');
 			} catch (signalError) {
-				console.error('[Login] Failed to initialize Signal keys:', signalError);
+				logger.error('[Login] Failed to initialize Signal keys:', signalError);
 				// Don't block login - keys will be generated on chat page
 			}
 

@@ -6,6 +6,7 @@ import type {
 	MessageCallback,
 	StatusCallback,
 	TypingCallback,
+	PresenceCallback,
 	ReceiveMessagePayload,
 	TypingPayload
 } from '$lib/types';
@@ -16,6 +17,7 @@ class WebSocketService {
 	private messageCallbacks: Set<MessageCallback> = new Set();
 	private statusCallbacks: Set<StatusCallback> = new Set();
 	private typingCallbacks: Set<TypingCallback> = new Set();
+	private presenceCallbacks: Set<PresenceCallback> = new Set();
 	private wsUrl: string;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -117,6 +119,24 @@ class WebSocketService {
 					}
 				});
 			});
+
+			// Listen for presence updates (online/offline)
+			this.socket.on('presence', (payload: unknown) => {
+				const d = payload as { userId?: string; online?: boolean; lastSeen?: string };
+				const userId = String(d.userId ?? '');
+				const online = Boolean(d.online ?? false);
+				const lastSeen = d.lastSeen ? String(d.lastSeen) : undefined;
+
+				logger.request('[WebSocket] Presence update received:', { userId, online, lastSeen, rawPayload: payload });
+
+				this.presenceCallbacks.forEach((callback) => {
+					try {
+						callback(userId, online, lastSeen);
+					} catch (error) {
+						logger.error('Error in presence callback:', error);
+					}
+				});
+			});
 		} catch (error) {
 			logger.error('Failed to connect Socket.IO:', error);
 		}
@@ -142,6 +162,7 @@ class WebSocketService {
 		this.messageCallbacks.clear();
 		this.statusCallbacks.clear();
 		this.typingCallbacks.clear();
+		this.presenceCallbacks.clear();
 	}
 
 	/**
@@ -238,6 +259,17 @@ class WebSocketService {
 		this.typingCallbacks.add(callback);
 		return () => {
 			this.typingCallbacks.delete(callback);
+		};
+	}
+
+	/**
+	 * Subscribe to presence updates (online/offline status)
+	 * Returns unsubscribe function that MUST be called to prevent memory leaks
+	 */
+	onPresence(callback: PresenceCallback): () => void {
+		this.presenceCallbacks.add(callback);
+		return () => {
+			this.presenceCallbacks.delete(callback);
 		};
 	}
 

@@ -54,6 +54,9 @@ export interface ChatConversation {
 	lastMessageSenderId?: string;
 	lastMessageTime?: string;
 	unreadCount?: number;
+	// Presence tracking via websocket
+	online?: boolean;
+	lastSeen?: string; // ISO timestamp of last activity
 }
 
 // Chat store state
@@ -186,6 +189,7 @@ export type MessageListHandle = {
 export type MessageCallback = (message: Message) => void;
 export type StatusCallback = (status: 'connected' | 'disconnected' | 'reconnecting') => void;
 export type TypingCallback = (userId: string, isTyping: boolean) => void;
+export type PresenceCallback = (userId: string, online: boolean, lastSeen?: string) => void;
 
 // Signal Protocol Types
 // Used by: auth.service.ts, signal.ts for key backup/restore

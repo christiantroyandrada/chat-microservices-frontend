@@ -8,7 +8,11 @@
 		messages = [] as Message[],
 		currentUserId = undefined as string | undefined,
 		loading = false,
-		conversationId = '' as string
+		conversationId = '' as string,
+		// typingUsers is a set of userIds currently typing (managed by parent)
+		typingUsers = new Set<string>(),
+		// typingUsername optionally provides a display name for the typing user
+		typingUsername = '' as string | undefined
 	} = $props();
 
 	let messagesContainer: HTMLDivElement;
@@ -31,6 +35,15 @@
 			pendingConversationScroll = true;
 		}
 	});
+
+// Effect 3: When the other user starts typing, ensure the typing bubble is visible
+$effect(() => {
+	if (!messagesContainer) return;
+	if (typingUsers && conversationId && typingUsers.has(conversationId) && shouldAutoScroll) {
+		// wait for DOM update then scroll to show the typing bubble
+		tick().then(() => scrollToBottom('smooth'));
+	}
+});
 
 	// Effect 2: Handle message updates and scrolling
 	$effect(() => {
@@ -184,7 +197,8 @@
 <div
 	bind:this={messagesContainer}
 	onscroll={handleScroll}
-	class="messages-container flex-1 space-y-4 overflow-y-auto p-4 pb-24 md:pb-4"
+	class="messages-container flex-1 space-y-4 overflow-y-auto p-4"
+	style="padding-bottom: calc(var(--chat-input-height, 96px) + 1rem);"
 >
 	{#if loading}
 		<div class="flex h-full items-center justify-center">
@@ -237,6 +251,30 @@
 				</div>
 			</div>
 		{/each}
+
+		{#if typingUsers && conversationId && typingUsers.has(conversationId)}
+			<!-- Typing bubble (receiver POV) - appears as the bottom-most bubble to indicate sender is typing -->
+			<div class="message-row flex justify-start" aria-hidden="false">
+				<div class="message-bubble typing-bubble rounded-lg px-4 py-2 md:max-w-[70%]" role="status" aria-live="polite">
+					<span class="typing-dots-compact" aria-hidden="true">
+						<span class="dot dot-1"></span>
+						<span class="dot dot-2"></span>
+						<span class="dot dot-3"></span>
+					</span>
+				</div>
+			</div>
+
+			<div class="typing-indicator mt-2 mb-2 text-sm sr-only" role="status" aria-live="polite">
+				<div class="typing-line">
+					<span class="typing-label">{typingUsername ? `${typingUsername} is typing` : 'Someone is typing'}</span>
+					<span class="typing-dots" aria-hidden="true">
+						<span class="dot dot-1"></span>
+						<span class="dot dot-2"></span>
+						<span class="dot dot-3"></span>
+					</span>
+				</div>
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -293,6 +331,71 @@
 		.time-received {
 			color: var(--text-tertiary);
 		}
+
+			.typing-indicator {
+				color: var(--accent-primary);
+				padding: 0.25rem 0;
+				opacity: 0.95;
+			}
+
+			.typing-line {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.5rem;
+			}
+
+			.typing-label {
+				color: var(--text-tertiary);
+				font-weight: 600;
+			}
+
+			.typing-dots {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.25rem;
+				width: 36px;
+				justify-content: flex-start;
+			}
+
+			/* Compact typing dots used inside the receiver bubble */
+			.typing-dots-compact {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.35rem;
+				width: 40px;
+				justify-content: flex-start;
+			}
+
+			.dot {
+				display: inline-block;
+				width: 6px;
+				height: 6px;
+				border-radius: 50%;
+				background: var(--accent-primary);
+				opacity: 0.25;
+				transform: translateY(0);
+				animation: typingBounce 1s infinite ease-in-out;
+			}
+
+			/* Styling for the compact typing bubble */
+			.typing-bubble {
+				background: var(--bubble-bg);
+				border: 1px solid var(--bubble-border);
+				color: var(--text-primary);
+				opacity: 0.95;
+				max-width: 40%;
+			}
+
+			.dot-1 { animation-delay: 0s; }
+			.dot-2 { animation-delay: 0.15s; }
+			.dot-3 { animation-delay: 0.3s; }
+
+			@keyframes typingBounce {
+				0% { opacity: 0.25; transform: translateY(0); }
+				30% { opacity: 0.9; transform: translateY(-4px); }
+				60% { opacity: 0.25; transform: translateY(0); }
+				100% { opacity: 0.25; transform: translateY(0); }
+			}
 	}
 
 	@keyframes fadeIn {

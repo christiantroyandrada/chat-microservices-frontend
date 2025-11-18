@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { debounce } from '$lib/utils';
 	import { toastStore } from '$lib/stores/toast.store';
 
@@ -9,6 +9,7 @@
 	// Reactive state (runes)
 	let message = $state('');
 	let textarea: HTMLTextAreaElement;
+	let wrapper: HTMLDivElement;
 
 	// Derived UI state stored in $state to be updated by $effect
 	let characterCount = $state(0);
@@ -33,6 +34,9 @@
 			textarea.style.height = 'auto';
 			textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
 		}
+
+		// Update global CSS var for input height so MessageList can pad accordingly
+		updateChatInputHeight();
 
 		// Emit typing indicator immediately when user starts typing
 		dispatch('typing', true);
@@ -72,6 +76,9 @@
 			textarea.style.height = 'auto';
 		}
 
+		// Update input height variable after send
+		updateChatInputHeight();
+
 		dispatch('typing', false);
 		if (typingTimeout) {
 			clearTimeout(typingTimeout);
@@ -84,9 +91,38 @@
 		isNearLimit = characterCount > maxLength * 0.8;
 		isOverLimit = characterCount > maxLength;
 	});
+
+
+// Keep a CSS variable updated with the actual input wrapper height so MessageList
+// can read it and avoid being overlapped by the fixed input on small screens.
+let _ro: ResizeObserver | null = null;
+function updateChatInputHeight() {
+	try {
+		const h = wrapper ? wrapper.offsetHeight : 0;
+		document.documentElement.style.setProperty('--chat-input-height', `${h}px`);
+	} catch (e) {
+		// ignore in non-browser environments
+	}
+}
+
+onMount(() => {
+	// initial set
+	updateChatInputHeight();
+	// observe size changes
+	if (typeof ResizeObserver !== 'undefined' && wrapper) {
+		_ro = new ResizeObserver(() => updateChatInputHeight());
+		_ro.observe(wrapper);
+	}
+	window.addEventListener('resize', updateChatInputHeight);
+});
+
+onDestroy(() => {
+	if (_ro) _ro.disconnect();
+	window.removeEventListener('resize', updateChatInputHeight);
+});
 </script>
 
-<div class="message-input-wrapper fixed right-0 bottom-0 left-0 z-30 p-4 md:static">
+<div bind:this={wrapper} class="message-input-wrapper fixed right-0 bottom-0 left-0 z-30 p-4 md:static">
 	<div class="flex items-end gap-2">
 		<div class="flex-1">
 			<textarea

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { authStore } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
+	import { logger } from '$lib/services/dev-logger';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import type { ApiError } from '$lib/types';
@@ -87,9 +88,9 @@
 
 				// Initialize and publish prekeys immediately
 				await generateAndPublishIdentity(apiBase, userId, deviceId);
-				console.log('[Registration] Signal Protocol keys published successfully');
+				logger.success('[Registration] Signal Protocol keys published successfully');
 			} catch (signalError) {
-				console.error('[Registration] Failed to initialize Signal keys:', signalError);
+				logger.error('[Registration] Failed to initialize Signal keys:', signalError);
 				// Don't block registration - keys will be generated on first chat login
 			}
 
