@@ -355,6 +355,12 @@
 		}
 	}
 
+	function handleBack() {
+		// Close the active conversation and show the conversation list (mobile behavior)
+		selectedConversation = null;
+		messages = [];
+	}
+
 	function handlePresenceUpdate(userId: string, online: boolean, lastSeen?: string) {
 		// Debug info (uses dev-logger which is a no-op in prod)
 		logger.debug('[Chat] handlePresenceUpdate', { userId, online, lastSeen });
@@ -554,9 +560,10 @@
 		<!-- Primary area: conversation list is the default initial view (full-width). On select, show chat thread. -->
 		<div class="flex flex-1 flex-col" style="background: var(--bg-primary);">
 			{#if selectedConversation}
-				<ChatHeader 
-					recipient={selectedConversation} 
+				<ChatHeader
+					recipient={selectedConversation}
 					isTyping={typingUsers.has(selectedConversation.userId)}
+					on:back={handleBack}
 				/>
 				<MessageList
 					bind:this={messageListComponent}

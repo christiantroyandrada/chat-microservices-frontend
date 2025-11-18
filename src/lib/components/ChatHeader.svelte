@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { createEventDispatcher } from 'svelte';
 	import type { ChatConversation } from '$lib/types';
+
+	const dispatch = createEventDispatcher<{ back: void }>();
 
 	// Props (runes mode)
 	let { recipient = null as ChatConversation | null, isTyping = false } = $props();
@@ -44,6 +47,17 @@
 		<div class="flex items-center justify-between">
 			<div class="header-user-info flex items-center gap-3">
 				<!-- Avatar -->
+				<!-- Back button (mobile only) -->
+				<button
+					class="back-btn mr-2 md:hidden p-2 rounded"
+					type="button"
+					onclick={() => dispatch('back')}
+					aria-label="Back to conversations"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+						<path fill-rule="evenodd" d="M9.707 14.707a1 1 0 01-1.414 0l-5-5a1 1 0 010-1.414l5-5A1 1 0 0110.414 4.293L6.121 8.586H17a1 1 0 110 2H6.121l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
+					</svg>
+				</button>
 				<div
 					class="avatar-circle flex h-10 w-10 items-center justify-center rounded-full font-semibold text-white"
 				>
@@ -80,51 +94,49 @@
 	.chat-header {
 		background: var(--bg-primary);
 		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+	}
 
-		.header-user-info {
-			animation: fadeIn 0.3s ease-out;
-		}
+	.chat-header .header-user-info {
+		animation: fadeIn 0.3s ease-out;
+	}
 
-		.avatar-circle {
-			background: var(--gradient-accent);
-		}
+	.chat-header .avatar-circle {
+		background: var(--gradient-accent);
+	}
 
-		.username {
-			color: var(--text-primary);
-		}
+	.chat-header .username {
+		color: var(--text-primary);
+	}
 
+	.chat-header .status-text {
+		color: var(--text-tertiary);
+	}
 
+	.chat-header .typing-dots {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+	}
 
-		.status-text {
-			color: var(--text-tertiary);
-		}
+	.chat-header .typing-dots .dot {
+		width: 4px;
+		height: 4px;
+		background-color: var(--text-tertiary);
+		border-radius: 50%;
+		display: inline-block;
+		animation: typing-bounce 1.4s infinite ease-in-out;
+	}
 
-		.typing-dots {
-			display: inline-flex;
-			align-items: center;
-			gap: 2px;
-		}
+	.chat-header .typing-dots .dot:nth-child(1) {
+		animation-delay: 0s;
+	}
 
-		.typing-dots .dot {
-			width: 4px;
-			height: 4px;
-			background-color: var(--text-tertiary);
-			border-radius: 50%;
-			display: inline-block;
-			animation: typing-bounce 1.4s infinite ease-in-out;
-		}
+	.chat-header .typing-dots .dot:nth-child(2) {
+		animation-delay: 0.2s;
+	}
 
-		.typing-dots .dot:nth-child(1) {
-			animation-delay: 0s;
-		}
-
-		.typing-dots .dot:nth-child(2) {
-			animation-delay: 0.2s;
-		}
-
-		.typing-dots .dot:nth-child(3) {
-			animation-delay: 0.4s;
-		}
+	.chat-header .typing-dots .dot:nth-child(3) {
+		animation-delay: 0.4s;
 	}
 
 	@keyframes typing-bounce {
