@@ -127,7 +127,12 @@ class WebSocketService {
 				const online = Boolean(d.online ?? false);
 				const lastSeen = d.lastSeen ? String(d.lastSeen) : undefined;
 
-				logger.request('[WebSocket] Presence update received:', { userId, online, lastSeen, rawPayload: payload });
+				logger.request('[WebSocket] Presence update received:', {
+					userId,
+					online,
+					lastSeen,
+					rawPayload: payload
+				});
 
 				this.presenceCallbacks.forEach((callback) => {
 					try {

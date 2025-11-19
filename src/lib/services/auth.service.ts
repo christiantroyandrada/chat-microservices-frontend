@@ -13,18 +13,21 @@ export const authService = {
 	 * Register a new user
 	 */
 	async register(credentials: RegisterCredentials): Promise<AuthUser> {
-		// Backend expects 'name' field, frontend uses 'username'
-		// Normalize and sanitize to remove any hidden unicode characters
-		// Use a safe, narrow cast instead of `any` to satisfy lint rules
-		const creds = credentials as unknown as Record<string, unknown>;
-		const rawName = (creds.name ?? creds.username ?? '') as string;
-		const normalizedName = String(rawName)
-			.replace(/\u00A0/g, ' ') // Replace non-breaking spaces
-			.replace(/[\s\uFEFF\xA0]+/g, ' ') // Collapse whitespace
-			.trim();
+		// Normalize username to a safe handle and validate format before sending to backend
+		const normalizedUsername = String(credentials.username || '')
+			.replace(/\u00A0/g, ' ')
+			.replace(/[\s\uFEFF\xA0]+/g, ' ')
+			.trim()
+			.toLowerCase();
+
+		// Client-side validation: letters, numbers, underscores, hyphens; 3-30 chars
+		const usernameRegex = /^[a-z0-9_-]{3,30}$/;
+		if (!usernameRegex.test(normalizedUsername)) {
+			throw new Error('Invalid username. Use 3-30 characters: letters, numbers, _ or -');
+		}
 
 		const payload = {
-			name: normalizedName,
+			username: normalizedUsername,
 			email: credentials.email,
 			password: credentials.password
 		};
@@ -75,10 +78,10 @@ export const authService = {
 	async getCurrentUser(): Promise<User> {
 		const response = await apiClient.get<unknown>('/user/me');
 		const d = response.data as unknown as Record<string, unknown>;
-		// Normalize backend shape { id, name, email } -> frontend User { _id, username, email }
+		// Normalize backend shape { id, username, email } -> frontend User { _id, username, email }
 		const user: User = {
 			_id: String(d?.id ?? d?._id ?? ''),
-			username: String(d?.name ?? d?.username ?? ''),
+			username: String(d?.username ?? ''),
 			email: String(d?.email ?? '')
 		};
 

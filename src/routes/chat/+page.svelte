@@ -115,15 +115,35 @@
 			const currentUserId = $user?._id as string | undefined;
 			const loadedConversations = await chatService.getConversations(currentUserId);
 
-			// Normalize unreadCount to ensure it's always a number
-			conversations = loadedConversations.map((conv) => ({
-				...conv,
-				unreadCount: Number(conv.unreadCount || 0)
-			}));
+			// Preserve existing presence data (online/lastSeen) from WebSocket updates
+			// Server doesn't send presence data, only WebSocket events do
+			const presenceMap = new Map<string, { online?: boolean; lastSeen?: string }>();
+			conversations.forEach((conv) => {
+				if (conv.online !== undefined || conv.lastSeen !== undefined) {
+					presenceMap.set(conv.userId, {
+						online: conv.online,
+						lastSeen: conv.lastSeen
+					});
+				}
+			});
+
+			// Normalize unreadCount to ensure it's always a number and merge presence data
+			conversations = loadedConversations.map((conv) => {
+				const existingPresence = presenceMap.get(conv.userId);
+				return {
+					...conv,
+					unreadCount: Number(conv.unreadCount || 0),
+					// Restore presence data from before the reload
+					...(existingPresence && existingPresence)
+				};
+			});
 
 			// Apply any pending presence updates that arrived before conversations loaded
 			if (pendingPresenceUpdates.size > 0) {
-				logger.debug('[Chat] Applying pending presence updates', Array.from(pendingPresenceUpdates.entries()));
+				logger.debug(
+					'[Chat] Applying pending presence updates',
+					Array.from(pendingPresenceUpdates.entries())
+				);
 				conversations = conversations.map((conv) => {
 					const presenceData = pendingPresenceUpdates.get(conv.userId);
 					if (presenceData) {
@@ -184,6 +204,13 @@
 			// After loading and decrypting messages, refresh conversation list
 			// to update the preview with the latest decrypted message from local storage
 			await loadConversations();
+
+			// Update selectedConversation reference to point to the refreshed object
+			// This ensures presence data from WebSocket is preserved
+			const refreshedConversation = conversations.find((c) => c.userId === userId);
+			if (refreshedConversation) {
+				selectedConversation = refreshedConversation;
+			}
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to load messages';
 			toastStore.error(message);
@@ -371,12 +398,10 @@
 			pendingPresenceUpdates.set(userId, { online, lastSeen });
 			return;
 		}
-		
+
 		// Update the conversation's presence status
 		conversations = conversations.map((conv) =>
-			conv.userId === userId
-				? { ...conv, online, lastSeen }
-				: conv
+			conv.userId === userId ? { ...conv, online, lastSeen } : conv
 		);
 
 		// If the updated user is the currently selected conversation, trigger a re-render
@@ -571,7 +596,7 @@
 					currentUserId={$user?._id || ''}
 					loading={loading.messages}
 					conversationId={selectedConversation.userId}
-					typingUsers={typingUsers}
+					{typingUsers}
 					typingUsername={selectedConversation.username}
 				/>
 				<MessageInput

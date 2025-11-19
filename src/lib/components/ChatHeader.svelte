@@ -9,14 +9,14 @@
 
 	function getStatusText(): string {
 		if (!recipient) return '';
-		
+
 		// Show typing indicator if user is actively typing
 		if (isTyping) return 'typing...';
-		
+
 		// Prioritize real-time presence data from websocket
 		if (recipient.online !== undefined) {
 			if (recipient.online) return 'Online';
-			
+
 			// User is offline, format lastSeen if available
 			if (recipient.lastSeen) {
 				const diffMs = Date.now() - new Date(recipient.lastSeen).getTime();
@@ -28,7 +28,7 @@
 			}
 			return 'Offline';
 		}
-		
+
 		// Fallback: use lastMessageTime as activity proxy (legacy behavior)
 		if (!recipient.lastMessageTime) return 'Offline';
 
@@ -49,13 +49,23 @@
 				<!-- Avatar -->
 				<!-- Back button (mobile only) -->
 				<button
-					class="back-btn mr-2 md:hidden p-2 rounded"
+					class="back-btn mr-2 rounded p-2 md:hidden"
 					type="button"
 					onclick={() => dispatch('back')}
 					aria-label="Back to conversations"
 				>
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-						<path fill-rule="evenodd" d="M9.707 14.707a1 1 0 01-1.414 0l-5-5a1 1 0 010-1.414l5-5A1 1 0 0110.414 4.293L6.121 8.586H17a1 1 0 110 2H6.121l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						class="h-5 w-5"
+						viewBox="0 0 20 20"
+						fill="currentColor"
+						aria-hidden="true"
+					>
+						<path
+							fill-rule="evenodd"
+							d="M9.707 14.707a1 1 0 01-1.414 0l-5-5a1 1 0 010-1.414l5-5A1 1 0 0110.414 4.293L6.121 8.586H17a1 1 0 110 2H6.121l4.293 4.293a1 1 0 010 1.414z"
+							clip-rule="evenodd"
+						/>
 					</svg>
 				</button>
 				<div
@@ -69,7 +79,7 @@
 						{recipient.username}
 					</h3>
 					{#if isTyping}
-						<div class="status-text text-sm flex items-center gap-1">
+						<div class="status-text flex items-center gap-1 text-sm">
 							<span>typing</span>
 							<span class="typing-dots">
 								<span class="dot"></span>
