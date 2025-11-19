@@ -1,3 +1,5 @@
+import { safeToString } from '$lib/utils';
+
 /**
  * Signal Protocol Utility Functions
  *
@@ -57,5 +59,5 @@ export function toError(err: unknown): Error {
 	// DOMExceptions and other objects may have a message property
 	const maybeMsg = (err as { message?: unknown })?.message;
 	if (typeof maybeMsg === 'string') return new Error(maybeMsg);
-	return new Error(String(err ?? 'IndexedDB error'));
+	return new Error(safeToString(err ?? 'IndexedDB error'));
 }

@@ -21,7 +21,7 @@ class WebSocketService {
 	private readonly presenceCallbacks: Set<PresenceCallback> = new Set();
 	private readonly wsUrl: string;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-	private safeToString: typeof safeToString;
+	private readonly safeToString: typeof safeToString;
 
 	constructor(wsUrl?: string) {
 		// Use PUBLIC_WS_URL from env or default to nginx gateway

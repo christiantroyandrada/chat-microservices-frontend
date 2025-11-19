@@ -46,10 +46,9 @@ jobs:
           SONAR_ORGANIZATION_VAR: ${{ vars.SONAR_ORGANIZATION }}
 
       # SonarCloud / SonarQube step
-      # This uses the SonarCloud GitHub Action – if you are using self-hosted SonarQube,
-      # either adapt to use the sonar-scanner CLI or use your own scanner steps.
+      # Using the recommended sonarqube-scan-action (drop-in replacement for sonarcloud-github-action)
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+        uses: SonarSource/sonarqube-scan-action@v6
         with:
           args: >
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
