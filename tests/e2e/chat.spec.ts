@@ -4,6 +4,7 @@
 
 import { test, expect } from './test-with-mock';
 import type { Page } from '@playwright/test';
+import { safeToString } from '$lib/utils';
 
 const BASE_URL = 'http://localhost:4173';
 
@@ -112,12 +113,12 @@ test.describe('Chat Functionality', () => {
 
 		// Robust fallback: attempt a DOM click in page context in case of overlap
 		await page.evaluate(() => {
-			const b = document.querySelector(
+			const b = document.querySelector<HTMLButtonElement>(
 				'button[aria-label="Start new conversation"]'
-			) as HTMLElement | null;
+			);
 			if (b) b.click();
 			else {
-				const fb = document.querySelector('.new-chat-button') as HTMLElement | null;
+				const fb = document.querySelector<HTMLElement>('.new-chat-button');
 				if (fb) fb.click();
 			}
 		});
@@ -146,11 +147,11 @@ test.describe('Chat Functionality', () => {
 				const r = await fetch('/user/search?q=test');
 				return r.json();
 			});
-			const results = (resp && resp.data) || [];
+			const results = resp?.data ?? [];
 			expect(Array.isArray(results)).toBeTruthy();
 			const found = results.some((u: unknown) => {
 				const obj = u as Record<string, unknown>;
-				const emailOrName = String(obj.email ?? obj.username ?? '');
+				const emailOrName = safeToString(obj.email ?? obj.username ?? '');
 				return emailOrName.toLowerCase().includes('e2e.test.user');
 			});
 			expect(found).toBeTruthy();

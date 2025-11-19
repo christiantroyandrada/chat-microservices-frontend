@@ -15,10 +15,11 @@
 
 import type { Message } from '$lib/types';
 import { logger } from '$lib/services/dev-logger';
+import { toError } from './signalUtils';
 
 class LocalMessageStore {
-	private dbName: string;
-	private version = 1;
+	private readonly dbName: string;
+	private readonly version = 1;
 	private db: IDBDatabase | null = null;
 
 	constructor(userId: string) {
@@ -32,7 +33,7 @@ class LocalMessageStore {
 		return new Promise((resolve, reject) => {
 			const request = indexedDB.open(this.dbName, this.version);
 
-			request.onerror = () => reject(request.error);
+			request.onerror = () => reject(toError(request.error));
 			request.onsuccess = () => {
 				this.db = request.result;
 				resolve();
@@ -71,7 +72,7 @@ class LocalMessageStore {
 			const store = tx.objectStore('messages');
 			const request = store.put(message);
 
-			request.onerror = () => reject(request.error);
+			request.onerror = () => reject(toError(request.error));
 			request.onsuccess = () => resolve();
 		});
 	}
@@ -101,7 +102,7 @@ class LocalMessageStore {
 					completed++;
 					if (completed === total) resolve();
 				};
-				request.onerror = () => reject(request.error);
+				request.onerror = () => reject(toError(request.error));
 			});
 		});
 	}
@@ -121,7 +122,7 @@ class LocalMessageStore {
 
 			const request = store.openCursor();
 
-			request.onerror = () => reject(request.error);
+			request.onerror = () => reject(toError(request.error));
 			request.onsuccess = (event: Event) => {
 				const cursor = (event.target as IDBRequest).result;
 				if (cursor) {
@@ -160,7 +161,7 @@ class LocalMessageStore {
 			const store = tx.objectStore('messages');
 			const request = store.get(messageId);
 
-			request.onerror = () => reject(request.error);
+			request.onerror = () => reject(toError(request.error));
 			request.onsuccess = (ev: Event) => resolve((ev.target as IDBRequest).result || null);
 		});
 	}
@@ -200,7 +201,7 @@ class LocalMessageStore {
 					completed++;
 					if (completed === total) resolve();
 				};
-				request.onerror = () => reject(request.error);
+				request.onerror = () => reject(toError(request.error));
 			});
 		});
 	}
@@ -217,7 +218,7 @@ class LocalMessageStore {
 			const store = tx.objectStore('messages');
 			const request = store.clear();
 
-			request.onerror = () => reject(request.error);
+			request.onerror = () => reject(toError(request.error));
 			request.onsuccess = () => resolve();
 		});
 	}
@@ -253,7 +254,7 @@ export async function deleteMessageDatabase(userId: string): Promise<void> {
 	const dbName = `chat-messages-${userId}`;
 	return new Promise((resolve, reject) => {
 		const request = indexedDB.deleteDatabase(dbName);
-		request.onerror = () => reject(request.error);
+		request.onerror = () => reject(toError(request.error));
 		request.onsuccess = () => {
 			logger.info(`[MessageStore] Deleted database ${dbName}`);
 			resolve();

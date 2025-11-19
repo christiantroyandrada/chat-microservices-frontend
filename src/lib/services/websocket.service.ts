@@ -11,19 +11,23 @@ import type {
 	TypingPayload
 } from '$lib/types';
 import { logger } from './dev-logger';
+import { safeToString } from '$lib/utils';
 
 class WebSocketService {
 	private socket: Socket | null = null;
-	private messageCallbacks: Set<MessageCallback> = new Set();
-	private statusCallbacks: Set<StatusCallback> = new Set();
-	private typingCallbacks: Set<TypingCallback> = new Set();
-	private presenceCallbacks: Set<PresenceCallback> = new Set();
-	private wsUrl: string;
+	private readonly messageCallbacks: Set<MessageCallback> = new Set();
+	private readonly statusCallbacks: Set<StatusCallback> = new Set();
+	private readonly typingCallbacks: Set<TypingCallback> = new Set();
+	private readonly presenceCallbacks: Set<PresenceCallback> = new Set();
+	private readonly wsUrl: string;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	private safeToString: typeof safeToString;
 
 	constructor(wsUrl?: string) {
 		// Use PUBLIC_WS_URL from env or default to nginx gateway
 		this.wsUrl = wsUrl || env.PUBLIC_WS_URL || 'http://localhost:85';
+		// Bind utility here rather than at field-initializer time
+		this.safeToString = safeToString;
 	}
 
 	/**
@@ -81,13 +85,22 @@ class WebSocketService {
 				const data = payload as ReceiveMessagePayload;
 
 				// Normalize server message shape to frontend `Message`
+				const rawId = data._id ?? data.id ?? '';
+				const safeId = this.safeToString(rawId);
+
 				const normalized = {
-					_id: String(data._id ?? data.id ?? ''),
-					senderId: String(data.senderId ?? ''),
-					senderUsername: String(data.senderUsername ?? data.senderName ?? '') || undefined,
-					receiverId: String(data.receiverId ?? ''),
-					content: String(data.content ?? data.message ?? ''),
-					timestamp: String(data.timestamp ?? data.createdAt ?? new Date().toISOString()),
+					_id: safeId,
+					senderId: this.safeToString(data.senderId),
+					senderUsername: ((): string | undefined => {
+						const s = this.safeToString(data.senderUsername ?? data.senderName);
+						return s || undefined;
+					})(),
+					receiverId: this.safeToString(data.receiverId),
+					content: this.safeToString(data.content ?? data.message),
+					timestamp: ((): string => {
+						const t = data.timestamp ?? data.createdAt;
+						return t ? this.safeToString(t) : new Date().toISOString();
+					})(),
 					read: Boolean(data.read ?? data.isRead ?? false),
 					createdAt: data.createdAt as string | undefined,
 					updatedAt: data.updatedAt as string | undefined
@@ -181,7 +194,7 @@ class WebSocketService {
 			// Normalize message content (server expects `message` field)
 			// Accept either `content` (frontend) or `message` (server) field
 			const m = message as unknown as Record<string, unknown>;
-			const msgContent = String(m.content ?? m.message ?? '');
+			const msgContent = this.safeToString(m.content ?? m.message);
 
 			if (!msgContent || typeof msgContent !== 'string' || msgContent.trim().length === 0) {
 				logger.error('Failed to send message: Invalid message content (empty or non-string)');

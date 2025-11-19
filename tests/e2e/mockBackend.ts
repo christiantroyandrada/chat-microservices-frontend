@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { safeToString } from '$lib/utils';
 
 // lightweight id generator to avoid external deps
 function genId(prefix = 'id') {
@@ -124,12 +125,11 @@ async function handleUserRegister(
 ) {
 	if (!(url.endsWith('/user/register') && method === 'POST')) return false;
 	const body = (await req.postDataJSON()) as Record<string, unknown>;
-	const name = String(body['name'] || body['username'] || '').trim();
-	const email = String(body['email'] || '')
+	const name = safeToString(body['name'] || body['username'] || '').trim();
+	const email = safeToString(body['email'] || '')
 		.trim()
 		.toLowerCase();
-	const password = String(body['password'] || '');
-
+	const password = safeToString(body['password'] || '');
 	const nameValid = /^[A-Za-z'\-\s]+$/.test(name);
 	if (!nameValid) {
 		await route.fulfill({
@@ -236,13 +236,13 @@ async function handleUserLogin(
 ) {
 	if (!(url.endsWith('/user/login') && method === 'POST')) return false;
 	const body = (await req.postDataJSON()) as Record<string, unknown>;
-	const email = String(body['email'] || '')
+	const email = safeToString(body['email'] || '')
 		.trim()
 		.toLowerCase();
-	const password = String(body['password'] || '');
+	const password = safeToString(body['password'] || '');
 
 	const user = users.get(email);
-	if (!user || user.password !== password) {
+	if (user?.password !== password) {
 		await route.fulfill({
 			status: 401,
 			contentType: 'application/json',
@@ -398,9 +398,10 @@ async function handleGetMessages(
 	messagesByConversation: Map<string, Array<Message>>,
 	currentUserId: string | null
 ) {
-	if (!(url.match(/\/chat\/messages\//) && method === 'GET')) return false;
+	const messagesMatch = /\/chat\/messages\//.exec(url);
+	if (!(messagesMatch && method === 'GET')) return false;
 	const parts = url.split('/');
-	const last = parts[parts.length - 1];
+	const last = parts.at(-1) ?? '';
 	if (messagesByConversation.has(last)) {
 		await route.fulfill({
 			status: 200,
@@ -440,9 +441,9 @@ async function handlePostSend(
 	if (!(url.endsWith('/chat/send') && method === 'POST')) return false;
 	const req = route.request();
 	const body = (await req.postDataJSON()) as Record<string, unknown>;
-	const convIdFromBody = String(body['conversationId'] || '');
-	const recipientId = String(body['recipientId'] || body['to'] || '');
-	const text = String(body['text'] || body['message'] || body['content'] || '');
+	const convIdFromBody = safeToString(body['conversationId'] || '');
+	const recipientId = safeToString(body['recipientId'] || body['to'] || '');
+	const text = safeToString(body['text'] || body['message'] || body['content'] || '');
 
 	let convIdToUse = convIdFromBody;
 	if (!convIdToUse && currentUserId && recipientId) {

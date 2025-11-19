@@ -13,7 +13,7 @@ import type {
 } from '@privacyresearch/libsignal-protocol-typescript';
 import type { StoredSignedPreKey, SignalCache } from './types';
 import { isStoredSignedPreKey } from './types';
-import { arrayBufferEquals } from './signalUtils';
+import { arrayBufferEquals, toError } from './signalUtils';
 import { STORE_NAME, DB_NAME_PREFIX } from './signalConstants';
 
 /**
@@ -31,8 +31,8 @@ import { STORE_NAME, DB_NAME_PREFIX } from './signalConstants';
  * don't perfectly match runtime requirements).
  */
 export class IndexedDBSignalProtocolStore {
-	private dbName: string;
-	private storeName = STORE_NAME;
+	private readonly dbName: string;
+	private readonly storeName = STORE_NAME;
 	private db: IDBDatabase | null = null;
 	private cache: SignalCache = {};
 
@@ -46,7 +46,7 @@ export class IndexedDBSignalProtocolStore {
 		return new Promise((resolve, reject) => {
 			const request = indexedDB.open(this.dbName, 1);
 
-			request.onerror = () => reject(request.error);
+			request.onerror = () => reject(toError(request.error));
 			request.onsuccess = () => {
 				this.db = request.result;
 				this.loadCache().then(() => resolve());
@@ -69,7 +69,7 @@ export class IndexedDBSignalProtocolStore {
 			const store = tx.objectStore(this.storeName);
 			const request = store.openCursor();
 
-			request.onerror = () => reject(request.error);
+			request.onerror = () => reject(toError(request.error));
 			request.onsuccess = (event: Event) => {
 				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
 				if (cursor) {
@@ -90,7 +90,7 @@ export class IndexedDBSignalProtocolStore {
 			const store = tx.objectStore(this.storeName);
 			const request = store.put(value, key);
 
-			request.onerror = () => reject(request.error);
+			request.onerror = () => reject(toError(request.error));
 			request.onsuccess = () => resolve();
 		});
 	}
@@ -103,7 +103,7 @@ export class IndexedDBSignalProtocolStore {
 			const store = tx.objectStore(this.storeName);
 			const request = store.delete(key);
 
-			request.onerror = () => reject(request.error);
+			request.onerror = () => reject(toError(request.error));
 			request.onsuccess = () => resolve();
 		});
 	}

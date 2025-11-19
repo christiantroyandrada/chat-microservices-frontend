@@ -184,7 +184,7 @@ export async function decryptMessage(
 		ctBody = base64ToArrayBuffer(ciphertext);
 	} else {
 		// Standard format: object with type and body
-		ctType = ciphertext.type as EncryptionResultMessageType;
+		ctType = ciphertext.type;
 		ctBody = base64ToArrayBuffer(ciphertext.body);
 	}
 

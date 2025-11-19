@@ -4,7 +4,7 @@ import { dev } from '$app/environment';
 type TitleParam = string | [string, string];
 
 class Logger {
-	private isUAT: boolean;
+	private readonly isUAT: boolean;
 
 	constructor() {
 		this.isUAT = dev;
@@ -16,7 +16,9 @@ class Logger {
 	 */
 	private extractLocationFromLine(line: string): string | undefined {
 		// Try to capture a file:line:col pattern
-		const m = line.match(/\((.*):(\d+):(\d+)\)/) || line.match(/at\s+(.*):(\d+):(\d+)/);
+		const re1 = /\((.+?):(\d+):(\d+)\)/;
+		const re2 = /at\s+(.+?):(\d+):(\d+)/;
+		const m = re1.exec(line) || re2.exec(line);
 		if (!m) return undefined;
 		const [, filePath, lineNum] = m;
 		const fileName = filePath.split('/').pop() || filePath;

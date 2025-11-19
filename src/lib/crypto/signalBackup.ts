@@ -17,6 +17,7 @@ import {
 import { encryptKeySet, decryptKeySet } from './keyEncryption';
 import { DB_NAME_PREFIX, DEFAULT_SIGNED_PREKEY_ID } from './signalConstants';
 import { logger } from '$lib/services/dev-logger';
+import { toError } from './signalUtils';
 
 /**
  * Check if this device has encryption keys stored locally in IndexedDB
@@ -85,7 +86,7 @@ export async function clearSignalState(userId: string): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const request = indexedDB.deleteDatabase(dbName);
 
-		request.onerror = () => reject(request.error);
+		request.onerror = () => reject(toError(request.error));
 
 		request.onsuccess = () => {
 			logger.info(`[SignalBackup] Deleted database ${dbName}`);

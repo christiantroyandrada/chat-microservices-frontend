@@ -1,11 +1,12 @@
 import { env } from '$env/dynamic/public';
 import type { ApiResponse, ApiError, ResponseShape } from '$lib/types';
+import { safeToString } from '$lib/utils';
 
 const API_URL = env.PUBLIC_API_URL || 'http://localhost:85';
 
 class ApiClient {
-	private baseURL: string;
-	private activeRequests: Map<string, AbortController> = new Map();
+	private readonly baseURL: string;
+	private readonly activeRequests: Map<string, AbortController> = new Map();
 
 	constructor(baseURL: string) {
 		this.baseURL = baseURL;
@@ -42,7 +43,7 @@ class ApiClient {
 			data = text ? JSON.parse(text) : {};
 		} catch (e) {
 			// Non-JSON response — keep raw text
-			data = { data: null, message: typeof e === 'object' ? String(e) : 'Invalid JSON' };
+			data = { data: null, message: safeToString(e) };
 		}
 
 		const normalized: ResponseShape = ((): ResponseShape => {
@@ -60,7 +61,7 @@ class ApiClient {
 	 * Runtime Error type used by this client so we always throw Error instances
 	 * (satisfies linters like Sonar S3696) while preserving ApiError fields.
 	 */
-	private static ApiClientError = class ApiClientError extends Error implements ApiError {
+	private static readonly ApiClientError = class ApiClientError extends Error implements ApiError {
 		status: number;
 		errors?: ApiError['errors'];
 
@@ -118,7 +119,7 @@ class ApiClient {
 
 			const finalResp = {
 				success: true,
-				data: respData as unknown as T,
+				data: respData as T,
 				message: normalized.message,
 				...(typeof normalized === 'object' ? normalized : {})
 			} as unknown as ApiResponse<T>;

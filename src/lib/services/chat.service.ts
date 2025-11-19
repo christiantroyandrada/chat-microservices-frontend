@@ -54,7 +54,7 @@ export const chatService = {
 					const messages = await messageStore.getMessages(conv.userId, currentUserId, 1);
 
 					if (messages.length > 0) {
-						const lastLocalMessage = messages[messages.length - 1];
+						const lastLocalMessage = messages.at(-1)!;
 						// Use local storage message (already decrypted plaintext)
 						return {
 							...conv,
@@ -135,7 +135,7 @@ export const chatService = {
 						return msg;
 					}
 
-					if (!parsed || !parsed.__encrypted) {
+					if (!parsed?.__encrypted) {
 						// Not encrypted, store as-is
 						await messageStore.saveMessage(msg);
 						return msg;

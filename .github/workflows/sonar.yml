@@ -2,9 +2,9 @@ name: CI - Unit tests, Coverage and Sonar
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ "**" ]
+    branches: ['**']
 
 jobs:
   build-and-sonar:

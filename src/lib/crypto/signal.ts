@@ -91,7 +91,7 @@ export async function initSignal(userId?: string): Promise<void> {
 	// Create initialization promise to prevent concurrent calls
 	initializationPromise = (async () => {
 		try {
-			await store!.init();
+			await store.init();
 			initialized = true;
 			logger.info('[Signal] Initialization complete for userId:', currentUserId);
 		} finally {
