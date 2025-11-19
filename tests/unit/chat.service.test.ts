@@ -189,8 +189,8 @@ describe('chatService', () => {
 				}
 			};
 
-			// Mock global fetch for prekey bundle request
-			global.fetch = vi.fn().mockResolvedValueOnce({
+			// Mock globalThis fetch for prekey bundle request
+			globalThis.fetch = vi.fn().mockResolvedValueOnce({
 				ok: true,
 				json: async () => ({ data: prekeyBundle })
 			} as Response);
@@ -199,7 +199,7 @@ describe('chatService', () => {
 
 			const result = await chatService.sendMessage(payload, currentUserId);
 
-			expect(global.fetch).toHaveBeenCalled();
+			expect(globalThis.fetch).toHaveBeenCalled();
 			expect(mockApiClient.post).toHaveBeenCalled();
 			expect(result).toBeDefined();
 		});
@@ -212,7 +212,7 @@ describe('chatService', () => {
 			};
 
 			// Mock fetch to return prekey
-			global.fetch = vi.fn().mockResolvedValueOnce({
+			globalThis.fetch = vi.fn().mockResolvedValueOnce({
 				ok: true,
 				json: async () => ({
 					data: {

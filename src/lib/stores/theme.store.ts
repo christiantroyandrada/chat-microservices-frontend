@@ -2,7 +2,7 @@ import { writable } from 'svelte/store';
 import type { Theme } from '$lib/types';
 const STORAGE_KEY = 'theme';
 
-const isBrowser = typeof window !== 'undefined';
+const isBrowser = typeof globalThis.window !== 'undefined';
 
 const initial = (() => {
 	if (!isBrowser) return 'dark';
@@ -10,7 +10,8 @@ const initial = (() => {
 	if (saved) return saved;
 	// prefer user's system preference
 	const prefersLight =
-		window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+		globalThis.window.matchMedia &&
+		globalThis.window.matchMedia('(prefers-color-scheme: light)').matches;
 	return prefersLight ? 'light' : 'dark';
 })();
 

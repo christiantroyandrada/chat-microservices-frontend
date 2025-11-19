@@ -4,6 +4,10 @@
 
 import { test, expect } from './test-with-mock';
 
+// Shared helper to generate a short random alphabetic string (used for test usernames)
+const randAlpha = (length = 6) =>
+	Array.from({ length }, () => String.fromCodePoint(97 + Math.floor(Math.random() * 26))).join('');
+
 const BASE_URL = 'http://localhost:4173';
 
 test.describe('Authentication', () => {
@@ -28,10 +32,6 @@ test.describe('Authentication', () => {
 
 	test('should register a new user', async ({ page }) => {
 		// Generate a username that matches backend name validation (letters, spaces, hyphens, apostrophes)
-		const randAlpha = () =>
-			Array.from({ length: 6 }, () =>
-				String.fromCharCode(97 + Math.floor(Math.random() * 26))
-			).join('');
 		const testUser = {
 			username: `testuser${randAlpha()}`,
 			email: `test${Date.now()}@example.com`,
@@ -76,10 +76,6 @@ test.describe('Authentication', () => {
 
 	test('should login with valid credentials', async ({ page }) => {
 		// First, create a test user
-		const randAlpha = () =>
-			Array.from({ length: 6 }, () =>
-				String.fromCharCode(97 + Math.floor(Math.random() * 26))
-			).join('');
 		const testUser = {
 			username: `logintest${randAlpha()}`,
 			email: `logintest${Date.now()}@example.com`,
@@ -128,10 +124,6 @@ test.describe('Authentication', () => {
 
 	test('should logout successfully', async ({ page }) => {
 		// First, create and login a user
-		const randAlpha = () =>
-			Array.from({ length: 6 }, () =>
-				String.fromCharCode(97 + Math.floor(Math.random() * 26))
-			).join('');
 		const testUser = {
 			username: `logouttest${randAlpha()}`,
 			email: `logouttest${Date.now()}@example.com`,

@@ -189,7 +189,7 @@ export function validatePasswordStrength(password: string): {
 		errors.push('Password must contain uppercase letters');
 	}
 
-	if (!/[\d]/.test(password)) {
+	if (!/\d/.test(password)) {
 		errors.push('Password must contain numbers');
 	}
 
