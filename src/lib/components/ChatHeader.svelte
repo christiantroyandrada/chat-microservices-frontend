@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import type { ChatConversation } from '$lib/types';
 
-	const dispatch = createEventDispatcher<{ back: void }>();
-
-	// Props (runes mode)
-	let { recipient = null as ChatConversation | null, isTyping = false } = $props();
+	// Props (runes mode) - accept a callback prop for the back action in Svelte 5
+	let {
+		recipient = null as ChatConversation | null,
+		isTyping = false,
+		back = null as (() => void) | null
+	} = $props();
 
 	function getStatusText(): string {
 		if (!recipient) return '';
@@ -49,9 +50,9 @@
 				<!-- Avatar -->
 				<!-- Back button (mobile only) -->
 				<button
-					class="back-btn mr-2 rounded p-2 md:hidden"
+					class="back-btn mr-2 rounded p-2"
 					type="button"
-					onclick={() => dispatch('back')}
+					onclick={() => back?.()}
 					aria-label="Back to conversations"
 				>
 					<svg

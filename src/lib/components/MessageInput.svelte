@@ -1,10 +1,16 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { debounce } from '$lib/utils';
 	import { toastStore } from '$lib/stores/toast.store';
 
-	// Props in runes mode
-	let { disabled = false, placeholder = 'Type a message...', maxLength = 5000 } = $props();
+	// Props in runes mode (accept callback props for events in Svelte 5)
+	let {
+		disabled = false,
+		placeholder = 'Type a message...',
+		maxLength = 5000,
+		send = null as ((msg: string) => void) | null,
+		typing = null as ((isTyping: boolean) => void) | null
+	} = $props();
 
 	// Reactive state (runes)
 	let message = $state('');
@@ -16,16 +22,13 @@
 	let isNearLimit = $state(false);
 	let isOverLimit = $state(false);
 
-	const dispatch = createEventDispatcher<{
-		send: string;
-		typing: boolean;
-	}>();
+	// Use callback props instead of createEventDispatcher in Svelte 5
 
 	let typingTimeout: ReturnType<typeof setTimeout> | undefined;
 
 	// Debounced typing indicator - only fires after user stops typing for 300ms
 	const debouncedStopTyping = debounce(() => {
-		dispatch('typing', false);
+		typing?.(false);
 	}, 1000);
 
 	function handleInput() {
@@ -38,8 +41,8 @@
 		// Update global CSS var for input height so MessageList can pad accordingly
 		updateChatInputHeight();
 
-		// Emit typing indicator immediately when user starts typing
-		dispatch('typing', true);
+		// Emit typing indicator immediately when user starts typing via callback prop
+		typing?.(true);
 
 		// Reset the stop-typing timer
 		debouncedStopTyping();
@@ -68,7 +71,7 @@
 			return;
 		}
 
-		dispatch('send', trimmedMessage);
+		send?.(trimmedMessage);
 		message = '';
 
 		// Reset textarea height
@@ -79,7 +82,7 @@
 		// Update input height variable after send
 		updateChatInputHeight();
 
-		dispatch('typing', false);
+		typing?.(false);
 		if (typingTimeout) {
 			clearTimeout(typingTimeout);
 		}

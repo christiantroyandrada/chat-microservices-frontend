@@ -6,12 +6,12 @@
 	import { onMount } from 'svelte';
 	import type { ApiError } from '$lib/types';
 
-	let email = '';
-	let password = '';
-	let showPassword = false;
-	let loading = false;
-	let error = '';
-	let fieldErrors: Record<string, string> = {};
+	let email = $state('');
+	let password = $state('');
+	let showPassword = $state(false);
+	let loading = $state(false);
+	let error = $state('');
+	let fieldErrors: Record<string, string> = $state({});
 
 	onMount(() => {
 		// Redirect if already authenticated
@@ -24,7 +24,7 @@
 		return unsubscribe;
 	});
 
-	async function handleSubmit() {
+	async function handleSubmit(event?: Event) {
 		event?.preventDefault();
 		error = '';
 		fieldErrors = {};

@@ -19,18 +19,18 @@
 	import MessageInput from '$lib/components/MessageInput.svelte';
 	import NotificationModal from '$lib/components/NotificationModal.svelte';
 
-	let conversations: ChatConversation[] = [];
-	let messages: Message[] = [];
-	let selectedConversation: ChatConversation | null = null;
-	let typingUsers = new Set<string>();
-	let loading = {
+	let conversations: ChatConversation[] = $state([]);
+	let messages: Message[] = $state([]);
+	let selectedConversation: ChatConversation | null = $state(null);
+	let typingUsers = $state(new Set<string>());
+	let loading = $state({
 		conversations: false,
 		messages: false
-	};
-	let showNotificationModal = false;
+	});
+	let showNotificationModal = $state(false);
 
 	// Strongly-typed reference to MessageList component for programmatic scrolling
-	let messageListComponent: MessageListHandle | null = null;
+	let messageListComponent: MessageListHandle | null = $state(null);
 
 	let unsubscribeWsMessage: (() => void) | null = null;
 	let unsubscribeWsTyping: (() => void) | null = null;
@@ -588,7 +588,7 @@
 				<ChatHeader
 					recipient={selectedConversation}
 					isTyping={typingUsers.has(selectedConversation.userId)}
-					on:back={handleBack}
+					back={handleBack}
 				/>
 				<MessageList
 					bind:this={messageListComponent}
@@ -600,8 +600,8 @@
 					typingUsername={selectedConversation.username}
 				/>
 				<MessageInput
-					on:send={(e) => sendMessage(e.detail)}
-					on:typing={(e) => handleTyping(e.detail)}
+					send={sendMessage}
+					typing={handleTyping}
 					disabled={!wsService.isConnected()}
 				/>
 			{:else}

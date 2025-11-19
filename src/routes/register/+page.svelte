@@ -41,7 +41,7 @@
 		return unsubscribe;
 	});
 
-	async function handleSubmit() {
+	async function handleSubmit(event?: Event) {
 		event?.preventDefault();
 		error = '';
 		fieldErrors = {};
