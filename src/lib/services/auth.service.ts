@@ -15,8 +15,8 @@ export const authService = {
 	async register(credentials: RegisterCredentials): Promise<AuthUser> {
 		// Normalize username to a safe handle and validate format before sending to backend
 		const normalizedUsername = String(credentials.username || '')
-			.replace(/\u00A0/g, ' ')
-			.replace(/[\s\uFEFF\xA0]+/g, ' ')
+			.replaceAll(/\u00A0/g, ' ')
+			.replaceAll(/[\s\uFEFF\xA0]+/g, ' ')
 			.trim()
 			.toLowerCase();
 
@@ -61,7 +61,7 @@ export const authService = {
 	logout(): void {
 		// Call backend logout to clear httpOnly cookie, then clear any UI state
 		return apiClient.post('/user/logout').then(() => {
-			if (typeof window !== 'undefined') {
+			if (typeof globalThis.window !== 'undefined') {
 				// remove any temporary client-side caches
 				try {
 					localStorage.removeItem('user');

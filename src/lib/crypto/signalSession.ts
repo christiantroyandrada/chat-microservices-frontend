@@ -44,7 +44,7 @@ export async function createSessionWithPrekeyBundle(
 
 	// Validate required fields
 	if (typeof bundleData.identityKey !== 'string' || typeof bundleData.registrationId !== 'number') {
-		throw new Error('Invalid prekey bundle: missing required fields');
+		throw new TypeError('Invalid prekey bundle: missing required fields');
 	}
 
 	if (!bundleData.signedPreKey) {
@@ -57,7 +57,7 @@ export async function createSessionWithPrekeyBundle(
 		typeof signedPreKey.publicKey !== 'string' ||
 		typeof signedPreKey.signature !== 'string'
 	) {
-		throw new Error('Invalid prekey bundle: malformed signed prekey');
+		throw new TypeError('Invalid prekey bundle: malformed signed prekey');
 	}
 
 	// Build a DeviceType object expected by SessionBuilder.processPreKey

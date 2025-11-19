@@ -613,7 +613,6 @@
 							? (selectedConversation as ChatConversation).userId
 							: null}
 						currentUserId={$user?._id || null}
-						currentUsername={$user?.username || ''}
 						loading={loading.conversations}
 						onSelect={selectConversation}
 						onCreate={createConversation}

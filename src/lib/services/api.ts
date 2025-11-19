@@ -19,6 +19,59 @@ class ApiClient {
 			'Content-Type': 'application/json'
 		};
 	}
+
+	/**
+	 * Remove a tracked active request (if any)
+	 */
+	private cleanupRequest(requestId?: string): void {
+		if (requestId) {
+			this.activeRequests.delete(requestId);
+		}
+	}
+
+	/**
+	 * Parse fetch response defensively into a normalized ResponseShape and
+	 * extracted runtime data.
+	 */
+	private async parseResponse(
+		response: Response
+	): Promise<{ normalized: ResponseShape; respData: unknown }> {
+		let data: unknown = null;
+		try {
+			const text = await response.text();
+			data = text ? JSON.parse(text) : {};
+		} catch (e) {
+			// Non-JSON response — keep raw text
+			data = { data: null, message: typeof e === 'object' ? String(e) : 'Invalid JSON' };
+		}
+
+		const normalized: ResponseShape = ((): ResponseShape => {
+			if (data && typeof data === 'object') {
+				return data as ResponseShape;
+			}
+			return { data } as ResponseShape;
+		})();
+
+		const respData = (normalized.data ?? normalized) as unknown;
+		return { normalized, respData };
+	}
+
+	/**
+	 * Runtime Error type used by this client so we always throw Error instances
+	 * (satisfies linters like Sonar S3696) while preserving ApiError fields.
+	 */
+	private static ApiClientError = class ApiClientError extends Error implements ApiError {
+		status: number;
+		errors?: ApiError['errors'];
+
+		constructor(message: string, status = 0, errors?: ApiError['errors']) {
+			super(message);
+			this.name = 'ApiError';
+			this.status = status;
+			this.errors = errors;
+			Object.setPrototypeOf(this, new.target.prototype);
+		}
+	};
 	// Token storage is deprecated — JWT is sent in an httpOnly cookie.
 
 	/**
@@ -32,9 +85,8 @@ class ApiClient {
 		// Create abort controller for this request
 		const abortController = new AbortController();
 
-		// Store with unique ID for cancellation
+		// Track for cancellation if caller provided an id
 		if (requestId) {
-			// Cancel any existing request with same ID
 			this.cancelRequest(requestId);
 			this.activeRequests.set(requestId, abortController);
 		}
@@ -46,77 +98,46 @@ class ApiClient {
 					...this.getAuthHeaders(),
 					...options.headers
 				},
-				credentials: 'include', // Send httpOnly cookies with requests
+				credentials: 'include',
 				signal: abortController.signal
 			});
 
-			// Clean up active request
-			if (requestId) {
-				this.activeRequests.delete(requestId);
-			}
+			// Always remove tracking for this request
+			this.cleanupRequest(requestId);
 
-			// Some responses may be empty or not JSON; parse defensively.
-			let data: unknown = null;
-			try {
-				const text = await response.text();
-				data = text ? JSON.parse(text) : {};
-			} catch (e) {
-				// Non-JSON response — keep raw text
-				data = { data: null, message: typeof e === 'object' ? String(e) : 'Invalid JSON' };
-			}
-
-			// Normalize parsed response to a safe object shape
-			const normalized: ResponseShape = ((): ResponseShape => {
-				if (data && typeof data === 'object') {
-					return data as ResponseShape;
-				}
-				return { data } as ResponseShape;
-			})();
+			const { normalized, respData } = await this.parseResponse(response);
 
 			if (!response.ok) {
-				throw {
-					message: normalized.message || normalized.error || 'Request failed',
-					status: response.status,
-					errors: normalized.errors
-				} as ApiError;
+				const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
+				throw new ErrClass(
+					normalized.message || normalized.error || 'Request failed',
+					response.status,
+					normalized.errors as ApiError['errors']
+				);
 			}
 
-			// Normalize data to the expected generic type T. We cast via unknown
-			// because the runtime shape is dynamic (backend-controlled).
-			const respData = (normalized.data ?? normalized) as unknown as T;
-
-			// Cast the final response to the ApiResponse<T> shape so TypeScript
-			// accepts the dynamic runtime-normalized fields preserved from the
-			// backend. We still keep `data` strongly typed as T for callers.
 			const finalResp = {
 				success: true,
-				data: respData,
+				data: respData as unknown as T,
 				message: normalized.message,
 				...(typeof normalized === 'object' ? normalized : {})
 			} as unknown as ApiResponse<T>;
 
 			return finalResp;
 		} catch (error) {
-			// Clean up active request
-			if (requestId) {
-				this.activeRequests.delete(requestId);
-			}
+			this.cleanupRequest(requestId);
 
-			// Handle abort errors
 			if (error instanceof Error && error.name === 'AbortError') {
-				throw {
-					message: 'Request cancelled',
-					status: 0
-				} as ApiError;
+				const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
+				throw new ErrClass('Request cancelled', 0);
 			}
 
 			if ((error as ApiError).status) {
 				throw error;
 			}
-			throw {
-				message: 'Network error. Please check your connection.',
-				status: 0
-			} as ApiError;
+
+			const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
+			throw new ErrClass('Network error. Please check your connection.', 0);
 		}
 	}
 
