@@ -82,7 +82,7 @@ export function createMockResponse<T>(data: T, status = 200): Response {
 export class MockWebSocket {
 	public readyState: number = WebSocket.CONNECTING;
 	public url: string;
-	private eventListeners: Map<string, Array<(data?: unknown) => void>> = new Map();
+	private readonly eventListeners: Map<string, Array<(data?: unknown) => void>> = new Map();
 
 	constructor(url: string) {
 		this.url = url;
@@ -148,8 +148,8 @@ export function setupTestEnvironment() {
 		}
 	};
 
-	if (typeof global !== 'undefined') {
-		Object.defineProperty(global, 'localStorage', { value: localStorageMock });
+	if (globalThis.global !== undefined) {
+		Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock });
 	}
 
 	return localStorageMock;

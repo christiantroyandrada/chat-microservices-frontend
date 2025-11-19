@@ -176,8 +176,13 @@ a:focus-visible {
 	}
 }
 
-* {
+/* Global box-sizing and layout helpers */
+*,
+*::before,
+*::after {
 	box-sizing: border-box;
+	/* Help flex children shrink properly to avoid overflow in flex layouts */
+	min-width: 0;
 }
 
 body {
@@ -193,6 +198,12 @@ body {
 	transition:
 		background 220ms ease,
 		color 220ms ease;
+
+	/* Prevent horizontal overflow globally while allowing vertical scrolling */
+	overflow-x: hidden;
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior-x: none;
+	overscroll-behavior-y: auto;
 }
 
 /* Smooth Scrollbar */
@@ -313,14 +324,13 @@ html.light {
 
 	/* Gradient overrides for light mode */
 	--gradient-accent: linear-gradient(135deg, #4f46e5 0%, #7c83ff 100%);
+
+	color-scheme: light;
 }
 
 /* Ensure system color-scheme is set for form controls and native widgets */
 html.dark {
 	color-scheme: dark;
-}
-html.light {
-	color-scheme: light;
 }
 
 /* Global responsiveness & overflow fixes
@@ -337,12 +347,6 @@ body,
 }
 
 /* Prevent horizontal overflow globally while allowing vertical scrolling */
-body {
-	overflow-x: hidden;
-	-webkit-overflow-scrolling: touch;
-	overscroll-behavior-x: none;
-	overscroll-behavior-y: auto;
-}
 
 /* Make images, videos and iframes scale down on small viewports */
 img,
@@ -363,8 +367,5 @@ button {
 	max-width: 100%;
 }
 
-/* Help flex children shrink properly to avoid overflow in flex layouts */
-/* Applies to many SvelteKit components that rely on flexbox */
-* {
-	min-width: 0;
-}
+/* Help flex children shrink properly to avoid overflow in flex layouts
+   (applies globally via the rule above) */

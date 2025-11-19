@@ -4,13 +4,14 @@
 
 import { test, expect } from './test-with-mock';
 import type { Page } from '@playwright/test';
+import { safeToString } from '$lib/utils';
 
 const BASE_URL = 'http://localhost:4173';
 
 // Helper function to create and login a test user
 async function createAndLoginUser(page: Page) {
 	const randAlpha = () =>
-		Array.from({ length: 6 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join(
+		Array.from({ length: 6 }, () => String.fromCodePoint(97 + Math.floor(Math.random() * 26))).join(
 			''
 		);
 	const testUser = {
@@ -83,63 +84,61 @@ test.describe('Chat Functionality', () => {
 	});
 
 	test('should search for users', async ({ page }) => {
-		// Try several selectors for the "new conversation" action and click the first available
-		// Click the '+' (new conversation) control to open the search panel
-		// Try a few likely selectors; prefer a literal '+' button if present
-		// Prefer the exact aria-label used in the component; fall back to .new-chat-button
-		let opened = false;
-		const plusBtn = page.locator('button[aria-label="Start new conversation"]').first();
-		if ((await plusBtn.count()) > 0) {
-			await plusBtn.waitFor({ state: 'visible', timeout: 3000 });
-			await plusBtn.click();
-			opened = true;
-		} else {
-			const fallbackBtn = page.locator('.new-chat-button').first();
-			if ((await fallbackBtn.count()) > 0) {
-				await fallbackBtn.waitFor({ state: 'visible', timeout: 3000 });
-				await fallbackBtn.click();
-				opened = true;
+		// Helper: try a list of selector factories, click the first available and return whether clicked
+		const tryClickFirst = async (selFns: Array<() => ReturnType<typeof page.locator>>) => {
+			for (const fn of selFns) {
+				try {
+					const el = fn();
+					if ((await el.count()) > 0) {
+						await el.first().waitFor({ state: 'visible', timeout: 3000 });
+						await el.first().click();
+						return true;
+					}
+				} catch {
+					// ignore and continue
+				}
 			}
-		}
+			return false;
+		};
+
+		// Try primary and fallback selectors to open the create/search panel
+		const opened = await tryClickFirst([
+			() => page.locator('button[aria-label="Start new conversation"]'),
+			() => page.locator('.new-chat-button')
+		]);
+
 		if (!opened) {
-			// fallback: try opening a generic new conversation area
-			const fallback = page.locator('.new-chat-button');
-			if ((await fallback.count()) > 0) {
-				await fallback.first().waitFor({ state: 'visible', timeout: 3000 });
-				await fallback.first().click();
-				opened = true;
-			}
-		}
-		if (!opened) {
-			// On the chat page the '+' button should be present; fail loudly so CI surfaces UI regressions
 			throw new Error('Could not find or open the Start new conversation (+) button');
 		}
 
-		// As a robust fallback, trigger a DOM click directly in case the element is overlapped
+		// Robust fallback: attempt a DOM click in page context in case of overlap
 		await page.evaluate(() => {
-			const b = document.querySelector(
+			const b = document.querySelector<HTMLButtonElement>(
 				'button[aria-label="Start new conversation"]'
-			) as HTMLElement | null;
+			);
 			if (b) b.click();
 			else {
-				const fb = document.querySelector('.new-chat-button') as HTMLElement | null;
+				const fb = document.querySelector<HTMLElement>('.new-chat-button');
 				if (fb) fb.click();
 			}
 		});
 
-		// Wait for the create modal/panel to appear so the search input can be found reliably
-		let modalAppeared = false;
-		try {
-			await page.waitForSelector('.create-modal-panel', { timeout: 10000, state: 'visible' });
-			modalAppeared = true;
-		} catch {
+		// Helper: wait for any of the modal selectors to appear
+		const waitForModal = async () => {
 			try {
-				await page.waitForSelector('.create-modal-overlay', { timeout: 5000, state: 'visible' });
-				modalAppeared = true;
+				await page.waitForSelector('.create-modal-panel', { timeout: 10000, state: 'visible' });
+				return true;
 			} catch {
-				modalAppeared = false;
+				try {
+					await page.waitForSelector('.create-modal-overlay', { timeout: 5000, state: 'visible' });
+					return true;
+				} catch {
+					return false;
+				}
 			}
-		}
+		};
+
+		const modalAppeared = await waitForModal();
 
 		// If the modal did not render, fall back to calling the in-page search API directly
 		if (!modalAppeared) {
@@ -148,22 +147,20 @@ test.describe('Chat Functionality', () => {
 				const r = await fetch('/user/search?q=test');
 				return r.json();
 			});
-			const results = (resp && resp.data) || [];
-			// Expect at least one seeded user to be present
+			const results = resp?.data ?? [];
 			expect(Array.isArray(results)).toBeTruthy();
 			const found = results.some((u: unknown) => {
 				const obj = u as Record<string, unknown>;
-				const emailOrName = String(obj.email ?? obj.username ?? '');
+				const emailOrName = safeToString(obj.email ?? obj.username ?? '');
 				return emailOrName.toLowerCase().includes('e2e.test.user');
 			});
 			expect(found).toBeTruthy();
 			return; // fallback assertion satisfied
 		}
 
-		// Find the search input using several fallbacks and search for the seeded user
+		// Find the search input using several fallbacks
 		const searchSelectors = [
 			() => page.getByPlaceholder(/search users by name|search users by name or email|search/i),
-			// fallback to the actual input class used in ChatList.svelte
 			() => page.locator('.create-modal-input'),
 			() => page.getByRole('textbox', { name: /search/i }),
 			() => page.locator('.search-input'),
@@ -171,6 +168,7 @@ test.describe('Chat Functionality', () => {
 			() => page.locator('input[aria-label*="search"]'),
 			() => page.locator('input[name="search"]')
 		];
+
 		let searchInputEl: ReturnType<typeof page.locator> | null = null;
 		for (const selFn of searchSelectors) {
 			try {
@@ -184,7 +182,6 @@ test.describe('Chat Functionality', () => {
 			}
 		}
 		if (!searchInputEl) {
-			// The create/search panel should contain a search input; fail loudly so CI surfaces UI regressions
 			throw new Error('Could not find search input in the create conversation panel');
 		}
 		await expect(searchInputEl).toBeVisible({ timeout: 5000 });

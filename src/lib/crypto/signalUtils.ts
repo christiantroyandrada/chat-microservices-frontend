@@ -1,3 +1,5 @@
+import { safeToString } from '$lib/utils';
+
 /**
  * Signal Protocol Utility Functions
  *
@@ -16,7 +18,7 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 	const bytes = new Uint8Array(buffer);
 	let binary = '';
 	for (let i = 0; i < bytes.byteLength; i++) {
-		binary += String.fromCharCode(bytes[i]);
+		binary += String.fromCodePoint(bytes[i]);
 	}
 	return btoa(binary);
 }
@@ -31,7 +33,7 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
 	const binary = atob(base64);
 	const bytes = new Uint8Array(binary.length);
 	for (let i = 0; i < binary.length; i++) {
-		bytes[i] = binary.charCodeAt(i);
+		bytes[i] = binary.codePointAt(i)!;
 	}
 	return bytes.buffer;
 }
@@ -50,4 +52,12 @@ export function arrayBufferEquals(a: ArrayBuffer, b: ArrayBuffer): boolean {
 		if (aView[i] !== bView[i]) return false;
 	}
 	return true;
+}
+
+export function toError(err: unknown): Error {
+	if (err instanceof Error) return err;
+	// DOMExceptions and other objects may have a message property
+	const maybeMsg = (err as { message?: unknown })?.message;
+	if (typeof maybeMsg === 'string') return new Error(maybeMsg);
+	return new Error(safeToString(err ?? 'IndexedDB error'));
 }

@@ -10,7 +10,7 @@ import type { Toast } from '$lib/types';
  * - Imperative: `toastStore.items` returns a snapshot array
  */
 class ToastStore {
-	private store: Writable<Toast[]> = writable([]);
+	private readonly store: Writable<Toast[]> = writable([]);
 	private nextId = 0;
 
 	// Expose the subscribe method so this instance is a valid Svelte store

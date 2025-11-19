@@ -9,7 +9,8 @@
 	let notifications = $derived.by(() => $notificationStore.notifications);
 	let loading = $derived.by(() => $notificationStore.loading);
 
-	async function handleMarkAsRead(notificationId: string) {
+	async function handleMarkAsRead(notificationId?: string) {
+		if (!notificationId) return;
 		await notificationStore.markAsRead(notificationId);
 	}
 
@@ -17,7 +18,8 @@
 		await notificationStore.markAllAsRead();
 	}
 
-	async function handleDelete(notificationId: string) {
+	async function handleDelete(notificationId?: string) {
+		if (!notificationId) return;
 		await notificationStore.delete(notificationId);
 	}
 
@@ -34,8 +36,8 @@
 		}
 	}
 
-	function formatTimestamp(timestamp: string) {
-		const date = new Date(timestamp);
+	function formatTimestamp(timestamp: string | Date) {
+		const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
 		const now = new Date();
 		const diff = now.getTime() - date.getTime();
 		const minutes = Math.floor(diff / 60000);
@@ -138,7 +140,7 @@
 					</div>
 				{:else}
 					<ul class="notification-items divide-y">
-						{#each notifications as notification (notification._id)}
+						{#each notifications as notification (notification._id ?? notification.id)}
 							<li
 								class="notification-item group relative px-6 py-4 transition-all duration-200"
 								class:unread={!notification.read}
@@ -176,7 +178,7 @@
 										<div class="flex gap-1">
 											{#if !notification.read}
 												<button
-													onclick={() => handleMarkAsRead(notification._id)}
+													onclick={() => handleMarkAsRead(notification._id ?? notification.id)}
 													class="action-btn-read hover-lift btn rounded-lg p-2 transition-all duration-200"
 													title="Mark as read"
 												>
@@ -196,7 +198,7 @@
 												</button>
 											{/if}
 											<button
-												onclick={() => handleDelete(notification._id)}
+												onclick={() => handleDelete(notification._id ?? notification.id)}
 												class="action-btn-delete hover-lift btn rounded-lg p-2 transition-all duration-200"
 												title="Delete"
 												aria-label="Delete notification"

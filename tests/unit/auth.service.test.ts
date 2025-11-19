@@ -19,12 +19,18 @@ vi.mock('$lib/services/api', () => ({
 }));
 
 // Mock the logger
+const mockLogger = {
+	info: vi.fn(),
+	warning: vi.fn(),
+	error: vi.fn(),
+	success: vi.fn(),
+	debug: vi.fn(),
+	request: vi.fn(),
+	requestor: vi.fn()
+};
+
 vi.mock('$lib/services/dev-logger', () => ({
-	logger: {
-		info: vi.fn(),
-		warning: vi.fn(),
-		error: vi.fn()
-	}
+	logger: mockLogger
 }));
 
 // Import after mocks are defined
@@ -55,7 +61,7 @@ describe('authService', () => {
 			const result = await authService.register(credentials);
 
 			expect(mockApiClient.post).toHaveBeenCalledWith('/user/register', {
-				name: 'alice',
+				username: 'alice',
 				email: 'alice@test.com',
 				password: 'password123'
 			});
@@ -69,15 +75,10 @@ describe('authService', () => {
 				password: 'password123'
 			};
 
-			mockApiClient.post.mockResolvedValue(createSuccessResponse(testAuthUsers.alice));
-
-			await authService.register(credentials);
-
-			expect(mockApiClient.post).toHaveBeenCalledWith('/user/register', {
-				name: 'alice test',
-				email: 'alice@test.com',
-				password: 'password123'
-			});
+			// Normalization produces a space which is invalid for usernames; expect validation error
+			await expect(authService.register(credentials)).rejects.toThrow(
+				'Invalid username. Use 3-30 characters: letters, numbers, _ or -'
+			);
 		});
 
 		it('should handle registration error', async () => {
@@ -136,7 +137,7 @@ describe('authService', () => {
 		it('should get current user profile', async () => {
 			const backendUser = {
 				id: 'user-alice-123',
-				name: 'alice',
+				username: 'alice',
 				email: 'alice@test.com'
 			};
 

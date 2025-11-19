@@ -1,4 +1,5 @@
 import type { Notification } from '$lib/types';
+import { safeToString } from '../utils';
 
 /**
  * Normalize various backend notification shapes into the frontend `Notification` type.
@@ -15,13 +16,13 @@ export function normalizeNotification(raw: unknown, idx = 0): Notification {
 	const created = obj['createdAt'] ?? obj['created_at'];
 
 	return {
-		_id: String(idVal),
-		userId: String(obj['userId'] ?? obj['user_id'] ?? obj['user'] ?? ''),
+		_id: safeToString(idVal, `${Date.now()}-${Math.random()}-${idx}`),
+		userId: safeToString(obj['userId'] ?? obj['user_id'] ?? obj['user'] ?? ''),
 		type: (obj['type'] as Notification['type']) ?? 'system',
-		title: String(obj['title'] ?? ''),
-		message: String(obj['message'] ?? ''),
+		title: safeToString(obj['title'] ?? ''),
+		message: safeToString(obj['message'] ?? ''),
 		read: Boolean(obj['read'] ?? false),
-		createdAt: created ? new Date(String(created)).toISOString() : new Date().toISOString()
+		createdAt: created ? new Date(safeToString(created)).toISOString() : new Date().toISOString()
 	} as Notification;
 }
 

@@ -7,6 +7,7 @@ import type {
 	User,
 	EncryptedKeyBundle
 } from '$lib/types';
+import { safeToString } from '$lib/utils';
 
 export const authService = {
 	/**
@@ -15,8 +16,8 @@ export const authService = {
 	async register(credentials: RegisterCredentials): Promise<AuthUser> {
 		// Normalize username to a safe handle and validate format before sending to backend
 		const normalizedUsername = String(credentials.username || '')
-			.replace(/\u00A0/g, ' ')
-			.replace(/[\s\uFEFF\xA0]+/g, ' ')
+			.replaceAll('\u00A0', ' ')
+			.replaceAll(/[\s\uFEFF\xA0]+/g, ' ')
 			.trim()
 			.toLowerCase();
 
@@ -58,31 +59,31 @@ export const authService = {
 	/**
 	 * Logout user
 	 */
-	logout(): void {
+	async logout(): Promise<void> {
 		// Call backend logout to clear httpOnly cookie, then clear any UI state
-		return apiClient.post('/user/logout').then(() => {
-			if (typeof window !== 'undefined') {
-				// remove any temporary client-side caches
-				try {
-					localStorage.removeItem('user');
-				} catch (e) {
-					logger.warning('Failed to remove user from localStorage', e);
-				}
+		await apiClient.post('/user/logout');
+		if (globalThis.window !== undefined) {
+			// remove any temporary client-side caches
+			try {
+				localStorage.removeItem('user');
+			} catch (e) {
+				logger.warning('Failed to remove user from localStorage', e);
 			}
-		}) as unknown as void;
+		}
 	},
 
 	/**
 	 * Get current user profile
 	 */
 	async getCurrentUser(): Promise<User> {
-		const response = await apiClient.get<unknown>('/user/me');
-		const d = response.data as unknown as Record<string, unknown>;
+		const response = await apiClient.get<Record<string, unknown>>('/user/me');
+		const d: Record<string, unknown> = response.data ?? {};
 		// Normalize backend shape { id, username, email } -> frontend User { _id, username, email }
+
 		const user: User = {
-			_id: String(d?.id ?? d?._id ?? ''),
-			username: String(d?.username ?? ''),
-			email: String(d?.email ?? '')
+			_id: safeToString(d['id'] ?? d['_id']),
+			username: safeToString(d['username']),
+			email: safeToString(d['email'])
 		};
 
 		return user;

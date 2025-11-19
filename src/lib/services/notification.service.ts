@@ -17,7 +17,7 @@ export const notificationService = {
 				`/notifications/?limit=${limit}&offset=${offset}`
 			);
 
-			const raw = response.data as unknown as Array<unknown>;
+			const raw = response.data as Array<unknown>;
 
 			// Normalize backend shape to frontend `Notification` type
 			return (raw || []).map((n: unknown, idx: number) => normalizeNotification(n, idx));
@@ -79,7 +79,7 @@ export const notificationService = {
 	async sendNotification(payload: NotificationPayload): Promise<Notification> {
 		try {
 			const response = await apiClient.post<unknown>('/notifications', payload);
-			const raw = response.data as unknown;
+			const raw = response.data;
 			// reuse normalization logic (recreate same inline logic)
 			return normalizeNotification(raw);
 		} catch (err) {
