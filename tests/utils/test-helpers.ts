@@ -148,7 +148,7 @@ export function setupTestEnvironment() {
 		}
 	};
 
-	if (typeof globalThis.global !== 'undefined') {
+	if (globalThis.global !== undefined) {
 		Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock });
 	}
 

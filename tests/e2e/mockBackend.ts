@@ -92,185 +92,237 @@ async function userRouteHandler(
 	const url = req.url();
 	const method = req.method().toUpperCase();
 
-	// POST /user/register
-	if (url.endsWith('/user/register') && method === 'POST') {
-		const body = (await req.postDataJSON()) as Record<string, unknown>;
-		const name = String(body['name'] || body['username'] || '').trim();
-		const email = String(body['email'] || '')
-			.trim()
-			.toLowerCase();
-		const password = String(body['password'] || '');
-
-		const nameValid = /^[A-Za-z'\-\s]+$/.test(name);
-		if (!nameValid) {
-			return route.fulfill({
-				status: 400,
-				contentType: 'application/json',
-				body: JSON.stringify({
-					status: 400,
-					message: 'Validation failed',
-					errors: [
-						{
-							field: 'name',
-							message: 'Name can only contain letters, spaces, hyphens, and apostrophes'
-						}
-					]
-				})
-			});
-		}
-
-		if (users.has(email)) {
-			return route.fulfill({
-				status: 409,
-				contentType: 'application/json',
-				body: JSON.stringify({ status: 409, message: 'Email already exists' })
-			});
-		}
-
-		const id = `mock-${genId()}`;
-		const user: User = { id, name, email, password };
-		users.set(email, user);
-
-		const now = Date.now();
-
-		for (let ci = 0; ci < SEED_CONTACTS; ci++) {
-			const contactId = `contact-${genId()}`;
-			const contactEmail = `contact+${ci}+${Date.now()}@example.com`;
-			const contactUser: User = {
-				id: contactId,
-				name: `${name.split(' ')[0]}'s Contact ${ci + 1}`,
-				email: contactEmail,
-				password: 'contactpass'
-			};
-			users.set(contactEmail, contactUser);
-
-			const convId = `conv-${genId()}`;
-			const unreadCount = ci === 0 ? 2 : 0;
-			const conversation: Conversation = {
-				_id: convId,
-				participants: [id, contactId],
-				title: contactUser.name,
-				otherUser: { _id: contactUser.id, username: contactUser.name, email: contactUser.email },
-				lastMessage: {
-					text: `Seeded conversation ${ci + 1}`,
-					timestamp: new Date(now - 60000).toISOString()
-				},
-				unreadCount
-			};
-
-			const listForUser = conversationsByUser.get(id) || [];
-			listForUser.push(conversation);
-			conversationsByUser.set(id, listForUser);
-
-			const listForContact = conversationsByUser.get(contactId) || [];
-			listForContact.push(conversation);
-			conversationsByUser.set(contactId, listForContact);
-
-			const messages: Message[] = [];
-			for (let m = 0; m < MESSAGES_PER_CONV; m++) {
-				const minutesAgo = (MESSAGES_PER_CONV - m) * 5;
-				const ts = new Date(now - minutesAgo * 60 * 1000).toISOString();
-				const fromContact = m % 2 === 0;
-				const senderId = fromContact ? contactUser.id : id;
-				const senderUsername = fromContact ? contactUser.name : name;
-				messages.push({
-					_id: `msg-${genId()}`,
-					senderId,
-					senderUsername,
-					text: `Seeded message ${m + 1} for conv ${ci + 1}`,
-					timestamp: ts
-				});
-			}
-			messagesByConversation.set(convId, messages);
-		}
-
-		return route.fulfill({
-			status: 200,
-			headers: { 'Set-Cookie': `jwt=${id}; Path=/; HttpOnly` },
-			contentType: 'application/json',
-			body: JSON.stringify({
-				status: 200,
-				message: 'User registered successfully',
-				data: { id, name, email }
-			})
-		});
-	}
-
-	// POST /user/login
-	if (url.endsWith('/user/login') && method === 'POST') {
-		const body = (await req.postDataJSON()) as Record<string, unknown>;
-		const email = String(body['email'] || '')
-			.trim()
-			.toLowerCase();
-		const password = String(body['password'] || '');
-
-		const user = users.get(email);
-		if (!user || user.password !== password) {
-			return route.fulfill({
-				status: 401,
-				contentType: 'application/json',
-				body: JSON.stringify({ status: 401, message: 'Invalid credentials' })
-			});
-		}
-
-		return route.fulfill({
-			status: 200,
-			headers: { 'Set-Cookie': `jwt=${user.id}; Path=/; HttpOnly` },
-			contentType: 'application/json',
-			body: JSON.stringify({
-				status: 200,
-				message: 'Login successful',
-				data: { id: user.id, name: user.name, email: user.email }
-			})
-		});
-	}
-
-	// GET /user/me
-	if (url.endsWith('/user/me') && method === 'GET') {
-		const cookies = parseCookie(req.headers()['cookie']);
-		const jwt = cookies['jwt'];
-		if (!jwt)
-			return route.fulfill({
-				status: 401,
-				contentType: 'application/json',
-				body: JSON.stringify({ status: 401, message: 'Unauthorized' })
-			});
-		const user = Array.from(users.values()).find((u) => u.id === jwt);
-		if (!user)
-			return route.fulfill({
-				status: 401,
-				contentType: 'application/json',
-				body: JSON.stringify({ status: 401, message: 'Unauthorized' })
-			});
-		return route.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify({
-				status: 200,
-				data: { id: user.id, username: user.name, email: user.email }
-			})
-		});
-	}
-
-	// GET /user/search?q=...
-	if (url.includes('/user/search') && method === 'GET') {
-		const q = new URL(url).searchParams.get('q') || '';
-		const results = Array.from(users.values())
-			.filter(
-				(u) =>
-					u.name.toLowerCase().includes(q.toLowerCase()) ||
-					u.email.toLowerCase().includes(q.toLowerCase())
-			)
-			.map((u) => ({ _id: u.id, username: u.name, email: u.email }));
-		return route.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify({ status: 200, data: results })
-		});
-	}
+	// Delegate to small handlers to reduce cognitive complexity
+	if (
+		await handleUserRegister(
+			route,
+			req,
+			url,
+			method,
+			users,
+			conversationsByUser,
+			messagesByConversation
+		)
+	)
+		return;
+	if (await handleUserLogin(route, req, url, method, users)) return;
+	if (await handleGetCurrentUser(route, req, url, method, users)) return;
+	if (await handleUserSearch(route, url, method, users)) return;
 
 	// Fallback
 	return route.continue();
+}
+
+async function handleUserRegister(
+	route: Route,
+	req: ReturnType<Route['request']>,
+	url: string,
+	method: string,
+	users: Map<string, User>,
+	conversationsByUser: Map<string, Array<Conversation>>,
+	messagesByConversation: Map<string, Array<Message>>
+) {
+	if (!(url.endsWith('/user/register') && method === 'POST')) return false;
+	const body = (await req.postDataJSON()) as Record<string, unknown>;
+	const name = String(body['name'] || body['username'] || '').trim();
+	const email = String(body['email'] || '')
+		.trim()
+		.toLowerCase();
+	const password = String(body['password'] || '');
+
+	const nameValid = /^[A-Za-z'\-\s]+$/.test(name);
+	if (!nameValid) {
+		await route.fulfill({
+			status: 400,
+			contentType: 'application/json',
+			body: JSON.stringify({
+				status: 400,
+				message: 'Validation failed',
+				errors: [
+					{
+						field: 'name',
+						message: 'Name can only contain letters, spaces, hyphens, and apostrophes'
+					}
+				]
+			})
+		});
+		return true;
+	}
+
+	if (users.has(email)) {
+		await route.fulfill({
+			status: 409,
+			contentType: 'application/json',
+			body: JSON.stringify({ status: 409, message: 'Email already exists' })
+		});
+		return true;
+	}
+
+	const id = `mock-${genId()}`;
+	const user: User = { id, name, email, password };
+	users.set(email, user);
+
+	const now = Date.now();
+	for (let ci = 0; ci < SEED_CONTACTS; ci++) {
+		const contactId = `contact-${genId()}`;
+		const contactEmail = `contact+${ci}+${Date.now()}@example.com`;
+		const contactUser: User = {
+			id: contactId,
+			name: `${name.split(' ')[0]}'s Contact ${ci + 1}`,
+			email: contactEmail,
+			password: 'contactpass'
+		};
+		users.set(contactEmail, contactUser);
+
+		const convId = `conv-${genId()}`;
+		const unreadCount = ci === 0 ? 2 : 0;
+		const conversation: Conversation = {
+			_id: convId,
+			participants: [id, contactId],
+			title: contactUser.name,
+			otherUser: { _id: contactUser.id, username: contactUser.name, email: contactUser.email },
+			lastMessage: {
+				text: `Seeded conversation ${ci + 1}`,
+				timestamp: new Date(now - 60000).toISOString()
+			},
+			unreadCount
+		};
+
+		const listForUser = conversationsByUser.get(id) || [];
+		listForUser.push(conversation);
+		conversationsByUser.set(id, listForUser);
+
+		const listForContact = conversationsByUser.get(contactId) || [];
+		listForContact.push(conversation);
+		conversationsByUser.set(contactId, listForContact);
+
+		const messages: Message[] = [];
+		for (let m = 0; m < MESSAGES_PER_CONV; m++) {
+			const minutesAgo = (MESSAGES_PER_CONV - m) * 5;
+			const ts = new Date(now - minutesAgo * 60 * 1000).toISOString();
+			const fromContact = m % 2 === 0;
+			const senderId = fromContact ? contactUser.id : id;
+			const senderUsername = fromContact ? contactUser.name : name;
+			messages.push({
+				_id: `msg-${genId()}`,
+				senderId,
+				senderUsername,
+				text: `Seeded message ${m + 1} for conv ${ci + 1}`,
+				timestamp: ts
+			});
+		}
+		messagesByConversation.set(convId, messages);
+	}
+
+	await route.fulfill({
+		status: 200,
+		headers: { 'Set-Cookie': `jwt=${id}; Path=/; HttpOnly` },
+		contentType: 'application/json',
+		body: JSON.stringify({
+			status: 200,
+			message: 'User registered successfully',
+			data: { id, name, email }
+		})
+	});
+	return true;
+}
+
+async function handleUserLogin(
+	route: Route,
+	req: ReturnType<Route['request']>,
+	url: string,
+	method: string,
+	users: Map<string, User>
+) {
+	if (!(url.endsWith('/user/login') && method === 'POST')) return false;
+	const body = (await req.postDataJSON()) as Record<string, unknown>;
+	const email = String(body['email'] || '')
+		.trim()
+		.toLowerCase();
+	const password = String(body['password'] || '');
+
+	const user = users.get(email);
+	if (!user || user.password !== password) {
+		await route.fulfill({
+			status: 401,
+			contentType: 'application/json',
+			body: JSON.stringify({ status: 401, message: 'Invalid credentials' })
+		});
+		return true;
+	}
+
+	await route.fulfill({
+		status: 200,
+		headers: { 'Set-Cookie': `jwt=${user.id}; Path=/; HttpOnly` },
+		contentType: 'application/json',
+		body: JSON.stringify({
+			status: 200,
+			message: 'Login successful',
+			data: { id: user.id, name: user.name, email: user.email }
+		})
+	});
+	return true;
+}
+
+async function handleGetCurrentUser(
+	route: Route,
+	req: ReturnType<Route['request']>,
+	url: string,
+	method: string,
+	users: Map<string, User>
+) {
+	if (!(url.endsWith('/user/me') && method === 'GET')) return false;
+	const cookies = parseCookie(req.headers()['cookie']);
+	const jwt = cookies['jwt'];
+	if (!jwt) {
+		await route.fulfill({
+			status: 401,
+			contentType: 'application/json',
+			body: JSON.stringify({ status: 401, message: 'Unauthorized' })
+		});
+		return true;
+	}
+	const user = Array.from(users.values()).find((u) => u.id === jwt);
+	if (!user) {
+		await route.fulfill({
+			status: 401,
+			contentType: 'application/json',
+			body: JSON.stringify({ status: 401, message: 'Unauthorized' })
+		});
+		return true;
+	}
+	await route.fulfill({
+		status: 200,
+		contentType: 'application/json',
+		body: JSON.stringify({
+			status: 200,
+			data: { id: user.id, username: user.name, email: user.email }
+		})
+	});
+	return true;
+}
+
+async function handleUserSearch(
+	route: Route,
+	url: string,
+	method: string,
+	users: Map<string, User>
+) {
+	if (!(url.includes('/user/search') && method === 'GET')) return false;
+	const q = new URL(url).searchParams.get('q') || '';
+	const results = Array.from(users.values())
+		.filter(
+			(u) =>
+				u.name.toLowerCase().includes(q.toLowerCase()) ||
+				u.email.toLowerCase().includes(q.toLowerCase())
+		)
+		.map((u) => ({ _id: u.id, username: u.name, email: u.email }));
+	await route.fulfill({
+		status: 200,
+		contentType: 'application/json',
+		body: JSON.stringify({ status: 200, data: results })
+	});
+	return true;
 }
 
 // Module-level helper: chat route handler extracted from setupMockBackend

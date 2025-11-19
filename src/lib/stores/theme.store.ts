@@ -2,7 +2,7 @@ import { writable } from 'svelte/store';
 import type { Theme } from '$lib/types';
 const STORAGE_KEY = 'theme';
 
-const isBrowser = typeof globalThis.window !== 'undefined';
+const isBrowser = globalThis.window !== undefined;
 
 const initial = (() => {
 	if (!isBrowser) return 'dark';
