@@ -11,6 +11,15 @@ export default defineConfig({
 		noExternal: []
 	},
 	test: {
+		// Coverage configuration to generate LCOV (for SonarQube/other tools)
+		coverage: {
+			provider: 'istanbul', // use istanbul to generate lcov
+			reporter: ['lcovonly', 'lcov', 'text', 'json'],
+			reportsDirectory: 'coverage',
+			all: true,
+			include: ['src/**/*.{ts,js,svelte}'],
+			exclude: ['tests/**', 'node_modules/**']
+		},
 		expect: { requireAssertions: true },
 		projects: [
 			{

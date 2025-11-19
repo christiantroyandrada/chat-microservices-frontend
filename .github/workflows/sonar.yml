@@ -1,0 +1,62 @@
+name: CI - Unit tests, Coverage and Sonar
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  build-and-sonar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install frontend deps
+        working-directory: ./
+        run: pnpm install
+
+      - name: Run unit tests and generate coverage
+        working-directory: ./
+        run: pnpm run coverage:unit
+
+      - name: Check Sonar secrets/vars
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::SONAR_TOKEN is not set. Add it under Settings → Secrets and variables → Actions.";
+            exit 1;
+          fi
+          if [ -z "$SONAR_ORGANIZATION_SECRET" ] && [ -z "$SONAR_ORGANIZATION_VAR" ]; then
+            echo "::error::SONAR_ORGANIZATION is not set as a secret or variable. Add it under Settings → Secrets and variables → Actions.";
+            exit 1;
+          fi
+          echo "Sonar secrets/vars present. Proceeding..."
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_ORGANIZATION_SECRET: ${{ secrets.SONAR_ORGANIZATION }}
+          SONAR_ORGANIZATION_VAR: ${{ vars.SONAR_ORGANIZATION }}
+
+      # SonarCloud / SonarQube step
+      # This uses the SonarCloud GitHub Action – if you are using self-hosted SonarQube,
+      # either adapt to use the sonar-scanner CLI or use your own scanner steps.
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        with:
+          args: >
+            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+        env:
+          # Set this secret in your repository (GitHub/GitLab) to a token with analysis rights
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # Organization slug for SonarCloud (set this secret to your SonarCloud organization key)
+          SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
