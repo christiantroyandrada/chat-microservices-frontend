@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { NotificationPayload } from '$lib/types';
+import { safeToString } from '$lib/utils';
 
 // Mock API client
 const mockApiClient = {
@@ -31,16 +32,17 @@ vi.mock('$lib/services/dev-logger', () => ({
 
 // Mock normalizeNotification utility
 vi.mock('$lib/utils', () => ({
+	safeToString: String,
 	normalizeNotification: vi.fn((data: unknown) => {
 		const d = data as Record<string, unknown>;
 		return {
-			id: String(d['_id'] ?? d['id'] ?? '1'),
+			id: safeToString(d['_id'] ?? d['id'] ?? '1'),
 			type: (d['type'] as string) ?? 'message',
 			title: (d['title'] as string) ?? 'Test',
 			message: (d['message'] as string) ?? 'Test message',
 			read: Boolean(d['read'] ?? false),
-			timestamp: String(d['timestamp'] ?? new Date().toISOString()),
-			userId: String(d['userId'] ?? 'user-123')
+			timestamp: safeToString(d['timestamp'] ?? new Date().toISOString()),
+			userId: safeToString(d['userId'] ?? 'user-123')
 		};
 	})
 }));

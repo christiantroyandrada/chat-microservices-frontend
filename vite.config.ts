@@ -26,7 +26,7 @@ export default defineConfig({
 		// print stack traces for active handles when tests complete.
 		reporters: ['default', 'hanging-process'],
 		// Reduce file watcher timeout in CI
-		fileParallelism: process.env.CI ? false : true,
+		fileParallelism: false,
 		// Set timeouts for proper cleanup
 		testTimeout: 30000,
 		hookTimeout: 30000,
@@ -71,11 +71,8 @@ export default defineConfig({
 					exclude: ['src/lib/server/**'],
 					setupFiles: ['./vitest-setup-client.ts'],
 					// Pool options to ensure proper cleanup - use forks in CI for better cleanup
-					pool: process.env.CI ? 'forks' : 'threads',
+					pool: 'forks',
 					poolOptions: {
-						threads: {
-							singleThread: process.env.CI ? true : false
-						},
 						forks: {
 							singleFork: true
 						}
@@ -90,11 +87,8 @@ export default defineConfig({
 					include: ['tests/unit/**/*.{test,spec}.{js,ts}'],
 					exclude: ['tests/unit/**/*.svelte.{test,spec}.{js,ts}'],
 					// Pool options to ensure proper cleanup - use forks in CI for better cleanup
-					pool: process.env.CI ? 'forks' : 'threads',
+					pool: 'forks',
 					poolOptions: {
-						threads: {
-							singleThread: process.env.CI ? true : false
-						},
 						forks: {
 							singleFork: true
 						}

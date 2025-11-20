@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock fetch globally
-global.fetch = vi.fn();
+globalThis.fetch = vi.fn();
 
 // Mock environment
 vi.mock('$env/dynamic/public', () => ({
@@ -15,13 +15,13 @@ vi.mock('$env/dynamic/public', () => ({
 }));
 
 vi.mock('$lib/utils', () => ({
-	safeToString: (val: unknown) => String(val)
+	safeToString: String
 }));
 
 describe('API Client', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		(global.fetch as ReturnType<typeof vi.fn>).mockReset();
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockReset();
 	});
 
 	it('should make GET request successfully', async () => {
@@ -30,7 +30,7 @@ describe('API Client', () => {
 			status: 200,
 			text: vi.fn().mockResolvedValue(JSON.stringify({ data: { id: '1', name: 'test' } }))
 		};
-		(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
 		const response = await apiClient.get<{ id: string; name: string }>('/test');
@@ -45,7 +45,7 @@ describe('API Client', () => {
 			status: 201,
 			text: vi.fn().mockResolvedValue(JSON.stringify({ data: { id: '2' } }))
 		};
-		(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
 		const response = await apiClient.post('/test', { name: 'test' });
@@ -59,7 +59,7 @@ describe('API Client', () => {
 			status: 200,
 			text: vi.fn().mockResolvedValue(JSON.stringify({ data: { updated: true } }))
 		};
-		(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
 		const response = await apiClient.put('/test/1', { name: 'updated' });
@@ -73,7 +73,7 @@ describe('API Client', () => {
 			status: 204,
 			text: vi.fn().mockResolvedValue('')
 		};
-		(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
 		const response = await apiClient.delete('/test/1');
@@ -87,7 +87,7 @@ describe('API Client', () => {
 			status: 404,
 			text: vi.fn().mockResolvedValue(JSON.stringify({ message: 'Not found' }))
 		};
-		(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
 
@@ -95,7 +95,7 @@ describe('API Client', () => {
 	});
 
 	it('should handle network error', async () => {
-		(global.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Network error'));
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Network error'));
 
 		const { apiClient } = await import('$lib/services/api');
 
@@ -108,7 +108,7 @@ describe('API Client', () => {
 			status: 200,
 			text: vi.fn().mockResolvedValue('invalid json')
 		};
-		(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
 		const response = await apiClient.get('/test');
