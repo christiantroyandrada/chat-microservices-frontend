@@ -48,16 +48,16 @@ beforeEach(() => {
 	// ensure service is disconnected before each test
 	try {
 		wsService.disconnect();
-	} catch (e) {
-		void e;
+	} catch {
+		// ignore
 	}
 });
 
 afterEach(() => {
 	try {
 		wsService.disconnect();
-	} catch (e) {
-		void e;
+	} catch {
+		// ignore
 	}
 });
 
@@ -99,9 +99,77 @@ describe('WebSocketService', () => {
 		wsService.sendMessage(msg);
 		expect(logger.error).not.toHaveBeenCalled();
 
+		// The fake socket collects emitted events in `emitted` — assert sendMessage was emitted
+		const sendEmit = emitted.find((e) => e.event === 'sendMessage');
+		expect(sendEmit).toBeTruthy();
+
 		// simulate disconnected -> should log error
 		fakeSocket.connected = false;
 		wsService.sendMessage(msg);
 		expect(logger.error).toHaveBeenCalled();
+	});
+
+	it('sendTyping emits when connected and does nothing when disconnected', () => {
+		wsService.connect();
+		// send typing while connected
+		wsService.sendTyping('r1', true);
+		const typingEmit = emitted.find((e) => e.event === 'typing');
+		expect(typingEmit).toBeTruthy();
+		expect(typingEmit?.payload).toEqual({ receiverId: 'r1', isTyping: true });
+
+		// simulate disconnected
+		emitted.length = 0;
+		fakeSocket.connected = false;
+		wsService.sendTyping('r1', false);
+		const typingEmit2 = emitted.find((e) => e.event === 'typing');
+		expect(typingEmit2).toBeFalsy();
+	});
+
+	it('subscription callbacks for status, typing and presence are invoked by server events', () => {
+		const statusCb = vi.fn();
+		const typingCb = vi.fn();
+		const presenceCb = vi.fn();
+
+		const unsubStatus = wsService.onStatusChange(statusCb);
+		const unsubTyping = wsService.onTyping(typingCb);
+		const unsubPresence = wsService.onPresence(presenceCb);
+
+		wsService.connect();
+
+		// simulate server 'connect' event
+		const connectCbs = listeners.get('connect') || [];
+		connectCbs.forEach((cb) => cb());
+		expect(statusCb).toHaveBeenCalledWith('connected');
+
+		// simulate server 'typing' event
+		const typingCbs = listeners.get('typing') || [];
+		typingCbs.forEach((cb) => cb({ userId: 'u1', isTyping: true }));
+		expect(typingCb).toHaveBeenCalledWith('u1', true);
+
+		// simulate server 'presence' event
+		const presenceCbs = listeners.get('presence') || [];
+		const p = { userId: 'u2', online: false, lastSeen: new Date().toISOString() };
+		presenceCbs.forEach((cb) => cb(p));
+		expect(presenceCb).toHaveBeenCalled();
+
+		// simulate server 'disconnect' event
+		const disconnectCbs = listeners.get('disconnect') || [];
+		disconnectCbs.forEach((cb) => cb());
+		expect(statusCb).toHaveBeenCalledWith('disconnected');
+
+		// cleanup
+		unsubStatus();
+		unsubTyping();
+		unsubPresence();
+	});
+
+	it('disconnect clears socket listeners and marks service disconnected', () => {
+		wsService.connect();
+		const connectCbs = listeners.get('connect') || [];
+		connectCbs.forEach((cb) => cb());
+		expect(wsService.isConnected()).toBe(true);
+		wsService.disconnect();
+		expect(wsService.isConnected()).toBe(false);
+		expect(listeners.size).toBe(0);
 	});
 });

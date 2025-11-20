@@ -115,7 +115,7 @@ describe('Extended component tests', () => {
 			await fireEvent.click(resultBtn);
 
 			// Start Chat should call onCreate
-			const startBtn = screen.getByText('Start Chat') as HTMLElement;
+			const startBtn = screen.getByText('Start Chat');
 			await fireEvent.click(startBtn);
 			expect(onCreate).toHaveBeenCalled();
 		});
@@ -146,9 +146,9 @@ describe('Extended component tests', () => {
 			const { toastStore } = await import('$lib/stores/toast.store');
 			render(MessageInput, { send, maxLength: 5 });
 
-			const textarea = screen.getByLabelText('Message input') as HTMLTextAreaElement;
+			const textarea = screen.getByLabelText('Message input');
 			await fireEvent.input(textarea, { target: { value: long } });
-			const sendBtn = screen.getByLabelText('Send message') as HTMLButtonElement;
+			const sendBtn = screen.getByLabelText('Send message');
 			await fireEvent.click(sendBtn);
 
 			expect(send).not.toHaveBeenCalled();
