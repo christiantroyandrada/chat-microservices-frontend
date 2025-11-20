@@ -74,13 +74,16 @@ export interface ChatState {
 // Notification Types
 // Used by: notification.service.ts, notification.store.ts, NotificationModal.svelte
 export interface Notification {
-	_id: string;
+	_id?: string;
+	// some code paths/tests use `id` instead of `_id`
+	id?: string;
 	userId: string;
 	type: 'message' | 'system' | 'alert';
 	title: string;
 	message: string;
 	read: boolean;
-	createdAt: string;
+	// Backend may provide ISO string; tests and some code construct Date objects
+	createdAt: string | Date;
 }
 
 // Used by: notification.service.ts

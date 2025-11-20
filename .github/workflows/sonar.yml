@@ -11,10 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        # Pinned to specific commit SHA for supply-chain security
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        # Pinned to specific commit SHA for supply-chain security
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
 
@@ -24,6 +26,15 @@ jobs:
       - name: Install frontend deps
         working-directory: ./
         run: pnpm install
+
+      - name: Ensure Playwright browsers are installed
+        # Playwright needs browsers downloaded before running tests that use @vitest/browser/playwright
+        working-directory: ./
+        run: pnpm exec playwright install
+
+      - name: Ensure coverage temp directory exists
+        working-directory: ./
+        run: mkdir -p coverage/.tmp
 
       - name: Run unit tests and generate coverage
         working-directory: ./
@@ -48,7 +59,8 @@ jobs:
       # SonarCloud / SonarQube step
       # Using the recommended sonarqube-scan-action (drop-in replacement for sonarcloud-github-action)
       - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v6
+        # Pinned to specific commit SHA for supply-chain security
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602
         with:
           args: >
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}

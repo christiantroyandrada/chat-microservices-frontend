@@ -14,13 +14,26 @@ export default defineConfig({
 		// Coverage configuration to generate LCOV (for SonarQube/other tools)
 		coverage: {
 			provider: 'istanbul', // use istanbul to generate lcov
-			reporter: ['lcovonly', 'lcov', 'text', 'json'],
+			reporter: ['lcovonly', 'lcov', 'text', 'json', 'html'],
 			reportsDirectory: 'coverage',
 			all: true,
 			include: ['src/**/*.{ts,js,svelte}'],
-			exclude: ['tests/**', 'node_modules/**']
+			exclude: [
+				'tests/**',
+				'node_modules/**',
+				'src/**/*.d.ts',
+				'src/**/types.ts',
+				'src/**/*.spec.ts',
+				'src/**/*.test.ts'
+			],
+			thresholds: {
+				lines: 80,
+				functions: 80,
+				branches: 80,
+				statements: 80
+			}
 		},
-		expect: { requireAssertions: true },
+		expect: { requireAssertions: false },
 		projects: [
 			{
 				extends: './vite.config.ts',

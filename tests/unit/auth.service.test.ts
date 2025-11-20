@@ -19,12 +19,18 @@ vi.mock('$lib/services/api', () => ({
 }));
 
 // Mock the logger
+const mockLogger = {
+	info: vi.fn(),
+	warning: vi.fn(),
+	error: vi.fn(),
+	success: vi.fn(),
+	debug: vi.fn(),
+	request: vi.fn(),
+	requestor: vi.fn()
+};
+
 vi.mock('$lib/services/dev-logger', () => ({
-	logger: {
-		info: vi.fn(),
-		warning: vi.fn(),
-		error: vi.fn()
-	}
+	logger: mockLogger
 }));
 
 // Import after mocks are defined
