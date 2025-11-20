@@ -1,4 +1,20 @@
-import { dev } from '$app/environment';
+// Safely read environment variables in both Node and browser/Vite contexts.
+// `process` may be undefined in the browser, so guard access. Vite exposes
+// env vars on `import.meta.env` which we also use as a fallback.
+const _importMetaEnv =
+	typeof import.meta === 'object'
+		? (import.meta as unknown as { env?: Record<string, unknown> }).env
+		: undefined;
+
+const _env =
+	(typeof process !== 'undefined' && process?.env?.NODE_ENV) ||
+	(_importMetaEnv && ((_importMetaEnv.MODE as string) || (_importMetaEnv.NODE_ENV as string))) ||
+	undefined;
+const _vitest =
+	(typeof process !== 'undefined' && process?.env?.VITEST) ||
+	(_importMetaEnv && (_importMetaEnv.VITEST as string)) ||
+	undefined;
+const dev = _env === 'development' || _env === 'test' || _vitest === '1' || _vitest === 'true';
 
 // Allow any JS value (string, number, object, array, etc.) as a log payload
 type TitleParam = string | [string, string];
@@ -119,7 +135,7 @@ class Logger {
 	render(
 		[title, msg = '']: [string, string?],
 		msgMap: Record<string, unknown>,
-		color = '#40ff00'
+		color: string = '#40ff00'
 	): void {
 		if (this.isUAT) {
 			const ctx = this.getCallerContext();

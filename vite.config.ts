@@ -26,14 +26,14 @@ export default defineConfig({
 		// print stack traces for active handles when tests complete.
 		reporters: ['default', 'hanging-process'],
 		// Reduce file watcher timeout in CI
-		fileParallelism: process.env.CI ? false : true,
+		fileParallelism: false,
 		// Set timeouts for proper cleanup
 		testTimeout: 30000,
 		hookTimeout: 30000,
 		teardownTimeout: 10000,
 		// Coverage configuration to generate LCOV (for SonarQube/other tools)
 		coverage: {
-			provider: 'istanbul', // use istanbul to generate lcov
+			provider: 'v8', // use V8 coverage provider
 			reporter: ['lcovonly', 'lcov', 'text', 'json', 'html'],
 			reportsDirectory: 'coverage',
 			all: true,
@@ -44,13 +44,15 @@ export default defineConfig({
 				'src/**/*.d.ts',
 				'src/**/types.ts',
 				'src/**/*.spec.ts',
-				'src/**/*.test.ts'
+				'src/**/*.test.ts',
+				'src/lib/types/**',
+				'src/**/index.{ts,js}'
 			],
 			thresholds: {
-				lines: 20,
-				functions: 25,
-				branches: 15,
-				statements: 20
+				lines: 85,
+				functions: 85,
+				branches: 75,
+				statements: 85
 			}
 		},
 		expect: { requireAssertions: false },
@@ -71,11 +73,8 @@ export default defineConfig({
 					exclude: ['src/lib/server/**'],
 					setupFiles: ['./vitest-setup-client.ts'],
 					// Pool options to ensure proper cleanup - use forks in CI for better cleanup
-					pool: process.env.CI ? 'forks' : 'threads',
+					pool: 'forks',
 					poolOptions: {
-						threads: {
-							singleThread: process.env.CI ? true : false
-						},
 						forks: {
 							singleFork: true
 						}
@@ -90,11 +89,8 @@ export default defineConfig({
 					include: ['tests/unit/**/*.{test,spec}.{js,ts}'],
 					exclude: ['tests/unit/**/*.svelte.{test,spec}.{js,ts}'],
 					// Pool options to ensure proper cleanup - use forks in CI for better cleanup
-					pool: process.env.CI ? 'forks' : 'threads',
+					pool: 'forks',
 					poolOptions: {
-						threads: {
-							singleThread: process.env.CI ? true : false
-						},
 						forks: {
 							singleFork: true
 						}

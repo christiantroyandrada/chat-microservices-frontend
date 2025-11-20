@@ -33,4 +33,4 @@
 {/if}
 <Toast />
 
-{@render children()}
+{@render children?.()}

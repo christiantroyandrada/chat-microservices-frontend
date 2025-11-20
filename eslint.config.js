@@ -54,5 +54,18 @@ export default defineConfig(
 				{ argsIgnorePattern: '^_', varsIgnorePattern: '^_' }
 			]
 		}
+	},
+	// Relax some rules for test files
+	{
+		files: ['tests/**', 'tests/**/*.ts', 'tests/**/*.svelte.test.ts', 'tests/**/*.svelte.ts'],
+		rules: {
+			// disallow `as any` in tests to encourage typed mocks and safer assertions
+			'@typescript-eslint/no-explicit-any': 'error',
+			'@typescript-eslint/ban-ts-comment': 'off',
+			'@typescript-eslint/no-unused-vars': [
+				'warn',
+				{ argsIgnorePattern: '^_', varsIgnorePattern: '^_' }
+			]
+		}
 	}
 );

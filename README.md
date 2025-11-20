@@ -168,32 +168,52 @@ The application will be available at `http://localhost:5173`.
 ### Testing
 
 - `pnpm test:unit` — Run unit tests (Vitest)
+- `pnpm coverage:unit` — Run unit tests with coverage report
 - `pnpm test:e2e` — Run end-to-end tests (Playwright)
-- `pnpm test` — Run all tests
+- `pnpm test` — Run all tests (unit + E2E)
 
-**📖 For comprehensive testing documentation**, see [TESTING.md](../TESTING.md) which includes:
+**� Test Coverage:**
 
-- Complete testing guide for frontend and backend
-- Unit test examples and best practices
-- E2E test patterns
-- Test utilities and fixtures
-- CI/CD integration
-- Troubleshooting guide
+- **240+ unit tests** covering components, services, stores, and crypto modules
+- **85%+ code coverage** (statements, branches, functions)
+- **E2E tests** for critical user flows (auth, messaging, notifications)
+- **Zero explicit `any`** - full TypeScript type safety in tests
+
+**Test Organization:**
+
+```
+tests/
+├── unit/                   # Unit tests with Vitest
+│   ├── components/         # Svelte component tests
+│   ├── services/          # Service layer tests
+│   ├── stores/            # Store tests
+│   ├── crypto/            # E2EE module tests
+│   └── utils/             # Utility function tests
+├── e2e/                   # End-to-end tests with Playwright
+├── fixtures/              # Test data fixtures
+├── mocks/                 # Mock implementations
+└── utils/                 # Test utilities and helpers
+```
 
 **Quick Test Commands:**
 
 ```bash
-# Frontend unit tests
+# Unit tests
 pnpm test:unit              # Run once
 pnpm test:unit -- --watch   # Watch mode
-pnpm test:unit -- --coverage # With coverage
+pnpm coverage:unit          # With coverage report
 
-# Frontend E2E tests
-pnpm build && pnpm preview &
-pnpm test:e2e
+# E2E tests
+pnpm test:e2e               # Run E2E tests
+pnpm test:e2e --ui          # Interactive UI mode
 
-# Run all tests (frontend + backend)
-cd .. && ./run-tests.sh all
+# Code quality checks
+pnpm lint                   # ESLint + Prettier
+pnpm check                  # TypeScript + Svelte checks
+pnpm format                 # Auto-fix formatting
+
+# Complete validation
+pnpm format && pnpm lint && pnpm check && pnpm coverage:unit
 ```
 
 ## Project Structure

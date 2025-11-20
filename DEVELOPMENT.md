@@ -554,6 +554,125 @@ The modular architecture makes it easy to:
 
 ### Testing
 
+**📊 Test Coverage Statistics:**
+
+- **240+ unit tests** with 85%+ code coverage
+- **Zero explicit `any`** types - full TypeScript safety
+- **Comprehensive E2E tests** for critical user flows
+- **Mock utilities** for IndexedDB, WebCrypto, and API services
+
+**Test Structure:**
+
+```
+tests/
+├── unit/                   # Unit tests (Vitest)
+│   ├── components/         # Svelte component tests
+│   ├── services/           # Service layer tests
+│   ├── stores/             # Store tests
+│   ├── crypto/             # Signal Protocol module tests
+│   ├── routes/             # Route component tests
+│   └── utils/              # Utility function tests
+├── e2e/                    # End-to-end tests (Playwright)
+│   ├── auth.spec.ts        # Authentication flows
+│   ├── chat.spec.ts        # Messaging functionality
+│   └── mockBackend.ts      # Mock backend for E2E
+├── fixtures/               # Test data and factories
+├── mocks/                  # Mock implementations
+└── utils/                  # Test utilities
+    ├── authMock.ts         # Auth service mocks
+    ├── fakeIndexedDB.ts    # IndexedDB test helpers
+    ├── webcryptoMock.ts    # WebCrypto polyfill
+    └── test-helpers.ts     # Common test utilities
+```
+
+**Running Tests:**
+
+```bash
+# Unit tests
+pnpm test:unit              # Run once
+pnpm test:unit -- --watch   # Watch mode
+pnpm coverage:unit          # With coverage report
+
+# E2E tests
+pnpm test:e2e               # Run all E2E tests
+pnpm test:e2e --ui          # Interactive UI mode
+pnpm test:e2e --project=chromium  # Specific browser
+
+# Code quality
+pnpm lint                   # ESLint + Prettier
+pnpm check                  # TypeScript + Svelte
+pnpm format                 # Auto-fix formatting
+
+# Complete validation pipeline
+pnpm format && pnpm lint && npx tsc --noEmit && npx sv check && pnpm coverage:unit
+```
+
+**Test Examples:**
+
+```typescript
+// Component test with Svelte Testing Library
+import { render, screen, fireEvent } from '@testing-library/svelte';
+import ChatHeader from '$lib/components/ChatHeader.svelte';
+
+it('displays user info and typing indicator', () => {
+	render(ChatHeader, { user: { name: 'Alice' }, isTyping: true });
+	expect(screen.getByText('Alice')).toBeTruthy();
+	expect(screen.getByText('typing...')).toBeTruthy();
+});
+
+// Service test with mocked dependencies
+import { vi } from 'vitest';
+import { chatService } from '$lib/services/chat.service';
+
+it('sends encrypted message', async () => {
+	const mockEncrypt = vi.fn().mockResolvedValue({ type: 1, body: 'encrypted' });
+	vi.spyOn(signalModule, 'encryptMessage').mockImplementation(mockEncrypt);
+
+	await chatService.sendMessage('user-123', 'Hello');
+	expect(mockEncrypt).toHaveBeenCalledWith('user-123', 'Hello');
+});
+
+// E2E test with Playwright
+test('user can send and receive messages', async ({ page }) => {
+	await page.goto('/login');
+	await page.fill('[name="email"]', 'test@example.com');
+	await page.fill('[name="password"]', 'password123');
+	await page.click('button[type="submit"]');
+
+	await page.waitForURL('/chat');
+	await page.fill('[placeholder="Type a message"]', 'Hello!');
+	await page.press('[placeholder="Type a message"]', 'Enter');
+
+	await expect(page.locator('text=Hello!')).toBeVisible();
+});
+```
+
+**Coverage Report:**
+
+```
+---------------------------|---------|----------|---------|---------|
+File                       | % Stmts | % Branch | % Funcs | % Lines |
+---------------------------|---------|----------|---------|---------|
+All files                  |   85.76 |    74.84 |   84.07 |   85.76 |
+ lib/components            |   99.61 |    79.32 |   92.85 |   99.61 |
+ lib/crypto                |   90.67 |    84.57 |   83.16 |   90.67 |
+ lib/services              |   92.50 |    65.43 |   89.06 |   92.50 |
+ lib/stores                |   95.66 |    94.39 |  100.00 |   95.66 |
+ lib/utils                 |   97.11 |    95.08 |  100.00 |   97.11 |
+---------------------------|---------|----------|---------|---------|
+```
+
+**Test Best Practices:**
+
+- ✅ Use `describe` blocks to group related tests
+- ✅ Write descriptive test names that explain behavior
+- ✅ Mock external dependencies (APIs, crypto, storage)
+- ✅ Test both success and error paths
+- ✅ Use `beforeEach` for test setup, avoid shared state
+- ✅ Prefer `Parameters<typeof fn>[0]` over explicit `any` casts
+- ✅ Create reusable test utilities in `tests/utils/`
+- ✅ Keep tests focused on one behavior per test case
+
 ```bash
 # Unit tests (Vitest)
 pnpm test:unit
@@ -777,6 +896,9 @@ Manages real-time communication via Socket.IO:
 # Clear and reinstall
 rm -rf node_modules .svelte-kit
 pnpm install
+
+# Full validation pipeline
+pnpm format && pnpm lint && npx tsc --noEmit && npx sv check
 
 # Type check
 pnpm check

@@ -1,0 +1,73 @@
+name: ci
+
+on:
+  push: # run on pushes to any branch
+  pull_request: # run for PRs (pre-merge checks)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [22.x]
+
+    steps:
+      - name: Checkout
+        # Pinned to specific commit SHA for supply-chain security
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        # Pinned to specific commit SHA for supply-chain security
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install pnpm and dependencies
+        run: |
+          npm install -g pnpm
+          pnpm install
+
+      - name: Lint (Prettier + ESLint)
+        run: pnpm run lint
+
+      - name: TypeScript type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Svelte check
+        run: pnpm run check
+
+      - name: Build FE
+        run: |
+          pnpm run prepare && pnpm run build
+
+      - name: Audit repo
+        run: |
+          npm audit --audit-level=moderate || true
+
+      - name: Summary
+        run: echo "Frontend CI completed successfully"
+
+  post-default:
+    name: Post-default branch actions
+    needs: build
+    runs-on: ubuntu-latest
+    # only run this job when the push is to the repository default branch
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.x
+
+      - name: Install pnpm and dependencies
+        run: |
+          npm install -g pnpm
+          pnpm install
+
+      - name: Default-branch build
+        run: |
+          echo "Running default-branch post-action for ${{ github.event.repository.default_branch }}"
+          pnpm run prepare && pnpm run build

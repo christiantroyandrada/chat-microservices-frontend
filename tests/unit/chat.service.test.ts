@@ -154,6 +154,139 @@ describe('chatService', () => {
 			// Should not save if already cached
 			expect(mockMessageStore.saveMessage).not.toHaveBeenCalled();
 		});
+
+		it('should handle unencrypted plaintext messages', async () => {
+			const plainMessage = {
+				...testMessages[0],
+				message: 'plain text content',
+				content: 'plain text content'
+			};
+
+			mockApiClient.get.mockResolvedValue(createSuccessResponse([plainMessage]));
+			mockMessageStore.getMessage.mockResolvedValue(null);
+
+			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
+
+			expect(result.length).toBe(1);
+			expect(mockMessageStore.saveMessage).toHaveBeenCalled();
+		});
+
+		it('should handle encrypted messages with __encrypted flag', async () => {
+			const encryptedContent = JSON.stringify({
+				__encrypted: true,
+				body: 'QUJDREVG' // base64 encoded
+			});
+
+			const encryptedMessage = {
+				...testMessages[0],
+				content: encryptedContent,
+				message: encryptedContent
+			};
+
+			mockApiClient.get.mockResolvedValue(createSuccessResponse([encryptedMessage]));
+			mockMessageStore.getMessage.mockResolvedValue(null);
+
+			// Import the signal mock
+			const signal = await import('$lib/crypto/signal');
+			vi.mocked(signal.decryptMessage).mockResolvedValue('decrypted content');
+
+			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
+
+			expect(result.length).toBe(1);
+			expect(signal.decryptMessage).toHaveBeenCalled();
+		});
+
+		it('should skip decryption for invalid base64 body', async () => {
+			const invalidEncrypted = JSON.stringify({
+				__encrypted: true,
+				body: 'not-valid-base64!@#$'
+			});
+
+			const message = {
+				...testMessages[0],
+				content: invalidEncrypted,
+				message: invalidEncrypted
+			};
+
+			mockApiClient.get.mockResolvedValue(createSuccessResponse([message]));
+			mockMessageStore.getMessage.mockResolvedValue(null);
+
+			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
+
+			expect(result.length).toBe(1);
+			// Should save without decryption
+			expect(mockMessageStore.saveMessage).toHaveBeenCalled();
+		});
+
+		it('should handle decryption errors gracefully', async () => {
+			const encryptedContent = JSON.stringify({
+				__encrypted: true,
+				body: 'QUJDREVG'
+			});
+
+			const encryptedMessage = {
+				...testMessages[0],
+				content: encryptedContent,
+				message: encryptedContent
+			};
+
+			mockApiClient.get.mockResolvedValue(createSuccessResponse([encryptedMessage]));
+			mockMessageStore.getMessage.mockResolvedValue(null);
+
+			const signal = await import('$lib/crypto/signal');
+			vi.mocked(signal.decryptMessage).mockRejectedValue(new Error('Decryption failed'));
+
+			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
+
+			// Should still return the message with error content
+			expect(result.length).toBe(1);
+			expect(result[0].content).toContain('Message could not be decrypted');
+		});
+
+		it('should handle messages sent by current user (cannot decrypt own messages)', async () => {
+			const encryptedContent = JSON.stringify({
+				__encrypted: true,
+				body: 'QUJDREVG'
+			});
+
+			const ownMessage = {
+				...testMessages[0],
+				senderId: currentUserId, // Current user sent this message
+				content: encryptedContent,
+				message: encryptedContent
+			};
+
+			mockApiClient.get.mockResolvedValue(createSuccessResponse([ownMessage]));
+			mockMessageStore.getMessage.mockResolvedValue(null);
+
+			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
+
+			expect(result.length).toBe(1);
+			expect(result[0].content).toContain('Your encrypted message');
+			expect(mockMessageStore.saveMessage).toHaveBeenCalled();
+		});
+
+		it('should normalize different server message field names', async () => {
+			const serverMessage = {
+				id: 'msg-123',
+				senderId: 'user-bob-456',
+				senderName: 'Bob',
+				receiverId: currentUserId,
+				message: 'Hello from server',
+				createdAt: '2024-01-01T00:00:00Z',
+				isRead: false
+			};
+
+			mockApiClient.get.mockResolvedValue(createSuccessResponse([serverMessage]));
+			mockMessageStore.getMessage.mockResolvedValue(null);
+
+			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
+
+			expect(result.length).toBe(1);
+			expect(result[0]._id).toBe('msg-123');
+			expect(result[0].senderUsername).toBe('Bob');
+			expect(result[0].content).toBe('Hello from server');
+		});
 	});
 
 	describe('sendMessage', () => {
