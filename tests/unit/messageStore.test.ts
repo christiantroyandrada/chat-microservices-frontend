@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import LocalMessageStore from '$lib/crypto/messageStore';
+import { attachFakeStoreTo } from '../utils/fakeIndexedDB';
 
 function makeMsg(id: string, sender: string, receiver: string, ts: string) {
 	return {
@@ -19,67 +20,8 @@ describe('LocalMessageStore (in-memory fake DB)', () => {
 	beforeEach(async () => {
 		store = new LocalMessageStore('test-user');
 
-		// Build a simple in-memory objectStore implementation that matches the
-		// minimal request/onsuccess pattern used by LocalMessageStore.
-		const data = new Map<string, any>();
-
-		const objectStore: any = {
-			put(value: any) {
-				const req: any = {};
-				setTimeout(() => {
-					data.set(value._id, value);
-					if (req.onsuccess) req.onsuccess({});
-				}, 0);
-				return req;
-			},
-			get(key: string) {
-				const req: any = {};
-				setTimeout(() => {
-					if (req.onsuccess) req.onsuccess({ target: { result: data.get(key) } });
-				}, 0);
-				return req;
-			},
-			openCursor() {
-				const req: any = {};
-				setTimeout(() => {
-					const values = Array.from(data.values());
-					let idx = 0;
-					const step = () => {
-						if (idx < values.length) {
-							const cursor = { value: values[idx++], continue: step };
-							if (req.onsuccess) req.onsuccess({ target: { result: cursor } });
-						} else {
-							if (req.onsuccess) req.onsuccess({ target: { result: undefined } });
-						}
-					};
-					step();
-				}, 0);
-				return req;
-			},
-			delete(key: string) {
-				const req: any = {};
-				setTimeout(() => {
-					data.delete(key);
-					if (req.onsuccess) req.onsuccess({});
-				}, 0);
-				return req;
-			},
-			clear() {
-				const req: any = {};
-				setTimeout(() => {
-					data.clear();
-					if (req.onsuccess) req.onsuccess({});
-				}, 0);
-				return req;
-			}
-		};
-
-		const tx = { objectStore: () => objectStore };
-
-		// Stub init to attach our fake db with transaction() method
-		vi.spyOn(store as any, 'init').mockImplementation(async function (this: any) {
-			this.db = { transaction: () => tx };
-		});
+		// Use shared in-memory fake object store and attach it to the store
+		attachFakeStoreTo(store, vi);
 
 		// Ensure init runs and store is cleared for test start
 		await store.init();

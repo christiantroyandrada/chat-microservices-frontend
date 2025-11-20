@@ -1,13 +1,8 @@
 /* stylelint-disable */
 import { describe, it, expect, beforeEach } from 'vitest';
+import { ensureBtoaAtob, btoaFromString } from '../utils/polyfills';
 
-// Ensure btoa/atob available in Node test environment
-if (typeof (globalThis as any).btoa === 'undefined') {
-	(globalThis as any).btoa = (str: string) => Buffer.from(str, 'binary').toString('base64');
-}
-if (typeof (globalThis as any).atob === 'undefined') {
-	(globalThis as any).atob = (b64: string) => Buffer.from(b64, 'base64').toString('binary');
-}
+ensureBtoaAtob();
 
 import { exportSignalKeys, importSignalKeys } from '$lib/crypto/signalKeyManager';
 import { DEFAULT_SIGNED_PREKEY_ID } from '$lib/crypto/signalConstants';
@@ -18,7 +13,7 @@ function abFromString(s: string): ArrayBuffer {
 }
 
 function base64FromString(s: string): string {
-	return (globalThis as any).btoa(s);
+	return btoaFromString(s);
 }
 
 class InMemoryStore {

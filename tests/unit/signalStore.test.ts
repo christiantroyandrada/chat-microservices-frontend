@@ -17,12 +17,8 @@ describe('IndexedDBSignalProtocolStore (unit, no IDB)', () => {
 		// Stub out IDB access: init/loadCache/persist/remove should be no-ops
 		vi.spyOn(store as any, 'init').mockImplementation(async () => {});
 		vi.spyOn(store as any, 'loadCache').mockImplementation(async () => {});
-		vi.spyOn(store as any, 'persist').mockImplementation(async (..._args: any[]) =>
-			Promise.resolve()
-		);
-		vi.spyOn(store as any, 'remove').mockImplementation(async (..._args: any[]) =>
-			Promise.resolve()
-		);
+		vi.spyOn(store as any, 'persist').mockImplementation((..._args: any[]) => undefined);
+		vi.spyOn(store as any, 'remove').mockImplementation((..._args: any[]) => undefined);
 	});
 
 	it('stores and retrieves identity key pair and registration id', async () => {

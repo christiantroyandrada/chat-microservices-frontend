@@ -1,16 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { ensureBtoaAtob } from '../utils/polyfills';
+import { installDeterministicWebCrypto } from '../utils/webcryptoMock';
 
-// Polyfill btoa/atob for Node test environment
-if (typeof (globalThis as any).btoa === 'undefined') {
-	(globalThis as any).btoa = (str: string) => Buffer.from(str, 'binary').toString('base64');
-}
-if (typeof (globalThis as any).atob === 'undefined') {
-	(globalThis as any).atob = (b64: string) => Buffer.from(b64, 'base64').toString('binary');
-}
+ensureBtoaAtob();
 
 describe('encryptKeySet / decryptKeySet (mocked WebCrypto)', () => {
+	let uninstall: (() => void) | undefined;
 	beforeEach(() => {
 		// Create a simple deterministic crypto.subtle mock
+		uninstall = installDeterministicWebCrypto();
 		const importKey = async (_format: string, keyData: ArrayBuffer | Uint8Array) => {
 			// keyData is password bytes; expose as secret
 			const secret = new TextDecoder().decode(keyData as ArrayBuffer);
@@ -34,7 +32,7 @@ describe('encryptKeySet / decryptKeySet (mocked WebCrypto)', () => {
 			// produce combined buffer: key.secret + '|' + base64(plaintext)
 			const plainBytes = new Uint8Array(plaintext);
 			const plainStr = Array.from(plainBytes)
-				.map((b) => String.fromCharCode(b))
+				.map((b) => String.fromCodePoint(b))
 				.join('');
 			const base64Plain = (globalThis as any).btoa(plainStr);
 			const combined = `${key.secret}|${base64Plain}`;
@@ -48,7 +46,7 @@ describe('encryptKeySet / decryptKeySet (mocked WebCrypto)', () => {
 			if (secret !== key.secret) throw new Error('Decryption failed');
 			const plainStr = (globalThis as any).atob(base64Plain);
 			const bytes = new Uint8Array(plainStr.length);
-			for (let i = 0; i < plainStr.length; i++) bytes[i] = plainStr.charCodeAt(i);
+			for (let i = 0; i < plainStr.length; i++) bytes[i] = plainStr.codePointAt(i);
 			return bytes.buffer;
 		};
 
@@ -71,7 +69,7 @@ describe('encryptKeySet / decryptKeySet (mocked WebCrypto)', () => {
 	afterEach(() => {
 		// restore any stubbed globals
 		try {
-			vi.unstubAllGlobals();
+			uninstall?.();
 		} catch {
 			// ignore
 		}
