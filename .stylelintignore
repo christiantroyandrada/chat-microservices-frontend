@@ -1,3 +1,9 @@
+# Ignore TypeScript and test files from stylelint
+src/**/*.ts
+src/**/*.svelte
+tests/**
+build/**
+node_modules/**
 # Ignore non-CSS config/scripts that stylelint may accidentally parse
 playwright.config.ts
 .playwright.config.ts
