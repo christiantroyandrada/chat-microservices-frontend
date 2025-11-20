@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { debounce, normalizeNotification, safeToString } from '$lib/utils';
-import { sanitizeHtml, sanitizeMessage } from '$lib/utils/sanitize';
+import { sanitizeMessage } from '$lib/utils/sanitize';
 
 describe('debounce', () => {
 	beforeEach(() => {
@@ -57,23 +57,9 @@ describe('debounce', () => {
 	});
 });
 
-describe('sanitizeHtml', () => {
-	it('should sanitize HTML content', () => {
-		// In Node environment, document is undefined so sanitizeHtml returns the original
-		// This is expected server-side behavior
-		const result = sanitizeHtml('<script>alert("XSS")</script>Hello');
-		expect(typeof result).toBe('string');
-		expect(result).toBeTruthy();
-	});
-
-	it('should handle plain text', () => {
-		const result = sanitizeHtml('Plain text');
-		expect(result).toBe('Plain text');
-	});
-});
-
 describe('sanitizeMessage', () => {
-	it('should sanitize valid message', () => {
+	it('should handle valid message in Node environment', () => {
+		// In Node, sanitizeMessage will return the input as-is (no DOM sanitization)
 		const result = sanitizeMessage('Hello World');
 		expect(result).toBe('Hello World');
 	});

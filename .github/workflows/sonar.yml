@@ -39,6 +39,7 @@ jobs:
       - name: Run unit tests and generate coverage
         working-directory: ./
         run: pnpm run coverage:unit
+        timeout-minutes: 10
 
       - name: Check Sonar secrets/vars
         run: |

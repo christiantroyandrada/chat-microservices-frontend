@@ -4,7 +4,10 @@
  * @returns Sanitized string
  */
 export function sanitizeHtml(html: string): string {
-	if (typeof document === 'undefined') return html;
+	// Check if we're in a browser environment with a proper DOM
+	if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+		return html;
+	}
 
 	const temp = document.createElement('div');
 	temp.textContent = html;
