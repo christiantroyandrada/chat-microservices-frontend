@@ -1,4 +1,16 @@
-import { dev } from '$app/environment';
+// Avoid importing SvelteKit virtual '$app/environment' directly because some
+// test runners (Playwright, Node) can't resolve that virtual package and it
+// causes the test run to fail during module resolution. Use NODE_ENV as a
+// portable fallback. In SvelteKit this will be equivalent when running in
+// development mode.
+// Consider the logger "enabled" in development and test environments so
+// unit tests (Vitest) that assert logging behavior still run as expected.
+// Cache environment variables to avoid repeated lookups and keep the
+// boolean expression simple for static analyzers.
+
+const _env = process.env.NODE_ENV;
+const _vitest = process.env.VITEST;
+const dev = _env === 'development' || _env === 'test' || _vitest === '1' || _vitest === 'true';
 
 // Allow any JS value (string, number, object, array, etc.) as a log payload
 type TitleParam = string | [string, string];
