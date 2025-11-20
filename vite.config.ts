@@ -2,8 +2,15 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import { sveltekit } from '@sveltejs/kit/vite';
 
+// Avoid loading some Vite plugins (like Tailwind's Vite plugin) during
+// Vitest runs. Many plugins start file-system watchers which can leave
+// FSEVENTWRAP handles open and prevent the test process from exiting.
+// Use nullish coalescing so we only fall back to NODE_ENV when VITEST is
+// undefined or null (preserves explicit empty-string / falsy values if set).
+const isVitest = Boolean(process.env.VITEST ?? process.env.NODE_ENV === 'test');
+
 export default defineConfig({
-	plugins: [tailwindcss(), sveltekit()],
+	plugins: [!isVitest ? tailwindcss() : null, sveltekit()].filter(Boolean),
 	optimizeDeps: {
 		exclude: []
 	},
@@ -11,6 +18,10 @@ export default defineConfig({
 		noExternal: []
 	},
 	test: {
+		// Enable the hanging-process reporter to help identify open handles that
+		// prevent the Node process from exiting cleanly in CI. This reporter will
+		// print stack traces for active handles when tests complete.
+		reporters: ['default', 'hanging-process'],
 		// Coverage configuration to generate LCOV (for SonarQube/other tools)
 		coverage: {
 			provider: 'istanbul', // use istanbul to generate lcov
