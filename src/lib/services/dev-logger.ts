@@ -31,14 +31,56 @@ class Logger {
 	 * Returns an object with a short location and full stack trace
 	 */
 	private extractLocationFromLine(line: string): string | undefined {
-		// Try to capture a file:line:col pattern
-		const re1 = /\((.+?):(\d+):(\d+)\)/;
-		const re2 = /at\s+(.+?):(\d+):(\d+)/;
-		const m = re1.exec(line) || re2.exec(line);
-		if (!m) return undefined;
-		const [, filePath, lineNum] = m;
+		const candidate = this.getCandidateFromLine(line);
+		if (!candidate) return undefined;
+
+		return this.parseFileLineCol(candidate);
+	}
+
+	/**
+	 * Extract the candidate substring that likely contains file:line:col
+	 * Examples: "(path/to/file.js:123:45)" or "at path/to/file.js:123:45"
+	 */
+	private getCandidateFromLine(line: string): string | undefined {
+		const parenStart = line.indexOf('(');
+		const parenEnd = line.lastIndexOf(')');
+		if (parenStart !== -1 && parenEnd !== -1 && parenEnd > parenStart) {
+			return line.slice(parenStart + 1, parenEnd).trim();
+		}
+
+		const atIndex = line.indexOf('at ');
+		if (atIndex !== -1) return line.slice(atIndex + 3).trim();
+		return undefined;
+	}
+
+	/**
+	 * Parse a candidate string of the form filePath:line:col
+	 * Handles Windows drive letters by joining remaining parts with ':'
+	 */
+	private parseFileLineCol(candidate: string): string | undefined {
+		const parts = candidate.split(':');
+		if (parts.length < 3) return undefined;
+
+		const col = parts.pop()!;
+		const lineNum = parts.pop()!;
+
+		if (!this.isUnsignedInteger(lineNum) || !this.isUnsignedInteger(col)) return undefined;
+
+		const filePath = parts.join(':');
 		const fileName = filePath.split('/').pop() || filePath;
 		return `${fileName}:${lineNum}`;
+	}
+
+	private isUnsignedInteger(s: string): boolean {
+		// Avoid using regex here to completely eliminate any risk of
+		// backtracking or regex engine surprises. Perform a simple
+		// character-code check that's O(n) and deterministic.
+		if (s.length === 0) return false;
+		for (let i = 0; i < s.length; i++) {
+			const c = s.charCodeAt(i);
+			if (c < 48 || c > 57) return false; // '0'..'9'
+		}
+		return true;
 	}
 
 	private getCallerContext(): { location: string; stack?: string } {
