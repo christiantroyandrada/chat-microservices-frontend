@@ -63,51 +63,41 @@ export function installDeterministicWebCrypto() {
 	}
 
 	return function uninstall() {
+		// Helper to run an operation and swallow any thrown errors.
+		const safe = (fn: () => void) => {
+			try {
+				fn();
+			} catch {
+				/* ignore */
+			}
+		};
+
 		// Prefer to use vitest's unstubGlobal if available to remove the stub.
-		try {
+		safe(() => {
 			if (typeof (vi as any).unstubGlobal === 'function') {
 				(vi as any).unstubGlobal('crypto');
 			}
-		} catch {
-			// ignore failures from vitest
+		});
+
+		// Restore globalThis.crypto to its previous value (or remove it).
+		if (previousCrypto === undefined) {
+			// Try to delete, otherwise set to undefined.
+			safe(() => delete (globalThis as any).crypto);
+			safe(() => ((globalThis as any).crypto = undefined));
+		} else {
+			safe(() => ((globalThis as any).crypto = previousCrypto));
 		}
 
-		// Restore globalThis.crypto and window.crypto to their previous values.
-		try {
-			if (previousCrypto === undefined) {
-				try {
-					delete (globalThis as any).crypto;
-				} catch {
-					(globalThis as any).crypto = undefined;
-				}
-			} else {
-				(globalThis as any).crypto = previousCrypto;
-			}
-		} catch {
-			// ignore
-		}
-
-		try {
-			if (previousWindow) {
-				try {
-					previousWindow.crypto = previousWindowCrypto;
-				} catch {
-					// ignore
-				}
-			} else if ((globalThis as any).window && previousWindowCrypto === undefined) {
-				// no previous window object, ensure we remove the stubbed crypto if set
-				try {
-					delete (globalThis as any).window.crypto;
-				} catch {
-					try {
-						(globalThis as any).window.crypto = undefined;
-					} catch {
-						// ignore
-					}
-				}
-			}
-		} catch {
-			// ignore
+		// Restore window.crypto when applicable. Keep behavior identical to
+		// the original but with a flatter control flow.
+		if (previousWindow) {
+			safe(() => {
+				previousWindow.crypto = previousWindowCrypto;
+			});
+		} else if ((globalThis as any).window && previousWindowCrypto === undefined) {
+			// No previous window object: remove stubbed crypto if it was set
+			safe(() => delete (globalThis as any).window.crypto);
+			safe(() => ((globalThis as any).window.crypto = undefined));
 		}
 	};
 }

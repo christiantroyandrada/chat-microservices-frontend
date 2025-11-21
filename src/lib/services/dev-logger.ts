@@ -2,7 +2,7 @@
 // `process` may be undefined in the browser, so guard access. Vite exposes
 // env vars on `import.meta.env` which we also use as a fallback.
 const _importMetaEnv =
-	typeof import.meta !== 'undefined'
+	typeof import.meta === 'object'
 		? (import.meta as unknown as { env?: Record<string, unknown> }).env
 		: undefined;
 

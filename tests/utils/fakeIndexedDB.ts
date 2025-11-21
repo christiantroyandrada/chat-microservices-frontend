@@ -64,7 +64,7 @@ export function makeInMemoryObjectStore() {
 
 export function attachFakeStoreTo(storeInstance: any, vi: any) {
 	const { tx } = makeInMemoryObjectStore();
-	vi.spyOn(storeInstance as any, 'init').mockImplementation(async function (this: any) {
+	vi.spyOn(storeInstance, 'init').mockImplementation(async function (this: any) {
 		this.db = { transaction: () => tx };
 	});
 	return tx;

@@ -1,9 +1,130 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-
-/* stylelint-disable */
+// Removed duplicate import
+// (imports consolidated)
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 import { IndexedDBSignalProtocolStore } from '$lib/crypto/signalStore';
+import { attachFakeStoreTo } from '../utils/fakeIndexedDB';
+import { DEFAULT_SIGNED_PREKEY_ID } from '$lib/crypto/signalConstants';
 
+function abFrom(arr: number[]) {
+	return new Uint8Array(arr).buffer;
+}
+
+describe('IndexedDBSignalProtocolStore', () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('stores and retrieves identity key pair and registration id', async () => {
+		const store = new IndexedDBSignalProtocolStore('u1');
+		attachFakeStoreTo(store, vi);
+
+		const kp = { pubKey: abFrom([1, 2, 3]), privKey: abFrom([4, 5, 6]) } as any;
+		await store.storeIdentityKeyPair(kp);
+		await store.storeLocalRegistrationId(1234);
+
+		const got = await store.getIdentityKeyPair();
+		const reg = await store.getLocalRegistrationId();
+
+		expect(got).toEqual(kp);
+		expect(reg).toBe(1234);
+	});
+
+	it('stores, loads and removes prekeys', async () => {
+		const store = new IndexedDBSignalProtocolStore('u2');
+		attachFakeStoreTo(store, vi);
+
+		const kp = { pubKey: abFrom([7]), privKey: abFrom([8]) } as any;
+		await store.storePreKey(1, kp);
+
+		const loaded = await store.loadPreKey(1);
+		expect(loaded).toEqual(kp);
+
+		await store.removePreKey(1);
+		const after = await store.loadPreKey(1);
+		expect(after).toBeUndefined();
+	});
+
+	it('stores, loads and removes signed prekey with proper type guard', async () => {
+		const store = new IndexedDBSignalProtocolStore('u3');
+		attachFakeStoreTo(store, vi);
+
+		const signed = { pubKey: abFrom([9]), privKey: abFrom([10]), signature: abFrom([11]) } as any;
+		await store.storeSignedPreKey(DEFAULT_SIGNED_PREKEY_ID, signed);
+
+		const loaded = await store.loadSignedPreKey(DEFAULT_SIGNED_PREKEY_ID);
+		expect(loaded).toEqual(signed);
+
+		await store.removeSignedPreKey(DEFAULT_SIGNED_PREKEY_ID);
+		const after = await store.loadSignedPreKey(DEFAULT_SIGNED_PREKEY_ID);
+		expect(after).toBeUndefined();
+	});
+
+	it('stores, loads, removes and clears sessions', async () => {
+		const store = new IndexedDBSignalProtocolStore('u4');
+		attachFakeStoreTo(store, vi);
+
+		await store.storeSession('alice:1', 'rec1');
+		await store.storeSession('alice:2', 'rec2');
+
+		expect(await store.loadSession('alice:1')).toBe('rec1');
+		expect(await store.loadSession('alice:2')).toBe('rec2');
+
+		await store.removeSession('alice:1');
+		expect(await store.loadSession('alice:1')).toBeUndefined();
+
+		// removeAllSessions for prefix 'alice' should delete remaining session keys
+		await store.removeAllSessions('alice');
+		expect(await store.loadSession('alice:2')).toBeUndefined();
+	});
+
+	it('saveIdentity and isTrustedIdentity behave correctly', async () => {
+		const store = new IndexedDBSignalProtocolStore('u5');
+		attachFakeStoreTo(store, vi);
+
+		const keyA = abFrom([1]);
+		const keyB = abFrom([2]);
+
+		// first save returns false (no existing)
+		const first = await store.saveIdentity('bob', keyA);
+		expect(first).toBe(false);
+
+		// same key returns false (no change)
+		const second = await store.saveIdentity('bob', keyA);
+		expect(second).toBe(false);
+
+		// different key returns true (changed)
+		const third = await store.saveIdentity('bob', keyB);
+		expect(third).toBe(true);
+
+		// isTrustedIdentity returns false when different
+		const trusted = await store.isTrustedIdentity('bob', keyA);
+		expect(trusted).toBe(false);
+
+		// trusted for matching key
+		const trusted2 = await store.isTrustedIdentity('bob', keyB);
+		expect(trusted2).toBe(true);
+	});
+
+	it('close resets db and cache', async () => {
+		const store = new IndexedDBSignalProtocolStore('u6');
+		attachFakeStoreTo(store, vi);
+
+		await store.storeLocalRegistrationId(55);
+		expect(await store.getLocalRegistrationId()).toBe(55);
+		// ensure fake db has a close method to match real IDBDatabase
+		if ((store as any).db && typeof (store as any).db.close !== 'function') {
+			(store as any).db.close = vi.fn();
+		}
+
+		store.close();
+		expect(store.getDbName()).toContain('signal-protocol-store-');
+		// after close cache should be empty and db null; subsequent get returns undefined
+		expect(await store.getLocalRegistrationId()).toBeUndefined();
+	});
+});
+
+/* Second suite: run against an instance with IDB methods stubbed out */
 function abFromString(s: string): ArrayBuffer {
 	return new TextEncoder().encode(s).buffer;
 }

@@ -16,14 +16,12 @@ vi.mock('@privacyresearch/libsignal-protocol-typescript', () => {
 	}
 
 	class SessionBuilder {
-		constructor(_store: unknown, _address: unknown) {}
 		async processPreKey(_device: any) {
 			// default no-op, tests can spyOn prototype to change behavior
 		}
 	}
 
 	class SessionCipher {
-		constructor(_store: unknown, _address: unknown) {}
 		async encrypt(_buf: ArrayBuffer) {
 			return { type: 1, body: 'AAAA' };
 		}
