@@ -3,4 +3,4 @@
 
 // Intentionally named *.test.disabled.ts so it's not picked up by Vitest's server include glob.
 
-export {};
+// File intentionally empty (placeholder for disabled tests).

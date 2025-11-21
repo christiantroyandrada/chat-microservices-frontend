@@ -8,12 +8,9 @@ declare global {
 }
 
 export function ensureBtoaAtob(): void {
-	if (globalThis.btoa === undefined) {
-		globalThis.btoa = (str: string) => Buffer.from(str, 'binary').toString('base64');
-	}
-	if (globalThis.atob === undefined) {
-		globalThis.atob = (b64: string) => Buffer.from(b64, 'base64').toString('binary');
-	}
+	// Use nullish coalescing assignment for concise, idiomatic polyfills
+	globalThis.btoa ??= (str: string) => Buffer.from(str, 'binary').toString('base64');
+	globalThis.atob ??= (b64: string) => Buffer.from(b64, 'base64').toString('binary');
 }
 
 export function btoaFromString(s: string): string {

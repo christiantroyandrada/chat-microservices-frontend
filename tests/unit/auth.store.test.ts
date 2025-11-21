@@ -100,7 +100,7 @@ describe('authStore', () => {
 
 	it('login failure sets error and rethrows', async () => {
 		vi.doMock('$app/environment', () => ({ browser: true }));
-		const apiError = { message: 'bad creds' };
+		const apiError = new Error('bad creds');
 		const login = vi.fn(() => Promise.reject(apiError));
 		const getCurrentUser = vi.fn();
 		const authServiceMock = { login, getCurrentUser };
@@ -109,7 +109,7 @@ describe('authStore', () => {
 
 		const { authStore, authError } = await import('$lib/stores/auth.store');
 
-		await expect(authStore.login({} as unknown as LoginCredentials)).rejects.toEqual(apiError);
+		await expect(authStore.login({} as unknown as LoginCredentials)).rejects.toBe(apiError);
 		expect(get(authError)).toBe(apiError.message);
 	});
 
@@ -137,7 +137,7 @@ describe('authStore', () => {
 
 	it('register failure sets error and rethrows', async () => {
 		vi.doMock('$app/environment', () => ({ browser: true }));
-		const apiError = { message: 'nope' };
+		const apiError = new Error('nope');
 		const register = vi.fn(() => Promise.reject(apiError));
 		const getCurrentUser = vi.fn();
 		const authServiceMock = { register, getCurrentUser };
@@ -146,9 +146,7 @@ describe('authStore', () => {
 
 		const { authStore, authError } = await import('$lib/stores/auth.store');
 
-		await expect(authStore.register({} as unknown as RegisterCredentials)).rejects.toEqual(
-			apiError
-		);
+		await expect(authStore.register({} as unknown as RegisterCredentials)).rejects.toBe(apiError);
 		expect(get(authError)).toBe(apiError.message);
 	});
 
@@ -216,7 +214,7 @@ describe('authStore', () => {
 			login?: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
 			getCurrentUser?: MockedFunction<() => Promise<unknown>>;
 		};
-		svc.login = vi.fn(() => Promise.reject({ message: 'err' }));
+		svc.login = vi.fn(() => Promise.reject(new Error('err')));
 
 		await expect(authStore.login({} as unknown as LoginCredentials)).rejects.toBeDefined();
 		expect(get(authError)).toBe('err');

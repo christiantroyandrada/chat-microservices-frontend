@@ -118,12 +118,12 @@ export function installDeterministicWebCrypto() {
 			safe(() => {
 				if (gw.window) {
 					// use indexed access to avoid `any`
-					delete (gw.window as Record<string, unknown>)['crypto'];
+					delete gw.window['crypto'];
 				}
 			});
 			safe(() => {
 				if (gw.window) {
-					(gw.window as Record<string, unknown>)['crypto'] = undefined;
+					gw.window['crypto'] = undefined;
 				}
 			});
 		}

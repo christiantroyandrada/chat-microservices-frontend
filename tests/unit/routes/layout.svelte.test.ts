@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
-import { page } from '$app/stores';
 import Layout from '../../../src/routes/+layout.svelte';
 import type { Page } from '@sveltejs/kit';
 
@@ -20,7 +19,7 @@ function createPage(pathname: string): Page {
 
 // Mock stores and components
 vi.mock('$app/stores', () => ({
-	page: {
+	['page']: {
 		subscribe: vi.fn((callback) => {
 			callback(createPage('/'));
 			return () => {};
@@ -82,7 +81,8 @@ describe('Layout component', () => {
 		const { authStore } = await import('$lib/stores/auth.store');
 		authStore.init = mockInit;
 
-		const mockPage = vi.mocked(page);
+		const appStores = await import('$app/stores');
+		const mockPage = vi.mocked(appStores['page']);
 		mockPage.subscribe = vi.fn((callback) => {
 			callback(createPage('/login'));
 			return () => {};
@@ -100,7 +100,8 @@ describe('Layout component', () => {
 		const { authStore } = await import('$lib/stores/auth.store');
 		authStore.init = mockInit;
 
-		const mockPage = vi.mocked(page);
+		const appStores = await import('$app/stores');
+		const mockPage = vi.mocked(appStores['page']);
 		mockPage.subscribe = vi.fn((callback) => {
 			callback(createPage('/register'));
 			return () => {};

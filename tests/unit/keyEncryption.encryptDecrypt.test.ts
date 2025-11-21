@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ensureBtoaAtob } from '../utils/polyfills';
 import { installDeterministicWebCrypto } from '../utils/webcryptoMock';
-import type { SignalKeySet, EncryptedKeyBundle } from '$lib/types';
+import type { SignalKeySet } from '$lib/types';
 
 ensureBtoaAtob();
 
@@ -91,7 +91,7 @@ describe('encryptKeySet / decryptKeySet (mocked WebCrypto)', () => {
 		expect(bundle).toHaveProperty('encrypted');
 		expect(bundle.deviceId).toBe(deviceId);
 
-		const decrypted = await decryptKeySet(bundle as EncryptedKeyBundle, password);
+		const decrypted = await decryptKeySet(bundle, password);
 		expect(decrypted).toEqual(keySet);
 	});
 
@@ -101,8 +101,6 @@ describe('encryptKeySet / decryptKeySet (mocked WebCrypto)', () => {
 		const keySet = { identityKey: 'id-1' } as unknown as SignalKeySet;
 		const bundle = await encryptKeySet(keySet, 'Correct#1', 'd2');
 
-		await expect(decryptKeySet(bundle as EncryptedKeyBundle, 'WrongPassword')).rejects.toThrow(
-			/Failed to decrypt keys/
-		);
+		await expect(decryptKeySet(bundle, 'WrongPassword')).rejects.toThrow(/Failed to decrypt keys/);
 	});
 });
