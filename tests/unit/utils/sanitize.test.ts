@@ -5,23 +5,21 @@ import { sanitizeMessage, isValidEmail } from '$lib/utils';
 describe('sanitize utils', () => {
 	beforeEach(() => {
 		// ensure global document exists for sanitizeHtml
-		if (globalThis.document === undefined) {
-			// minimal mock — cast to Document so the createElement signature matches
-			globalThis.document = {
-				createElement: () => {
-					const el = {
-						textContent: '',
-						get innerHTML() {
-							return String((this as unknown as { textContent: string }).textContent)
-								.replaceAll(/&/g, '&amp;')
-								.replaceAll(/</g, '&lt;')
-								.replaceAll(/>/g, '&gt;');
-						}
-					} as unknown as HTMLElement;
-					return el;
-				}
-			} as unknown as Document;
-		}
+		// minimal mock — cast to Document so the createElement signature matches
+		globalThis.document ??= {
+			createElement: () => {
+				const el = {
+					textContent: '',
+					get innerHTML() {
+						return String((this as unknown as { textContent: string }).textContent)
+							.replaceAll('&', '&amp;')
+							.replaceAll('<', '&lt;')
+							.replaceAll('>', '&gt;');
+					}
+				};
+				return el;
+			}
+		} as unknown as Document;
 	});
 
 	it('sanitizes html and trims messages', () => {
