@@ -42,8 +42,7 @@ jobs:
 
       - name: Audit repo
         run: |
-          npm install --package-lock-only
-          npm audit --audit-level=moderate || true
+          pnpm audit --audit-level=moderate || true
 
       - name: Summary
         run: echo "Frontend CI completed successfully"
