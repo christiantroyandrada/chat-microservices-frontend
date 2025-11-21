@@ -33,4 +33,60 @@ describe('login page', () => {
 		const auth = await import('$lib/stores/auth.store');
 		expect(auth.authStore.login).toHaveBeenCalled();
 	});
+
+	it('renders email and password inputs', () => {
+		const { container } = render(LoginPage);
+
+		const emailInput = container.querySelector('input[name="email"]');
+		const passwordInput = container.querySelector('input[name="password"]');
+
+		expect(emailInput).toBeTruthy();
+		expect(passwordInput).toBeTruthy();
+	});
+
+	it('toggles password visibility', async () => {
+		const { container } = render(LoginPage);
+
+		const passwordInput = container.querySelector('input[name="password"]') as HTMLInputElement;
+		const toggleButton = container.querySelector(
+			'button[aria-label*="password"]'
+		) as HTMLButtonElement;
+
+		expect(passwordInput.type).toBe('password');
+
+		await fireEvent.click(toggleButton);
+		expect(passwordInput.type).toBe('text');
+
+		await fireEvent.click(toggleButton);
+		expect(passwordInput.type).toBe('password');
+	});
+
+	it('allows typing in email input', async () => {
+		const { container } = render(LoginPage);
+
+		const emailInput = container.querySelector('input[name="email"]') as HTMLInputElement;
+
+		await fireEvent.input(emailInput, { target: { value: 'test@example.com' } });
+
+		expect(emailInput.value).toBe('test@example.com');
+	});
+
+	it('allows typing in password input', async () => {
+		const { container } = render(LoginPage);
+
+		const passwordInput = container.querySelector('input[name="password"]') as HTMLInputElement;
+
+		await fireEvent.input(passwordInput, { target: { value: 'mypassword' } });
+
+		expect(passwordInput.value).toBe('mypassword');
+	});
+
+	it('renders link to registration page', () => {
+		const { container } = render(LoginPage);
+
+		const registerLink = container.querySelector('a[href="/register"]');
+
+		expect(registerLink).toBeTruthy();
+		expect(registerLink?.textContent?.trim()).toBe('Create one');
+	});
 });

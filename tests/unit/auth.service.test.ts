@@ -187,4 +187,69 @@ describe('authService', () => {
 			});
 		});
 	});
+
+	describe('fetchSignalKeys', () => {
+		it('should fetch encrypted signal keys successfully', async () => {
+			const deviceId = 'device-123';
+			const encryptedBundle = {
+				encrypted: 'encrypted-keys',
+				iv: 'initialization-vector',
+				salt: 'salt-value',
+				version: 1,
+				deviceId: 'device-123'
+			};
+
+			mockApiClient.get.mockResolvedValue(createSuccessResponse({ encryptedBundle }));
+
+			const result = await authService.fetchSignalKeys(deviceId);
+
+			expect(mockApiClient.get).toHaveBeenCalledWith(`/user/signal-keys?deviceId=${deviceId}`);
+			expect(result).toEqual(encryptedBundle);
+		});
+
+		it('should return null when no keys are stored (404)', async () => {
+			const deviceId = 'device-123';
+
+			const error404 = {
+				response: { status: 404 }
+			};
+
+			mockApiClient.get.mockRejectedValue(error404);
+
+			const result = await authService.fetchSignalKeys(deviceId);
+
+			expect(result).toBeNull();
+		});
+
+		it('should return null when response data is missing', async () => {
+			const deviceId = 'device-123';
+
+			mockApiClient.get.mockResolvedValue(createSuccessResponse({}));
+
+			const result = await authService.fetchSignalKeys(deviceId);
+
+			expect(result).toBeNull();
+		});
+
+		it('should throw non-404 errors', async () => {
+			const deviceId = 'device-123';
+
+			const error500 = {
+				response: { status: 500 }
+			};
+
+			mockApiClient.get.mockRejectedValue(error500);
+
+			await expect(authService.fetchSignalKeys(deviceId)).rejects.toEqual(error500);
+		});
+
+		it('should throw errors without response object', async () => {
+			const deviceId = 'device-123';
+			const networkError = new Error('Network error');
+
+			mockApiClient.get.mockRejectedValue(networkError);
+
+			await expect(authService.fetchSignalKeys(deviceId)).rejects.toThrow('Network error');
+		});
+	});
 });

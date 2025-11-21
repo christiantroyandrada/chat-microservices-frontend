@@ -164,4 +164,133 @@ describe('signalSession', () => {
 			'u'
 		);
 	});
+
+	it('hasSession returns false when no session exists', async () => {
+		const fakeStore = {
+			asStorageType: () => ({}),
+			loadSession: async () => null
+		} as unknown as Parameters<typeof hasSession>[0];
+		expect(await hasSession(fakeStore, 'user-id')).toBe(false);
+	});
+
+	it('createSessionWithPrekeyBundle handles bundle with preKeys', async () => {
+		const builderProto = (await import('@privacyresearch/libsignal-protocol-typescript'))
+			.SessionBuilder.prototype as unknown as {
+			processPreKey: (...args: unknown[]) => Promise<void>;
+		};
+		const spy = vi.spyOn(builderProto, 'processPreKey').mockResolvedValue(undefined);
+
+		const signed = { id: 1, publicKey: 'QQQ', signature: 'SSS' };
+		const preKeys = [{ id: 10, publicKey: 'PKK' }];
+		const payload = {
+			bundle: {
+				identityKey: 'AAA',
+				registrationId: 2,
+				signedPreKey: signed,
+				preKeys
+			}
+		};
+
+		const fakeStore = { asStorageType: () => ({}) } as unknown as Parameters<
+			typeof createSessionWithPrekeyBundle
+		>[0];
+		await createSessionWithPrekeyBundle(fakeStore, payload);
+		expect(spy).toHaveBeenCalled();
+	});
+
+	it('createSessionWithPrekeyBundle throws when malformed signedPreKey', async () => {
+		const signed = { id: 'not-a-number', publicKey: 'QQQ', signature: 'SSS' };
+		const payload = {
+			bundle: { identityKey: 'AAA', registrationId: 2, signedPreKey: signed }
+		};
+		await expect(
+			createSessionWithPrekeyBundle(
+				{} as unknown as Parameters<typeof createSessionWithPrekeyBundle>[0],
+				payload
+			)
+		).rejects.toThrow(TypeError);
+	});
+
+	it('createSessionWithPrekeyBundle handles processPreKey error', async () => {
+		const builderProto = (await import('@privacyresearch/libsignal-protocol-typescript'))
+			.SessionBuilder.prototype as unknown as {
+			processPreKey: (...args: unknown[]) => Promise<void>;
+		};
+		vi.spyOn(builderProto, 'processPreKey').mockRejectedValue(new Error('ProcessPreKey failed'));
+
+		const signed = { id: 1, publicKey: 'QQQ', signature: 'SSS' };
+		const payload = { bundle: { identityKey: 'AAA', registrationId: 2, signedPreKey: signed } };
+
+		const fakeStore = { asStorageType: () => ({}) } as unknown as Parameters<
+			typeof createSessionWithPrekeyBundle
+		>[0];
+		await expect(createSessionWithPrekeyBundle(fakeStore, payload)).rejects.toThrow(
+			'ProcessPreKey failed'
+		);
+	});
+
+	it('encryptMessage throws when no ciphertext body', async () => {
+		const fakeStore = { asStorageType: () => ({}) } as unknown as Parameters<
+			typeof encryptMessage
+		>[0];
+		const libc = await import('@privacyresearch/libsignal-protocol-typescript');
+		(
+			libc.SessionCipher.prototype as unknown as {
+				encrypt?: (...args: unknown[]) => Promise<unknown>;
+			}
+		).encrypt = vi.fn().mockResolvedValue({ type: 1, body: null });
+
+		await expect(encryptMessage(fakeStore, 'user-x', 'hello')).rejects.toThrow(
+			'Signal encryption produced no ciphertext body'
+		);
+	});
+
+	it('encryptMessage handles binary string body', async () => {
+		const fakeStore = { asStorageType: () => ({}) } as unknown as Parameters<
+			typeof encryptMessage
+		>[0];
+		const libc = await import('@privacyresearch/libsignal-protocol-typescript');
+		(
+			libc.SessionCipher.prototype as unknown as {
+				encrypt?: (...args: unknown[]) => Promise<unknown>;
+			}
+		).encrypt = vi.fn().mockResolvedValue({ type: 1, body: '\x00\x01\x02\x03' });
+
+		const result = await encryptMessage(fakeStore, 'user-x', 'hello');
+		expect(result.body).toBeDefined();
+		expect(typeof result.body).toBe('string');
+	});
+
+	it('encryptMessage throws on unexpected body type', async () => {
+		const fakeStore = { asStorageType: () => ({}) } as unknown as Parameters<
+			typeof encryptMessage
+		>[0];
+		const libc = await import('@privacyresearch/libsignal-protocol-typescript');
+		(
+			libc.SessionCipher.prototype as unknown as {
+				encrypt?: (...args: unknown[]) => Promise<unknown>;
+			}
+		).encrypt = vi.fn().mockResolvedValue({ type: 1, body: 12345 });
+
+		await expect(encryptMessage(fakeStore, 'user-x', 'hello')).rejects.toThrow(
+			'Unexpected ciphertext body type'
+		);
+	});
+
+	it('decryptMessage handles decryption error and logs details', async () => {
+		const fakeStore = {
+			asStorageType: () => ({}),
+			loadSession: async () => null
+		} as unknown as Parameters<typeof decryptMessage>[0];
+
+		const libc = await import('@privacyresearch/libsignal-protocol-typescript');
+		(
+			libc.SessionCipher.prototype as unknown as {
+				decryptPreKeyWhisperMessage?: (...args: unknown[]) => Promise<unknown>;
+			}
+		).decryptPreKeyWhisperMessage = vi.fn().mockRejectedValue(new Error('Decryption failed'));
+
+		const encStr = 'QUJD';
+		await expect(decryptMessage(fakeStore, 'sender', encStr)).rejects.toThrow('Decryption failed');
+	});
 });

@@ -49,10 +49,10 @@ export default defineConfig({
 				'src/**/index.{ts,js}'
 			],
 			thresholds: {
-				lines: 20,
-				functions: 25,
-				branches: 15,
-				statements: 20
+				lines: 85,
+				functions: 85,
+				branches: 75,
+				statements: 85
 			}
 		},
 		expect: { requireAssertions: false },

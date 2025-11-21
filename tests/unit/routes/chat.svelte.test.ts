@@ -57,4 +57,28 @@ describe('chat page', () => {
 		const btn = await screen.findByLabelText('Start new conversation');
 		expect(btn).toBeTruthy();
 	});
+
+	it('connects to websocket on mount', async () => {
+		render(ChatPage);
+		const { wsService } = await import('$lib/services/websocket.service');
+		expect(wsService.connect).toHaveBeenCalled();
+	});
+
+	it('initializes Signal Protocol on mount', async () => {
+		render(ChatPage);
+		const { initSignalWithRestore } = await import('$lib/crypto/signal');
+		expect(initSignalWithRestore).toHaveBeenCalled();
+	});
+
+	it('loads conversations on mount', async () => {
+		render(ChatPage);
+		const { chatService } = await import('$lib/services/chat.service');
+		expect(chatService.getConversations).toHaveBeenCalled();
+	});
+
+	it('fetches notifications on mount', async () => {
+		render(ChatPage);
+		const { notificationStore } = await import('$lib/stores/notification.store');
+		expect(notificationStore.fetch).toHaveBeenCalled();
+	});
 });
