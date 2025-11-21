@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { MockedFunction } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/svelte';
 
 vi.mock('$app/environment', () => ({ browser: true }));
@@ -47,7 +48,9 @@ describe('NotificationModal unread UI and actions', () => {
 
 	it('displays unread count and mark-all button, clicking it calls store', async () => {
 		const { notificationStore } = await import('$lib/stores/notification.store');
-		const markAll = (notificationStore as any).markAllAsRead as ReturnType<typeof vi.fn>;
+		const markAll = notificationStore.markAllAsRead as MockedFunction<
+			typeof notificationStore.markAllAsRead
+		>;
 
 		const onClose = vi.fn();
 		const { container } = render(NotificationModal, { isOpen: true, onClose });

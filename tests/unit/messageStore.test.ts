@@ -2,16 +2,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import LocalMessageStore from '$lib/crypto/messageStore';
+import type { Message } from '$lib/types';
 import { attachFakeStoreTo } from '../utils/fakeIndexedDB';
 
-function makeMsg(id: string, sender: string, receiver: string, ts: string) {
+function makeMsg(id: string, sender: string, receiver: string, ts: string): Message {
 	return {
 		_id: id,
 		senderId: sender,
 		receiverId: receiver,
 		content: `m-${id}`,
 		timestamp: ts
-	} as any;
+	} as unknown as Message;
 }
 
 describe('LocalMessageStore (in-memory fake DB)', () => {

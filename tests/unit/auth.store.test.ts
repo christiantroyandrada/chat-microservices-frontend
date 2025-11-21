@@ -1,4 +1,5 @@
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach, type MockedFunction } from 'vitest';
+import type { LoginCredentials, RegisterCredentials } from '$lib/types';
 import { get } from 'svelte/store';
 
 // We'll reset modules each test so the store is re-created with our mocks
@@ -31,7 +32,7 @@ describe('authStore', () => {
 		vi.doMock('$app/environment', () => ({ browser: true }));
 		const userObj = { id: 'u1', name: 'U1' };
 
-		let resolver: (v: any) => void;
+		let resolver: (v: unknown) => void;
 		const getCurrentUser = vi.fn(() => new Promise((res) => (resolver = res)));
 		const authServiceMock = {
 			getCurrentUser,
@@ -87,7 +88,10 @@ describe('authStore', () => {
 
 		const { authStore, user, isAuthenticated } = await import('$lib/stores/auth.store');
 
-		const out = await authStore.login({ username: 'a', password: 'b' } as any);
+		const out = await authStore.login({
+			email: 'a@example.com',
+			password: 'b'
+		} as LoginCredentials);
 		expect(out).toEqual({ id: 'x' });
 		expect(get(user)).toEqual({ id: 'x' });
 		expect(get(isAuthenticated)).toBe(true);
@@ -105,7 +109,7 @@ describe('authStore', () => {
 
 		const { authStore, authError } = await import('$lib/stores/auth.store');
 
-		await expect(authStore.login({} as any)).rejects.toEqual(apiError);
+		await expect(authStore.login({} as unknown as LoginCredentials)).rejects.toEqual(apiError);
 		expect(get(authError)).toBe(apiError.message);
 	});
 
@@ -121,7 +125,11 @@ describe('authStore', () => {
 
 		const { authStore, user } = await import('$lib/stores/auth.store');
 
-		const out = await authStore.register({ username: 'u', password: 'p' } as any);
+		const out = await authStore.register({
+			username: 'u',
+			email: 'u@example.com',
+			password: 'p'
+		} as RegisterCredentials);
 		expect(out).toEqual({ id: 'r' });
 		expect(get(user)).toEqual({ id: 'r' });
 		expect(goto).toHaveBeenCalledWith('/chat');
@@ -138,7 +146,9 @@ describe('authStore', () => {
 
 		const { authStore, authError } = await import('$lib/stores/auth.store');
 
-		await expect(authStore.register({} as any)).rejects.toEqual(apiError);
+		await expect(authStore.register({} as unknown as RegisterCredentials)).rejects.toEqual(
+			apiError
+		);
 		expect(get(authError)).toBe(apiError.message);
 	});
 
@@ -155,11 +165,14 @@ describe('authStore', () => {
 
 		// set a user first
 		// stub login/getCurrentUser to avoid errors when calling login
-		const svc = (await import('$lib/services/auth.service')).authService as any;
+		const svc = (await import('$lib/services/auth.service')).authService as unknown as {
+			login?: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
+			getCurrentUser?: MockedFunction<() => Promise<unknown>>;
+		};
 		svc.login = vi.fn(() => Promise.resolve());
 		svc.getCurrentUser = vi.fn(() => Promise.resolve({ id: 'pre' }));
 		try {
-			await authStore.login?.({} as any);
+			await authStore.login?.({} as unknown as LoginCredentials);
 		} catch {
 			// noop
 		}
@@ -199,10 +212,13 @@ describe('authStore', () => {
 		const { authStore, authError } = await import('$lib/stores/auth.store');
 
 		// set error by mocking login to fail
-		const svc = (await import('$lib/services/auth.service')).authService as any;
+		const svc = (await import('$lib/services/auth.service')).authService as unknown as {
+			login?: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
+			getCurrentUser?: MockedFunction<() => Promise<unknown>>;
+		};
 		svc.login = vi.fn(() => Promise.reject({ message: 'err' }));
 
-		await expect(authStore.login({} as any)).rejects.toBeDefined();
+		await expect(authStore.login({} as unknown as LoginCredentials)).rejects.toBeDefined();
 		expect(get(authError)).toBe('err');
 
 		authStore.clearError();

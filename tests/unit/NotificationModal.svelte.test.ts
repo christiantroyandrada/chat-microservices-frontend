@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockedFunction } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/svelte';
 
 vi.mock('$app/environment', () => ({ browser: true }));
@@ -7,7 +7,13 @@ vi.mock('$app/environment', () => ({ browser: true }));
 // picks up the mock implementation (important for browser environment imports)
 vi.mock('$lib/stores/notification.store', () => ({
 	notificationStore: {
-		subscribe: (fn: (v: any) => void) => {
+		subscribe: (
+			fn: (v: {
+				notifications: Array<{ id: string; title: string; body?: string; read: boolean }>;
+				unreadCount: number;
+				loading: boolean;
+			}) => void
+		) => {
 			fn({
 				notifications: [{ id: 'n1', title: 'T', body: 'B', read: false }],
 				unreadCount: 1,
@@ -30,8 +36,10 @@ describe('NotificationModal component', () => {
 	it('renders notifications, marks all as read, deletes and closes on backdrop/escape', async () => {
 		// Retrieve the mocked store functions so we can assert they were called
 		const { notificationStore } = await import('$lib/stores/notification.store');
-		const markAllAsRead = (notificationStore as any).markAllAsRead as ReturnType<typeof vi.fn>;
-		const _del = (notificationStore as any).delete as ReturnType<typeof vi.fn>;
+		const markAllAsRead = notificationStore.markAllAsRead as MockedFunction<
+			typeof notificationStore.markAllAsRead
+		>;
+		const _del = notificationStore.delete as MockedFunction<typeof notificationStore.delete>;
 
 		const onClose = vi.fn();
 		const { container } = render(NotificationModal, { isOpen: true, onClose });

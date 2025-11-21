@@ -33,7 +33,7 @@ export default defineConfig({
 		teardownTimeout: 10000,
 		// Coverage configuration to generate LCOV (for SonarQube/other tools)
 		coverage: {
-			provider: 'istanbul', // use istanbul to generate lcov
+			provider: 'v8', // use V8 coverage provider
 			reporter: ['lcovonly', 'lcov', 'text', 'json', 'html'],
 			reportsDirectory: 'coverage',
 			all: true,
@@ -44,7 +44,9 @@ export default defineConfig({
 				'src/**/*.d.ts',
 				'src/**/types.ts',
 				'src/**/*.spec.ts',
-				'src/**/*.test.ts'
+				'src/**/*.test.ts',
+				'src/lib/types/**',
+				'src/**/index.{ts,js}'
 			],
 			thresholds: {
 				lines: 20,

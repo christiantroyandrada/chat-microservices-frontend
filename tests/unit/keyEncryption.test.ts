@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { EncryptedKeyBundle } from '$lib/types';
 
 import { validatePasswordStrength, decryptKeySet } from '$lib/crypto/keyEncryption';
 
@@ -24,7 +25,7 @@ describe('keyEncryption utilities (pure / fast checks)', () => {
 			salt: 'CCC',
 			version: 999,
 			deviceId: 'd1'
-		} as any;
+		} as unknown as EncryptedKeyBundle;
 
 		await expect(decryptKeySet(badBundle, 'password')).rejects.toThrow(
 			/Unsupported encryption version/

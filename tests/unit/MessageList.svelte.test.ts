@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { MockedFunction } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/svelte';
 
 import MessageList from '$lib/components/MessageList.svelte';
@@ -54,13 +55,17 @@ describe('MessageList component', () => {
 		}
 
 		// Import the component module and call exported helper; it should use the bound container
-		const mod = await import('$lib/components/MessageList.svelte');
-		if (typeof (mod as any).scrollToLatest === 'function') {
-			await (mod as any).scrollToLatest({ behavior: 'auto' });
+		const mod = (await import('$lib/components/MessageList.svelte')) as unknown as {
+			scrollToLatest?: (opts?: { behavior?: string }) => Promise<void> | void;
+		};
+		if (typeof mod.scrollToLatest === 'function') {
+			await mod.scrollToLatest({ behavior: 'auto' });
 		}
 
 		// Prefer to assert exported helper performed its logging (more stable across test ordering)
 		const { logger } = await import('$lib/services/dev-logger');
-		expect((logger.debug as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(0);
+		expect(
+			(logger.debug as MockedFunction<(...args: unknown[]) => void>).mock.calls.length
+		).toBeGreaterThanOrEqual(0);
 	});
 });

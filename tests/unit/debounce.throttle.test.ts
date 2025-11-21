@@ -34,7 +34,7 @@ describe('debounce & throttle edge cases', () => {
 		const fn = () => {
 			throw new Error('boom');
 		};
-		const deb = debounce(fn as any, 10);
+		const deb = debounce(fn as Parameters<typeof debounce>[0], 10);
 		deb();
 		// advance to trigger
 		vi.advanceTimersByTime(20);
@@ -46,7 +46,7 @@ describe('debounce & throttle edge cases', () => {
 		const fn = () => {
 			throw new Error('throttle-boom');
 		};
-		const thr = throttle(fn as any, 10);
+		const thr = throttle(fn as Parameters<typeof throttle>[0], 10);
 		thr();
 		expect(logger.error).toHaveBeenCalled();
 	});

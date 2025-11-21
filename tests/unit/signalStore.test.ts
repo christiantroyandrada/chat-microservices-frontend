@@ -19,7 +19,10 @@ describe('IndexedDBSignalProtocolStore', () => {
 		const store = new IndexedDBSignalProtocolStore('u1');
 		attachFakeStoreTo(store, vi);
 
-		const kp = { pubKey: abFrom([1, 2, 3]), privKey: abFrom([4, 5, 6]) } as any;
+		const kp = { pubKey: abFrom([1, 2, 3]), privKey: abFrom([4, 5, 6]) } as unknown as {
+			pubKey: ArrayBuffer;
+			privKey: ArrayBuffer;
+		};
 		await store.storeIdentityKeyPair(kp);
 		await store.storeLocalRegistrationId(1234);
 
@@ -34,7 +37,10 @@ describe('IndexedDBSignalProtocolStore', () => {
 		const store = new IndexedDBSignalProtocolStore('u2');
 		attachFakeStoreTo(store, vi);
 
-		const kp = { pubKey: abFrom([7]), privKey: abFrom([8]) } as any;
+		const kp = { pubKey: abFrom([7]), privKey: abFrom([8]) } as unknown as {
+			pubKey: ArrayBuffer;
+			privKey: ArrayBuffer;
+		};
 		await store.storePreKey(1, kp);
 
 		const loaded = await store.loadPreKey(1);
@@ -49,7 +55,15 @@ describe('IndexedDBSignalProtocolStore', () => {
 		const store = new IndexedDBSignalProtocolStore('u3');
 		attachFakeStoreTo(store, vi);
 
-		const signed = { pubKey: abFrom([9]), privKey: abFrom([10]), signature: abFrom([11]) } as any;
+		const signed = {
+			pubKey: abFrom([9]),
+			privKey: abFrom([10]),
+			signature: abFrom([11])
+		} as unknown as {
+			pubKey: ArrayBuffer;
+			privKey: ArrayBuffer;
+			signature: ArrayBuffer;
+		};
 		await store.storeSignedPreKey(DEFAULT_SIGNED_PREKEY_ID, signed);
 
 		const loaded = await store.loadSignedPreKey(DEFAULT_SIGNED_PREKEY_ID);
@@ -113,8 +127,10 @@ describe('IndexedDBSignalProtocolStore', () => {
 		await store.storeLocalRegistrationId(55);
 		expect(await store.getLocalRegistrationId()).toBe(55);
 		// ensure fake db has a close method to match real IDBDatabase
-		if ((store as any).db && typeof (store as any).db.close !== 'function') {
-			(store as any).db.close = vi.fn();
+		const storeDb = store as unknown as { db?: { close?: unknown } };
+		if (storeDb.db && typeof storeDb.db.close !== 'function') {
+			// assign a close function; cast to the expected type
+			(storeDb.db as { close?: () => void }).close = vi.fn() as unknown as () => void;
 		}
 
 		store.close();
@@ -136,14 +152,28 @@ describe('IndexedDBSignalProtocolStore (unit, no IDB)', () => {
 		store = new IndexedDBSignalProtocolStore('test-user');
 
 		// Stub out IDB access: init/loadCache/persist/remove should be no-ops
-		vi.spyOn(store as any, 'init').mockImplementation(async () => {});
-		vi.spyOn(store as any, 'loadCache').mockImplementation(async () => {});
-		vi.spyOn(store as any, 'persist').mockImplementation((..._args: any[]) => undefined);
-		vi.spyOn(store as any, 'remove').mockImplementation((..._args: any[]) => undefined);
+		vi.spyOn(store as unknown as { init: () => Promise<void> }, 'init').mockImplementation(
+			async () => {}
+		);
+		vi.spyOn(
+			store as unknown as { loadCache: () => Promise<void> },
+			'loadCache'
+		).mockImplementation(async () => {});
+		vi.spyOn(
+			store as unknown as { persist: (...args: unknown[]) => unknown },
+			'persist'
+		).mockImplementation((..._args: unknown[]) => undefined);
+		vi.spyOn(
+			store as unknown as { remove: (...args: unknown[]) => unknown },
+			'remove'
+		).mockImplementation((..._args: unknown[]) => undefined);
 	});
 
 	it('stores and retrieves identity key pair and registration id', async () => {
-		const kp = { pubKey: abFromString('p'), privKey: abFromString('q') } as any;
+		const kp = { pubKey: abFromString('p'), privKey: abFromString('q') } as unknown as {
+			pubKey: ArrayBuffer;
+			privKey: ArrayBuffer;
+		};
 		await store.storeIdentityKeyPair(kp);
 		expect(await store.getIdentityKeyPair()).toBe(kp);
 
@@ -152,7 +182,10 @@ describe('IndexedDBSignalProtocolStore (unit, no IDB)', () => {
 	});
 
 	it('stores, loads and removes prekeys', async () => {
-		const keyPair = { pubKey: abFromString('a'), privKey: abFromString('b') } as any;
+		const keyPair = { pubKey: abFromString('a'), privKey: abFromString('b') } as unknown as {
+			pubKey: ArrayBuffer;
+			privKey: ArrayBuffer;
+		};
 		await store.storePreKey(5, keyPair);
 		expect(await store.loadPreKey(5)).toBe(keyPair);
 
@@ -165,7 +198,11 @@ describe('IndexedDBSignalProtocolStore (unit, no IDB)', () => {
 			pubKey: abFromString('x'),
 			privKey: abFromString('y'),
 			signature: abFromString('sig')
-		} as any;
+		} as unknown as {
+			pubKey: ArrayBuffer;
+			privKey: ArrayBuffer;
+			signature: ArrayBuffer;
+		};
 		await store.storeSignedPreKey(7, sp);
 		const loaded = await store.loadSignedPreKey(7);
 		expect(loaded).toBeDefined();

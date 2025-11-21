@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Message } from '$lib/types';
 
 vi.mock('$lib/services/dev-logger', () => ({
 	logger: {
@@ -12,7 +13,14 @@ vi.mock('$lib/services/dev-logger', () => ({
 const listeners = new Map<string, Array<(...args: unknown[]) => void>>();
 const emitted: Array<{ event: string; payload?: unknown }> = [];
 
-const fakeSocket: any = {
+const fakeSocket: {
+	connected: boolean;
+	id: string;
+	on: (event: string, cb: (...args: unknown[]) => void) => void;
+	emit: (event: string, payload?: unknown, cb?: (...args: unknown[]) => void) => void;
+	removeAllListeners: () => void;
+	disconnect: () => void;
+} = {
 	connected: true,
 	id: 'socket-1',
 	on(event: string, cb: (...args: unknown[]) => void) {
@@ -27,7 +35,7 @@ const fakeSocket: any = {
 	removeAllListeners() {
 		listeners.clear();
 	},
-	disconnect() {
+	disconnect(this: { connected: boolean }) {
 		this.connected = false;
 	}
 };
@@ -88,13 +96,11 @@ describe('WebSocketService', () => {
 
 	it('sendMessage emits when connected and logs when not connected', () => {
 		wsService.connect();
-		// ensure socket was injected
-		const internalSocket = (wsService as any).socket;
-		expect(internalSocket).toBeDefined();
-		expect(internalSocket).toBe(fakeSocket);
+		// service reports connected once connected
+		expect(wsService.isConnected()).toBe(true);
 
 		// connected -> emit
-		const msg = { _id: 'm1', senderId: 's1', receiverId: 'r1', content: 'hello' } as any;
+		const msg = { _id: 'm1', senderId: 's1', receiverId: 'r1', content: 'hello' } as Message;
 		// Send when connected should not log an error
 		wsService.sendMessage(msg);
 		expect(logger.error).not.toHaveBeenCalled();

@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { MockedFunction } from 'vitest';
 
 // We'll mock dependent modules before importing the signal module so that
 // module-level state uses our fakes.
 
-const fakeStoreInstances: any[] = [];
+const fakeStoreInstances: Array<{
+	init: MockedFunction<() => Promise<void>>;
+	close: MockedFunction<() => void>;
+	asStorageType?: () => unknown;
+}> = [];
 
 vi.mock('$lib/crypto/signalStore', () => {
 	return {
@@ -21,7 +26,7 @@ vi.mock('$lib/crypto/signalStore', () => {
 });
 
 vi.mock('$lib/crypto/signalKeyManager', () => ({
-	generateSignalIdentity: vi.fn(async (_store: any) => ({ id: 'ident' })),
+	generateSignalIdentity: vi.fn(async (_store: unknown) => ({ id: 'ident' })),
 	publishSignalPrekey: vi.fn(async () => ({ success: true })),
 	exportSignalKeys: vi.fn(async () => ({ exported: true })),
 	importSignalKeys: vi.fn(async () => ({ imported: true }))
@@ -59,8 +64,7 @@ let Signal: typeof import('$lib/crypto/signal');
 beforeEach(async () => {
 	vi.resetModules();
 	fakeStoreInstances.length = 0;
-	// re-import mocks to reset spies
-	// reassign authService behavior remains via the mock object above
+	// re-import module under test so it picks up fresh mocks
 	Signal = await import('$lib/crypto/signal');
 });
 
@@ -83,7 +87,9 @@ describe('signal module facade', () => {
 	});
 
 	it('publishSignalPrekey delegates to KeyManager', async () => {
-		const out = await Signal.publishSignalPrekey('api', 'u', 'd', { identityKey: 'A' } as any);
+		const out = await Signal.publishSignalPrekey('api', 'u', 'd', {
+			identityKey: 'A'
+		} as unknown as Parameters<typeof Signal.publishSignalPrekey>[3]);
 		expect(out).toEqual({ success: true });
 	});
 
@@ -95,21 +101,27 @@ describe('signal module facade', () => {
 	it('session operations delegate to Session module', async () => {
 		await Signal.initSignal('sess-user');
 		await Signal.createSessionWithPrekeyBundle({ bundle: true }, 'sess-user');
-		expect(
-			(await import('$lib/crypto/signalSession')).createSessionWithPrekeyBundle
-		).toHaveBeenCalled();
+		const session = (await import('$lib/crypto/signalSession')) as unknown as {
+			createSessionWithPrekeyBundle: (...args: unknown[]) => unknown;
+			removeSessionWith: (...args: unknown[]) => unknown;
+		};
+		expect(session.createSessionWithPrekeyBundle).toHaveBeenCalled();
 
 		const enc = await Signal.encryptMessage('recipient', 'hello', 'sess-user');
 		expect(enc).toHaveProperty('body');
 
-		const dec = await Signal.decryptMessage('sender', { type: 1, body: 'A' } as any, 'sess-user');
+		const dec = await Signal.decryptMessage(
+			'sender',
+			{ type: 1, body: 'A' } as unknown as Parameters<typeof Signal.decryptMessage>[1],
+			'sess-user'
+		);
 		expect(dec).toBe('plaintext');
 
 		const has = await Signal.hasSession('other', 'sess-user');
 		expect(has).toBe(true);
 
 		await Signal.removeSessionWith('other', 'sess-user');
-		expect((await import('$lib/crypto/signalSession')).removeSessionWith).toHaveBeenCalled();
+		expect(session.removeSessionWith).toHaveBeenCalled();
 	});
 
 	it('backup and export/import functions delegate', async () => {
@@ -120,7 +132,10 @@ describe('signal module facade', () => {
 		const exported = await Signal.exportSignalKeys('bk');
 		expect(exported).toEqual({ exported: true });
 
-		const imported = await Signal.importSignalKeys('bk', {} as any);
+		const imported = await Signal.importSignalKeys(
+			'bk',
+			{} as unknown as Parameters<typeof Signal.importSignalKeys>[1]
+		);
 		expect(imported).toEqual({ imported: true });
 	});
 
@@ -129,18 +144,20 @@ describe('signal module facade', () => {
 		const inst = fakeStoreInstances[0];
 		const r = await Signal.clearSignalState('clear-me');
 		expect(inst.close).toHaveBeenCalled();
-		expect((await import('$lib/crypto/signalBackup')).clearSignalState).toHaveBeenCalledWith(
-			'clear-me'
-		);
+		const backup = (await import('$lib/crypto/signalBackup')) as unknown as {
+			clearSignalState: (...args: unknown[]) => unknown;
+		};
+		expect(backup.clearSignalState).toHaveBeenCalledWith('clear-me');
 		expect(r).toBe(true);
 	});
 
 	it('initSignalWithRestore uses backend encrypted bundle path', async () => {
 		// make authService return an encrypted bundle
 		setFetchSignalKeys({ encrypted: true });
-		(
-			(await import('$lib/crypto/signalBackup')) as any
-		).decryptAndImportSignalKeys.mockResolvedValue({});
+		const backup = (await import('$lib/crypto/signalBackup')) as unknown as {
+			decryptAndImportSignalKeys: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
+		};
+		backup.decryptAndImportSignalKeys.mockResolvedValue({});
 
 		const res = await Signal.initSignalWithRestore('restore-user', 'dev1', 'api', 'pw');
 		expect(res).toBe(true);
@@ -150,7 +167,10 @@ describe('signal module facade', () => {
 
 	it('initSignalWithRestore falls back to local keys when backend fetch fails', async () => {
 		setFetchSignalKeysToThrow(new Error('network'));
-		((await import('$lib/crypto/signalBackup')) as any).hasLocalKeys.mockResolvedValue(true);
+		const backup = (await import('$lib/crypto/signalBackup')) as unknown as {
+			hasLocalKeys: MockedFunction<(...args: unknown[]) => Promise<boolean>>;
+		};
+		backup.hasLocalKeys.mockResolvedValue(true);
 
 		const res = await Signal.initSignalWithRestore('restore-user-2', 'dev2', 'api', 'pw');
 		expect(res).toBe(true);

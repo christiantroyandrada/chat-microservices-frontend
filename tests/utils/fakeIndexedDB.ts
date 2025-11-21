@@ -1,5 +1,7 @@
 // Lightweight in-memory fake object store utilities for tests
-export function emitCursorResults(req: any, values: any[]) {
+type IDBReq = { onsuccess?: (ev: { target: { result: unknown } }) => void };
+
+export function emitCursorResults(req: IDBReq, values: unknown[]) {
 	let idx = 0;
 	const next = () => {
 		if (idx < values.length) {
@@ -13,26 +15,26 @@ export function emitCursorResults(req: any, values: any[]) {
 }
 
 export function makeInMemoryObjectStore() {
-	const data = new Map<string, any>();
+	const data = new Map<string, unknown>();
 
-	const objectStore: any = {
-		put(value: any) {
-			const req: any = {};
+	const objectStore = {
+		put(value: { _id: string; [k: string]: unknown }) {
+			const req: IDBReq = {};
 			setTimeout(() => {
 				data.set(value._id, value);
-				if (req.onsuccess) req.onsuccess({});
+				if (req.onsuccess) req.onsuccess({ target: { result: {} } });
 			}, 0);
 			return req;
 		},
 		get(key: string) {
-			const req: any = {};
+			const req: IDBReq = {};
 			setTimeout(() => {
 				if (req.onsuccess) req.onsuccess({ target: { result: data.get(key) } });
 			}, 0);
 			return req;
 		},
 		openCursor() {
-			const req: any = {};
+			const req: IDBReq = {};
 			setTimeout(() => {
 				const values = Array.from(data.values());
 				emitCursorResults(req, values);
@@ -40,18 +42,18 @@ export function makeInMemoryObjectStore() {
 			return req;
 		},
 		delete(key: string) {
-			const req: any = {};
+			const req: IDBReq = {};
 			setTimeout(() => {
 				data.delete(key);
-				if (req.onsuccess) req.onsuccess({});
+				if (req.onsuccess) req.onsuccess({ target: { result: {} } });
 			}, 0);
 			return req;
 		},
 		clear() {
-			const req: any = {};
+			const req: IDBReq = {};
 			setTimeout(() => {
 				data.clear();
-				if (req.onsuccess) req.onsuccess({});
+				if (req.onsuccess) req.onsuccess({ target: { result: {} } });
 			}, 0);
 			return req;
 		}
@@ -62,9 +64,17 @@ export function makeInMemoryObjectStore() {
 	return { objectStore, tx };
 }
 
-export function attachFakeStoreTo(storeInstance: any, vi: any) {
+export function attachFakeStoreTo(
+	storeInstance: { init: (...args: unknown[]) => unknown },
+	vi: {
+		spyOn: (
+			obj: unknown,
+			prop: string
+		) => { mockImplementation: (fn: (...args: unknown[]) => unknown) => void };
+	}
+) {
 	const { tx } = makeInMemoryObjectStore();
-	vi.spyOn(storeInstance, 'init').mockImplementation(async function (this: any) {
+	vi.spyOn(storeInstance, 'init').mockImplementation(async function (this: { db?: unknown }) {
 		this.db = { transaction: () => tx };
 	});
 	return tx;

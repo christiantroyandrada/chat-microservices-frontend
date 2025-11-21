@@ -6,8 +6,8 @@ import { vi } from 'vitest';
 export type EncryptedKeyBundle = { encrypted: boolean } | null;
 
 export const authService: {
-	fetchSignalKeys: (...args: any[]) => Promise<EncryptedKeyBundle>;
-	storeSignalKeys: (...args: any[]) => Promise<void>;
+	fetchSignalKeys: (...args: unknown[]) => Promise<EncryptedKeyBundle>;
+	storeSignalKeys: (...args: unknown[]) => Promise<void>;
 } = {
 	fetchSignalKeys: vi.fn(async () => null),
 	storeSignalKeys: vi.fn(async () => undefined)
@@ -18,7 +18,7 @@ export function setFetchSignalKeys(value: EncryptedKeyBundle) {
 	authService.fetchSignalKeys = vi.fn(async () => value);
 }
 
-export function setFetchSignalKeysToThrow(err: any) {
+export function setFetchSignalKeysToThrow(err: unknown) {
 	authService.fetchSignalKeys = vi.fn(async () => {
 		throw err;
 	});

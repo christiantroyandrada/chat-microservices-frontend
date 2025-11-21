@@ -59,7 +59,8 @@ export default defineConfig(
 	{
 		files: ['tests/**', 'tests/**/*.ts', 'tests/**/*.svelte.test.ts', 'tests/**/*.svelte.ts'],
 		rules: {
-			'@typescript-eslint/no-explicit-any': 'off',
+			// disallow `as any` in tests to encourage typed mocks and safer assertions
+			'@typescript-eslint/no-explicit-any': 'error',
 			'@typescript-eslint/ban-ts-comment': 'off',
 			'@typescript-eslint/no-unused-vars': [
 				'warn',

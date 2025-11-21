@@ -7,9 +7,9 @@ describe('dev-logger modes', () => {
 		process.env.NODE_ENV = 'test';
 		process.env.VITEST = '1';
 
-		const grp = vi.spyOn(console, 'groupCollapsed').mockImplementation(() => undefined as any);
-		const clog = vi.spyOn(console, 'log').mockImplementation(() => undefined as any);
-		const gend = vi.spyOn(console, 'groupEnd').mockImplementation(() => undefined as any);
+		const grp = vi.spyOn(console, 'groupCollapsed').mockImplementation(() => undefined);
+		const clog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const gend = vi.spyOn(console, 'groupEnd').mockImplementation(() => undefined);
 
 		const { logger } = await import('$lib/services/dev-logger');
 
@@ -31,7 +31,7 @@ describe('dev-logger modes', () => {
 		process.env.NODE_ENV = 'production';
 		delete process.env.VITEST;
 
-		const clog = vi.spyOn(console, 'log').mockImplementation(() => undefined as any);
+		const clog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
 		const { logger } = await import('$lib/services/dev-logger');
 		logger.info('should not log', { a: 1 });

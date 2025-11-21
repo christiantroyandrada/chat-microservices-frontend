@@ -1,6 +1,7 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, type MockedFunction } from 'vitest';
 
-import type { EncryptedKeyBundle } from '$lib/types';
+import type { EncryptedKeyBundle, SignalKeySet } from '$lib/types';
+import type { IndexedDBSignalProtocolStore } from '$lib/crypto/signalStore';
 
 // module under test
 import * as signalBackup from '$lib/crypto/signalBackup';
@@ -42,7 +43,7 @@ describe('signalBackup', () => {
 		const store = {
 			getIdentityKeyPair: vi.fn().mockResolvedValue({ pubKey: 'x' }),
 			loadSignedPreKey: vi.fn().mockResolvedValue({ id: 1 })
-		} as any;
+		} as unknown as IndexedDBSignalProtocolStore;
 
 		const result = await signalBackup.hasLocalKeys(store);
 		expect(result).toBe(true);
@@ -54,20 +55,28 @@ describe('signalBackup', () => {
 		const store = {
 			getIdentityKeyPair: vi.fn().mockResolvedValue(null),
 			loadSignedPreKey: vi.fn().mockResolvedValue(null)
-		} as any;
+		} as unknown as IndexedDBSignalProtocolStore;
 
 		const result = await signalBackup.hasLocalKeys(store);
 		expect(result).toBe(false);
 	});
 
 	it('exportAndEncryptSignalKeys calls export and encrypt and returns bundle', async () => {
-		const fakePlain = { keys: 'plain' };
-		const fakeEncrypted: EncryptedKeyBundle = { deviceId: 'dev1', cipher: 'abc' } as any;
+		const fakePlain = {} as unknown as SignalKeySet;
+		const fakeEncrypted = {
+			deviceId: 'dev1',
+			encrypted: 'e',
+			iv: 'i',
+			salt: 's',
+			version: 1
+		} as unknown as EncryptedKeyBundle;
 
-		(exportSignalKeys as any).mockResolvedValue(fakePlain);
-		(encryptKeySet as any).mockResolvedValue(fakeEncrypted);
+		const exportMock = exportSignalKeys as MockedFunction<typeof exportSignalKeys>;
+		const encryptMock = encryptKeySet as MockedFunction<typeof encryptKeySet>;
+		exportMock.mockResolvedValue(fakePlain);
+		encryptMock.mockResolvedValue(fakeEncrypted);
 
-		const store = {} as any;
+		const store = {} as unknown as IndexedDBSignalProtocolStore;
 		const res = await signalBackup.exportAndEncryptSignalKeys(store, 'dev1', 'pw');
 
 		expect(exportSignalKeys).toHaveBeenCalledWith(store);
@@ -76,41 +85,55 @@ describe('signalBackup', () => {
 	});
 
 	it('decryptAndImportSignalKeys decrypts and imports keys', async () => {
-		const fakePlain = { keys: 'plain' };
-		const fakeBundle = { deviceId: 'dev1' } as any;
+		const fakePlain2 = {} as unknown as SignalKeySet;
+		const fakeBundle = {
+			deviceId: 'dev1',
+			encrypted: 'e',
+			iv: 'i',
+			salt: 's',
+			version: 1
+		} as unknown as EncryptedKeyBundle;
 
-		(decryptKeySet as any).mockResolvedValue(fakePlain);
-		(importSignalKeys as any).mockResolvedValue(undefined);
+		const decryptMock = decryptKeySet as MockedFunction<typeof decryptKeySet>;
+		const importMock = importSignalKeys as MockedFunction<typeof importSignalKeys>;
+		decryptMock.mockResolvedValue(fakePlain2);
+		importMock.mockResolvedValue(undefined);
 
-		const store = {} as any;
+		const store = {} as unknown as IndexedDBSignalProtocolStore;
 		await signalBackup.decryptAndImportSignalKeys(store, fakeBundle, 'pw');
 
 		expect(decryptKeySet).toHaveBeenCalledWith(fakeBundle, 'pw');
-		expect(importSignalKeys).toHaveBeenCalledWith(store, fakePlain);
+		expect(importSignalKeys).toHaveBeenCalledWith(store, fakePlain2);
 	});
 
 	it('clearSignalState resolves on success and calls indexedDB.deleteDatabase', async () => {
 		// stub indexedDB.deleteDatabase to call onsuccess
-		(global as any).indexedDB = {
+		(global as unknown as { indexedDB?: { deleteDatabase: () => unknown } }).indexedDB = {
 			deleteDatabase: () => {
-				const req: any = {};
+				const req: { onsuccess?: () => void } = {};
 				setTimeout(() => {
 					if (req.onsuccess) req.onsuccess();
 				}, 0);
 				return req;
 			}
-		};
+		} as unknown as { deleteDatabase: () => unknown };
 
 		await expect(signalBackup.clearSignalState('user123')).resolves.toBeUndefined();
 	});
 
 	it('generateAndPublishIdentity returns publish result when bundle exists', async () => {
-		const fakeBundle = { something: true };
-		(generateSignalIdentity as any).mockResolvedValue({ _signalBundle: fakeBundle });
-		(publishSignalPrekey as any).mockResolvedValue({ ok: true });
+		const fakeBundle = { something: true } as unknown as SignalKeySet;
+		const genMock = generateSignalIdentity as MockedFunction<typeof generateSignalIdentity>;
+		const pubMock = publishSignalPrekey as MockedFunction<typeof publishSignalPrekey>;
+		genMock.mockResolvedValue({ _signalBundle: fakeBundle } as unknown as Awaited<
+			ReturnType<typeof generateSignalIdentity>
+		>);
+		pubMock.mockResolvedValue({ ok: true } as unknown as Awaited<
+			ReturnType<typeof publishSignalPrekey>
+		>);
 
 		const res = await signalBackup.generateAndPublishIdentity(
-			{} as any,
+			{} as unknown as IndexedDBSignalProtocolStore,
 			'https://api',
 			'user1',
 			'dev1'
@@ -121,9 +144,15 @@ describe('signalBackup', () => {
 	});
 
 	it('generateAndPublishIdentity throws when no bundle present', async () => {
-		(generateSignalIdentity as any).mockResolvedValue({});
-		await expect(signalBackup.generateAndPublishIdentity({} as any, '', 'u', 'd')).rejects.toThrow(
-			'No generated prekey bundle available'
-		);
+		const genMock2 = generateSignalIdentity as MockedFunction<typeof generateSignalIdentity>;
+		genMock2.mockResolvedValue({} as unknown as Awaited<ReturnType<typeof generateSignalIdentity>>);
+		await expect(
+			signalBackup.generateAndPublishIdentity(
+				{} as unknown as IndexedDBSignalProtocolStore,
+				'',
+				'u',
+				'd'
+			)
+		).rejects.toThrow('No generated prekey bundle available');
 	});
 });

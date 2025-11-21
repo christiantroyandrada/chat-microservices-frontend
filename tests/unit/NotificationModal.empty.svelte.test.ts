@@ -6,7 +6,7 @@ vi.mock('$app/environment', () => ({ browser: true }));
 // Mock notification store to return empty notifications
 vi.mock('$lib/stores/notification.store', () => ({
 	notificationStore: {
-		subscribe: (fn: (v: any) => void) => {
+		subscribe: (fn: (v: unknown) => void) => {
 			fn({ notifications: [], unreadCount: 0, loading: false });
 			return () => {};
 		},
