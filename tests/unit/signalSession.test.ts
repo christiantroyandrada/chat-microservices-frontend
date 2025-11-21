@@ -158,11 +158,11 @@ describe('signalSession', () => {
 			loadSession: async () => 'rec',
 			removeAllSessions: vi.fn()
 		} as unknown as Parameters<typeof hasSession>[0];
-		expect(await hasSession(fakeStore2 as Parameters<typeof hasSession>[0], 'u')).toBe(true);
-		await removeSessionWith(fakeStore2 as Parameters<typeof removeSessionWith>[0], 'u');
-		expect((fakeStore2 as Parameters<typeof hasSession>[0]).removeAllSessions).toHaveBeenCalledWith(
-			'u'
-		);
+		expect(await hasSession(fakeStore2, 'u')).toBe(true);
+		await removeSessionWith(fakeStore2, 'u');
+		expect(
+			(fakeStore2 as unknown as { removeAllSessions: ReturnType<typeof vi.fn> }).removeAllSessions
+		).toHaveBeenCalledWith('u');
 	});
 
 	it('hasSession returns false when no session exists', async () => {

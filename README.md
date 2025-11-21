@@ -58,6 +58,7 @@ This collaborative approach combines the **strategic thinking and UX expertise o
 - **Real-time**: Socket.IO Client v4.8.1
 - **Testing**: Vitest v3.2.4 + Playwright v1.56.1
 - **Package Manager**: pnpm (recommended)
+- **Asset CDN**: [Cloudinary](https://cloudinary.com/) for optimized static assets
 
 ## Prerequisites
 

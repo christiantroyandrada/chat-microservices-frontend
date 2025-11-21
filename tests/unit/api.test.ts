@@ -18,6 +18,12 @@ vi.mock('$lib/utils', () => ({
 	safeToString: String
 }));
 
+// Helper to create a delayed mock implementation for fetch so we avoid
+// deeply nested inline arrow functions inside test cases.
+function delayedMockImplementation(response: unknown, delay = 100) {
+	return () => new Promise((resolve) => setTimeout(() => resolve(response), delay));
+}
+
 describe('API Client', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -182,7 +188,7 @@ describe('API Client', () => {
 		})) as unknown as typeof AbortController;
 
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(
-			() => new Promise((resolve) => setTimeout(() => resolve(mockResponse), 100))
+			delayedMockImplementation(mockResponse, 100)
 		);
 
 		const { apiClient } = await import('$lib/services/api');

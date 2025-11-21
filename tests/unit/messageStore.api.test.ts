@@ -48,7 +48,7 @@ describe('messageStore API surface', () => {
 
 		const deleteDbImmediate = vi.fn(() => {
 			const req: MockReq = {};
-			setTimeout(() => req.onsuccess && req.onsuccess(), 0);
+			setTimeout(() => req.onsuccess?.(), 0);
 			return req as unknown as IDBRequest;
 		});
 		// attach new mock
@@ -67,7 +67,7 @@ describe('messageStore API surface', () => {
 		type MockReq = { onsuccess?: () => void; onerror?: (e?: unknown) => void };
 		const deleteDbImmediate = vi.fn(() => {
 			const req: MockReq = {};
-			setTimeout(() => req.onerror && req.onerror(new Error('boom')), 0);
+			setTimeout(() => req.onerror?.(new Error('boom')), 0);
 			return req as unknown as IDBRequest;
 		});
 		// @ts-ignore allow test shim

@@ -38,7 +38,7 @@ This **collaborative methodology** leverages the **developer's architectural vis
 
 ## 🎉 Project Overview
 
-Full-featured **real-time chat application** with **end-to-end encryption** built using SvelteKit, TypeScript, and Tailwind CSS. Connects to microservices backend via nginx reverse proxy on port 85.
+Full-featured **real-time chat application** with **end-to-end encryption** built using SvelteKit, TypeScript, and Tailwind CSS. Connects to microservices backend via nginx reverse proxy on port 85. Uses Cloudinary CDN for optimized static asset delivery.
 
 ### ✨ Features Implemented
 

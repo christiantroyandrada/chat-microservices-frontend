@@ -108,7 +108,7 @@ describe('signalBackup', () => {
 
 	it('clearSignalState resolves on success and calls indexedDB.deleteDatabase', async () => {
 		// stub indexedDB.deleteDatabase to call onsuccess
-		(global as unknown as { indexedDB?: { deleteDatabase: () => unknown } }).indexedDB = {
+		(globalThis as unknown as { indexedDB?: { deleteDatabase: () => unknown } }).indexedDB = {
 			deleteDatabase: () => {
 				const req: { onsuccess?: () => void } = {};
 				setTimeout(() => {

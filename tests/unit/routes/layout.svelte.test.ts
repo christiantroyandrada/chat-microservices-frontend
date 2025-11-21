@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
-import { page } from '$app/stores';
 import Layout from '../../../src/routes/+layout.svelte';
+import { page } from '$app/state';
 import type { Page } from '@sveltejs/kit';
 
 // Small helper to construct a typed Page object for tests. We cast via
@@ -19,12 +19,14 @@ function createPage(pathname: string): Page {
 }
 
 // Mock stores and components
-vi.mock('$app/stores', () => ({
+vi.mock('$app/state', () => ({
 	page: {
-		subscribe: vi.fn((callback) => {
-			callback(createPage('/'));
-			return () => {};
-		})
+		url: new URL('http://localhost/'),
+		params: {},
+		route: { id: null },
+		status: 200,
+		error: null,
+		data: {}
 	}
 }));
 
@@ -81,12 +83,8 @@ describe('Layout component', () => {
 		const mockInit = vi.fn();
 		const { authStore } = await import('$lib/stores/auth.store');
 		authStore.init = mockInit;
-
 		const mockPage = vi.mocked(page);
-		mockPage.subscribe = vi.fn((callback) => {
-			callback(createPage('/login'));
-			return () => {};
-		});
+		mockPage.url = createPage('/login').url;
 
 		render(Layout);
 
@@ -99,12 +97,8 @@ describe('Layout component', () => {
 		const mockInit = vi.fn();
 		const { authStore } = await import('$lib/stores/auth.store');
 		authStore.init = mockInit;
-
 		const mockPage = vi.mocked(page);
-		mockPage.subscribe = vi.fn((callback) => {
-			callback(createPage('/register'));
-			return () => {};
-		});
+		mockPage.url = createPage('/register').url;
 
 		render(Layout);
 
