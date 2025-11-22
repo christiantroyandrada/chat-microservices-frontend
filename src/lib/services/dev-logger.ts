@@ -77,7 +77,8 @@ class Logger {
 		// character-code check that's O(n) and deterministic.
 		if (s.length === 0) return false;
 		for (let i = 0; i < s.length; i++) {
-			const c = s.charCodeAt(i);
+			const c = s.codePointAt(i);
+			if (c === undefined) return false;
 			if (c < 48 || c > 57) return false; // '0'..'9'
 		}
 		return true;
