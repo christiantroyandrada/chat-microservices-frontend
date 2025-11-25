@@ -470,14 +470,7 @@
 					<div
 						class="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-purple-600"
 					>
-						<svg class="h-28 w-28 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						    <path
-						        stroke-linecap="round"
-						        stroke-linejoin="round"
-						        stroke-width="2"
-						        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-						    />
-						</svg>
+						<img src="https://res.cloudinary.com/dpqt9h7cn/image/upload/v1764081536/logo_blqxwc.png" alt="Chat logo" style="width:100%;height:100%;object-fit:cover;display:block;" />
 					</div>
 					<div>
 						<h1 class="text-lg font-semibold" style="color: var(--text-primary);">Chat</h1>
