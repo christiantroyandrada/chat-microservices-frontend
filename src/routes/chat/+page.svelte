@@ -470,7 +470,11 @@
 					<div
 						class="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-purple-600"
 					>
-						<img src="https://res.cloudinary.com/dpqt9h7cn/image/upload/v1764081536/logo_blqxwc.png" alt="Chat logo" style="width:100%;height:100%;object-fit:cover;display:block;" />
+						<img
+							src="https://res.cloudinary.com/dpqt9h7cn/image/upload/v1764081536/logo_blqxwc.png"
+							alt="Chat logo"
+							style="width:100%;height:100%;object-fit:cover;display:block;"
+						/>
 					</div>
 					<div>
 						<h1 class="text-lg font-semibold" style="color: var(--text-primary);">Chat</h1>

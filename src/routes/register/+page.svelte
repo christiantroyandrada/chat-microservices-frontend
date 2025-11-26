@@ -178,7 +178,11 @@
 				class="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl"
 				style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);"
 			>
-				<img src="https://res.cloudinary.com/dpqt9h7cn/image/upload/v1764081536/logo_blqxwc.png" alt="Chat logo" style="width:100%;height:100%;object-fit:cover;display:block;" />
+				<img
+					src="https://res.cloudinary.com/dpqt9h7cn/image/upload/v1764081536/logo_blqxwc.png"
+					alt="Chat logo"
+					style="width:100%;height:100%;object-fit:cover;display:block;"
+				/>
 			</div>
 			<h2 class="mb-2 text-3xl font-bold" style="color: var(--text-primary);">Create account</h2>
 			<p class="text-sm" style="color: var(--text-secondary);">

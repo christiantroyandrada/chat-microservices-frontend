@@ -1,7 +1,9 @@
 name: ci
 
 on:
-  push: # run on pushes to any branch
+  push:
+    # Run CI on all branches except the default/main branch (feature branches)
+    branches-ignore: [main, master]
   pull_request: # run for PRs (pre-merge checks)
 
 jobs:
@@ -70,4 +72,8 @@ jobs:
       - name: Default-branch build
         run: |
           echo "Running default-branch post-action for ${{ github.event.repository.default_branch }}"
+          pnpm run prepare && pnpm run build
+
+      - name: Test Build
+        run: |
           pnpm run prepare && pnpm run build

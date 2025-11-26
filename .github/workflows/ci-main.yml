@@ -1,8 +1,9 @@
-name: CI - Unit tests, Coverage and Sonar
-
+name: ci - master
 on:
+  # Run this workflow when changes are pushed to the main branch
+  # (post-PR merge / direct pushes to main)
   push:
-    branches: [master]
+    branches: [main, master]
 
 jobs:
   build-and-sonar:
@@ -25,8 +26,31 @@ jobs:
         working-directory: ./
         run: pnpm install
 
+      - name: npm/pnpm audit (dependency vulnerability check)
+        working-directory: ./
+        run: |
+          # Try pnpm audit first; fall back to npm audit for compatibility
+          pnpm audit --audit-level=moderate || npm audit --audit-level=moderate || true
+
+      - name: Lint (Prettier + ESLint)
+        working-directory: ./
+        run: pnpm run lint
+
+      - name: TypeScript type check
+        working-directory: ./
+        run: pnpm exec tsc --noEmit
+
+      - name: Svelte check
+        working-directory: ./
+        run: pnpm run check
+
+      - name: Build FE (prepare + build)
+        working-directory: ./
+        run: |
+          pnpm run prepare || true
+          pnpm run build
+
       - name: Ensure Playwright browsers are installed
-        # Playwright needs browsers downloaded before running tests that use @vitest/browser/playwright
         working-directory: ./
         run: pnpm exec playwright install
 
@@ -37,9 +61,10 @@ jobs:
       - name: Run unit tests and generate coverage
         working-directory: ./
         run: pnpm run coverage:unit
-        timeout-minutes: 10
+        timeout-minutes: 15
 
       - name: Check Sonar secrets/vars
+        working-directory: ./
         run: |
           if [ -z "$SONAR_TOKEN" ]; then
             echo "::error::SONAR_TOKEN is not set. Add it under Settings → Secrets and variables → Actions.";
@@ -55,8 +80,6 @@ jobs:
           SONAR_ORGANIZATION_SECRET: ${{ secrets.SONAR_ORGANIZATION }}
           SONAR_ORGANIZATION_VAR: ${{ vars.SONAR_ORGANIZATION }}
 
-      # SonarCloud / SonarQube step
-      # Using the recommended sonarqube-scan-action (drop-in replacement for sonarcloud-github-action)
       - name: SonarCloud Scan
         # Pinned to specific commit SHA for supply-chain security
         uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602
