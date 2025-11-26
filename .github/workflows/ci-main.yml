@@ -97,7 +97,7 @@ jobs:
   deploy:
     name: Deploy Frontend to VPS
     needs: build-and-sonar
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     environment: production
     concurrency:
