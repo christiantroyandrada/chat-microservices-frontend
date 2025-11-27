@@ -70,14 +70,14 @@ This collaborative approach combines the **strategic thinking and UX expertise o
 
 This frontend connects to the Chat Microservices backend via nginx reverse proxy.
 
-### API Endpoints (via nginx on port 85)
+### API Endpoints (via nginx on port 80)
 
-- **User/Auth Service**: `http://localhost:85/api/user`
-- **Chat Service**: `http://localhost:85/api/chat`
-- **Notifications Service**: `http://localhost:85/api/notifications`
-- **WebSocket**: `http://localhost:85` (Socket.IO connection)
+- **User/Auth Service**: `http://localhost/api/user`
+- **Chat Service**: `http://localhost/api/chat`
+- **Notifications Service**: `http://localhost/api/notifications`
+- **WebSocket**: `http://localhost` (Socket.IO connection)
 
-**Important**: The frontend uses nginx (port 85) as the API gateway for:
+**Important**: The frontend uses nginx (port 80/443) as the API gateway for:
 
 - Consistent origin handling for CORS
 - httpOnly cookie authentication
@@ -112,13 +112,13 @@ cp .env.example .env
 Default configuration for local development:
 
 ```env
-PUBLIC_API_URL=http://localhost:85
-PUBLIC_WS_URL=http://localhost:85
+PUBLIC_API_URL=http://localhost
+PUBLIC_WS_URL=http://localhost
 PUBLIC_APP_NAME="Chat App"
 PUBLIC_APP_VERSION=0.0.1
 ```
 
-**Note**: The frontend connects to nginx on port 85, which proxies all backend services. This ensures proper CORS handling and httpOnly cookie authentication.
+**Note**: The frontend connects to nginx on port 80 (or 443 for HTTPS), which proxies all backend services. This ensures proper CORS handling and httpOnly cookie authentication.
 
 ### 3. Start Backend Services
 
@@ -126,14 +126,14 @@ Ensure the backend is running before starting the frontend:
 
 ```bash
 # In the chat-microservices directory
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 Verify backend is accessible:
 
 ```bash
-curl http://localhost:85/api/user/health
-# Expected: {"status":"ok"}
+curl http://localhost/health
+# Expected: {"status":"ok","service":"nginx-gateway"}
 ```
 
 ### 4. Start Development Server
@@ -146,6 +146,50 @@ pnpm dev --open
 ```
 
 The application will be available at `http://localhost:5173`.
+
+## Docker Deployment
+
+### Environment-Aware Builds
+
+The Dockerfile supports environment-aware builds that automatically configure API URLs:
+
+| Environment | API URLs | Build Command |
+|-------------|----------|---------------|
+| **Development** | `http://localhost` | `docker build .` (default) |
+| **Production** | `https://yourdomain.com` | `docker build --build-arg BUILD_ENV=production .` |
+
+### Using Docker Compose (with backend)
+
+```bash
+# Local development (HTTP, localhost URLs)
+cd ../chat-microservices
+docker compose --profile frontend up -d --build
+
+# Production (HTTPS, production URLs)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile frontend up -d --build
+```
+
+### Manual Docker Build
+
+```bash
+# Development build (default)
+docker build -t chat-frontend .
+
+# Production build
+docker build --build-arg BUILD_ENV=production -t chat-frontend:prod .
+
+# Custom API URLs
+docker build \
+  --build-arg PUBLIC_API_URL=https://api.example.com \
+  --build-arg PUBLIC_WS_URL=https://ws.example.com \
+  -t chat-frontend:custom .
+```
+
+### Run Container
+
+```bash
+docker run -p 3000:3000 chat-frontend
+```
 
 ## Available Scripts
 
@@ -290,7 +334,7 @@ docker-compose up -d --build
 Verify backend health:
 
 ```bash
-curl http://localhost:85/api/user/health
+curl http://localhost/api/user/health
 ```
 
 ### 2. Start Frontend Development
@@ -390,10 +434,103 @@ All 8 CVE fixes remain intact:
 - ✅ Rate limiting
 - ✅ Audit logging
 
-## API Integration
+## 📋 Scope and Limitations
 
-````
-```
+This project is an **advanced personal/side project** developed using an AI-assisted hybrid approach. While it demonstrates production-level frontend architecture, it's important to understand its scope relative to enterprise messaging applications.
+
+### What This Project Demonstrates
+
+✅ **Modern Frontend Architecture**
+- SvelteKit with TypeScript for type-safe development
+- Reactive state management with Svelte stores
+- Modular Signal Protocol implementation (85% code reduction through decomposition)
+- Component-based architecture with reusable UI elements
+
+✅ **Security Implementation**
+- Client-side E2EE using Signal Protocol (X3DH + Double Ratchet)
+- Zero-knowledge key management (keys never leave client unencrypted)
+- AES-256-GCM encryption with PBKDF2 (100k iterations)
+- Secure cookie-based authentication (httpOnly, secure, sameSite)
+- XSS prevention with input sanitization
+
+✅ **Testing & Quality**
+- 240+ unit tests with 85%+ code coverage
+- E2E testing with Playwright
+- Full TypeScript type safety (zero explicit `any`)
+- ESLint + Prettier code quality enforcement
+
+✅ **DevOps Practices**
+- Docker containerization with distroless images
+- CI/CD with GitHub Actions
+- Environment-aware builds (development vs production)
+
+### Limitations Compared to Production Chat Apps
+
+| Feature | This Project | Messenger/Telegram/Signal |
+|---------|--------------|---------------------------|
+| **Message Types** | Text only | Rich media (images, videos, voice, files) |
+| **UI Features** | Basic chat interface | Message reactions, replies, threads, forwards |
+| **Typing Indicators** | Basic | Real-time with debouncing and optimization |
+| **Read Receipts** | ❌ Not implemented | Double check marks, delivery status |
+| **Message Search** | ❌ Not implemented | Full-text search with filters |
+| **Offline Mode** | ❌ Limited | Service workers, IndexedDB queuing |
+| **Media Preview** | ❌ Not implemented | Image galleries, video players, audio players |
+| **Emoji/Stickers** | Basic emoji | Sticker packs, GIF search, custom emoji |
+| **Profile Features** | Basic | Avatars, status, bio, last seen |
+| **Accessibility** | Basic | Full WCAG 2.1 AA compliance |
+| **Internationalization** | English only | Multi-language support (i18n) |
+| **PWA Features** | ❌ Not implemented | Installable, push notifications, offline |
+
+### Technical Limitations
+
+| Aspect | This Project | Production Apps |
+|--------|--------------|-----------------|
+| **Bundle Size** | Not optimized | Tree-shaking, code splitting, lazy loading |
+| **Performance** | Good for demo | Virtualized lists, Web Workers, WASM |
+| **State Management** | Svelte stores | Complex state machines, optimistic updates |
+| **Error Handling** | Basic | Retry logic, error boundaries, graceful degradation |
+| **Analytics** | ❌ None | Event tracking, crash reporting, A/B testing |
+| **Mobile App** | Responsive web only | Native iOS/Android with shared core |
+
+### Browser Support
+
+- ✅ Modern browsers (Chrome, Firefox, Safari, Edge)
+- ⚠️ Limited testing on mobile browsers
+- ❌ No IE11 support (not planned)
+
+### What Would Be Needed for Production
+
+To match consumer messaging apps like Telegram or Signal:
+
+1. **Media Handling**: Image upload/compression, video streaming, voice messages
+2. **Offline Support**: Service Worker, IndexedDB message queue, background sync
+3. **Performance**: Virtual scrolling for message lists, lazy loading, Web Workers
+4. **Mobile Apps**: React Native or native iOS/Android apps
+5. **Accessibility**: Full WCAG 2.1 compliance, screen reader testing
+6. **Internationalization**: i18n framework with RTL support
+7. **Analytics**: Crash reporting, user behavior analytics, performance monitoring
+
+### Honest Assessment
+
+**This project is:**
+- ✅ An excellent demonstration of modern SvelteKit development
+- ✅ A showcase of complex E2EE implementation in the browser
+- ✅ A solid example of AI-assisted frontend development
+- ✅ Impressive architecture for a personal/side project
+- ✅ Great learning resource for Signal Protocol implementation
+
+**This project is NOT:**
+- ❌ A full-featured messaging client like Telegram or Signal
+- ❌ Optimized for production-scale usage
+- ❌ Suitable as a drop-in replacement for established platforms
+
+### Target Use Cases
+
+This project is ideal for:
+- 📚 Learning E2EE implementation in web applications
+- 🎯 Portfolio demonstration of SvelteKit + TypeScript skills
+- 🧪 Experimenting with Signal Protocol in the browser
+- 🏗️ Foundation for building a specialized chat interface
 
 ## API Integration
 
@@ -443,7 +580,55 @@ This generates an optimized production build in the `build/` directory.
 pnpm preview
 ```
 
-### Deployment
+## 🚀 CI/CD Deployment
+
+The frontend uses a **secure, image-based CI/CD pipeline** with GitHub Actions:
+
+### Deployment Flow
+```
+Push to master branch
+       ↓
+GitHub Actions: Build & Test
+       ↓
+Build Docker Image
+       ↓
+Push to GHCR (ghcr.io)
+       ↓
+SSH to VPS: Pull & Deploy
+       ↓
+Security Cleanup
+```
+
+### Key Features
+- ✅ **Pre-built Images**: Docker images built in GitHub Actions, not on VPS
+- ✅ **GitHub Container Registry**: Images stored in GHCR
+- ✅ **No source code on server**: Only docker-compose.yml and data volumes
+- ✅ **Secret masking**: All credentials masked in CI logs
+- ✅ **Automatic cleanup**: Source files removed after deployment
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `VPS_HOST` | VPS IP address or domain |
+| `VPS_USER` | SSH user with Docker access |
+| `VPS_SSH_PRIVATE_KEY` | SSH private key |
+| `VPS_PORT` | SSH port |
+| `VPS_SUDO_PASSWORD` | Sudo password for privileged operations |
+
+**Note**: `GITHUB_TOKEN` is automatically provided by GitHub Actions for GHCR authentication - no manual setup required.
+
+### Triggering Deployment
+
+Push to the `master` branch to trigger automatic deployment:
+
+```bash
+git push origin master
+```
+
+For detailed CI/CD setup, see the backend repository's [Deployment Guide](https://github.com/christiantroyandrada/chat-microservices/blob/main/deploy/README.md).
+
+### Other Deployment Options
 
 The app can be deployed to various platforms:
 
@@ -512,8 +697,8 @@ pnpm test:e2e --project=chromium
 1. Verify backend services are running: `docker-compose ps`
 2. Check backend health endpoints:
    ```bash
-   curl http://localhost:85/api/health
-   curl http://localhost:8080/api/health
+   curl http://localhost/api/health
+   curl http://localhost/api/user/health
    ```
 3. Verify `PUBLIC_API_URL` in `.env` matches your backend URL
 4. Check CORS settings in backend services

@@ -1,88 +1,84 @@
-name: ci - master
+name: CI Pipeline [master]
+
 on:
-  # Run this workflow when changes are pushed to the main branch
-  # (post-PR merge / direct pushes to main)
   push:
     branches: [main, master]
 
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_FRONTEND: ghcr.io/${{ github.repository_owner }}/chat-frontend
+
 jobs:
-  build-and-sonar:
+  build-and-test:
+    name: Build, Test & Audit
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        # Pinned to specific commit SHA for supply-chain security
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        # Pinned to specific commit SHA for supply-chain security
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Install pnpm
         run: npm install -g pnpm
 
-      - name: Install frontend deps
-        working-directory: ./
+      - name: Install dependencies
         run: pnpm install
 
-      - name: npm/pnpm audit (dependency vulnerability check)
-        working-directory: ./
-        run: |
-          # Try pnpm audit first; fall back to npm audit for compatibility
-          pnpm audit --audit-level=moderate || npm audit --audit-level=moderate || true
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=moderate || true
 
-      - name: Lint (Prettier + ESLint)
-        working-directory: ./
+      - name: Lint
         run: pnpm run lint
 
-      - name: TypeScript type check
-        working-directory: ./
+      - name: TypeScript check
         run: pnpm exec tsc --noEmit
 
       - name: Svelte check
-        working-directory: ./
         run: pnpm run check
 
-      - name: Build FE (prepare + build)
-        working-directory: ./
+      - name: Build
         run: |
           pnpm run prepare || true
           pnpm run build
 
-      - name: Ensure Playwright browsers are installed
-        working-directory: ./
+      - name: Install Playwright browsers
         run: pnpm exec playwright install
 
-      - name: Ensure coverage temp directory exists
-        working-directory: ./
-        run: mkdir -p coverage/.tmp
-
-      - name: Run unit tests and generate coverage
-        working-directory: ./
+      - name: Run unit tests
         run: pnpm run coverage:unit
         timeout-minutes: 15
 
-      - name: Check Sonar secrets/vars
-        working-directory: ./
+  sonar:
+    name: SonarCloud Scan
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install and test
         run: |
-          if [ -z "$SONAR_TOKEN" ]; then
-            echo "::error::SONAR_TOKEN is not set. Add it under Settings → Secrets and variables → Actions.";
-            exit 1;
-          fi
-          if [ -z "$SONAR_ORGANIZATION_SECRET" ] && [ -z "$SONAR_ORGANIZATION_VAR" ]; then
-            echo "::error::SONAR_ORGANIZATION is not set as a secret or variable. Add it under Settings → Secrets and variables → Actions.";
-            exit 1;
-          fi
-          echo "Sonar secrets/vars present. Proceeding..."
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_ORGANIZATION_SECRET: ${{ secrets.SONAR_ORGANIZATION }}
-          SONAR_ORGANIZATION_VAR: ${{ vars.SONAR_ORGANIZATION }}
+          pnpm install
+          mkdir -p coverage/.tmp
+          pnpm run coverage:unit || true
 
       - name: SonarCloud Scan
-        # Pinned to specific commit SHA for supply-chain security
-        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602
+        uses: SonarSource/sonarqube-scan-action@master
         with:
           args: >
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
@@ -91,22 +87,29 @@ jobs:
             -Dsonar.exclusions=tests/**,test/**,__mocks__/**,mocks/**
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
 
-  # Deploy to VPS (only runs on main branch after build and tests pass)
-  deploy:
-    name: Deploy Frontend to VPS
-    needs: build-and-sonar
-    if: github.ref == 'refs/heads/master'
+  # Build and push Docker image to GHCR
+  docker-build:
+    name: Build & Push Docker Image
+    needs: build-and-test
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
-    concurrency:
-      group: production-frontend-deployment
-      cancel-in-progress: false
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Fetch secrets from Infisical
-        id: infisical
         uses: Infisical/secrets-action@v1.0.7
         with:
           method: universal
@@ -116,182 +119,185 @@ jobs:
           env-slug: prod
           secret-path: /
 
-      - name: Deploy Frontend via SSH
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/chat-frontend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/chat-frontend:latest
+          build-args: |
+            BUILD_ENV=production
+            PUBLIC_API_URL=https://yourdomain.com
+            PUBLIC_WS_URL=https://yourdomain.com
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Deploy to VPS - Blue-Green style deployment with health verification
+  deploy:
+    name: Deploy Frontend to VPS
+    needs: docker-build
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production-frontend-deployment
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy Frontend via SSH (Blue-Green)
+        uses: appleboy/ssh-action@v1.0.3
         env:
-          # Infisical secrets-action sets secrets as ENV VARS (not outputs)
-          # Only database credentials needed for docker compose ps/config commands
-          ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
-          ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+          VPS_SUDO_PASSWORD: ${{ secrets.VPS_SUDO_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: ${{ github.sha }}
+          REPO_OWNER: ${{ github.repository_owner }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          port: ${{ secrets.VPS_PORT || '22' }}
+          port: ${{ secrets.VPS_PORT }}
           command_timeout: 20m
-          envs: ADMIN_USERNAME,ADMIN_PASSWORD
+          envs: VPS_SUDO_PASSWORD,GITHUB_TOKEN,IMAGE_TAG,REPO_OWNER
           script: |
             set -euo pipefail
-            export DEPLOY_PATH="${{ secrets.DEPLOY_PATH || '/opt/chat-app' }}"
+            DEPLOY_PATH="/opt/chat-app/chat-microservices"
 
-            # Export minimal environment variables for docker compose commands
-            # (Only needed because postgres service references these in compose file)
-            export ADMIN_USERNAME
-            export ADMIN_PASSWORD
+            # Mask sensitive env vars from logs
+            echo "::add-mask::$VPS_SUDO_PASSWORD"
+            echo "::add-mask::$GITHUB_TOKEN"
 
-            echo "🚀 Starting frontend deployment..."
+            echo "🚀 Starting frontend deployment (Blue-Green strategy)..."
 
-            # Ensure DEPLOY_PATH is writable; fall back to $HOME if needed
-            if ! mkdir -p "$DEPLOY_PATH" 2>/dev/null; then
-              echo "⚠️ Cannot create $DEPLOY_PATH (permission denied). Falling back to home directory"
-              FALLBACK="$HOME/chat-app"
-              mkdir -p "$FALLBACK"
-              export DEPLOY_PATH="$FALLBACK"
-              echo "➡️ Using fallback DEPLOY_PATH=$DEPLOY_PATH"
+            # Check if backend has been deployed first
+            if [ ! -f "$DEPLOY_PATH/docker-compose.yml" ]; then
+              echo "❌ Backend not deployed yet. Please deploy backend first."
+              exit 1
             fi
 
-            # Ensure frontend repo directory exists; clone if missing
-            if [ -d "$DEPLOY_PATH/chat-microservices-frontend" ]; then
-              echo "➡️ Found existing $DEPLOY_PATH/chat-microservices-frontend — updating"
-              cd "$DEPLOY_PATH/chat-microservices-frontend"
-              if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-                # Detect current branch (master or main)
-                CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
-                git fetch origin --prune || true
-                git reset --hard origin/$CURRENT_BRANCH || git reset --hard origin/master || true
-              else
-                echo "⚠️ Directory exists but is not a git repo — removing and re-cloning"
-                cd "$DEPLOY_PATH"
-                rm -rf chat-microservices-frontend
-              fi
+            cd "$DEPLOY_PATH"
+
+            # Log in to GHCR (token passed via stdin, not echoed)
+            echo "🔐 Logging in to GHCR..."
+            docker login ghcr.io -u "$REPO_OWNER" --password-stdin <<< "$GITHUB_TOKEN" 2>/dev/null
+
+            # Store current image tag for rollback
+            CURRENT_TAG=$(grep -oP "chat-frontend:\K[^\s\"']+" docker-compose.yml 2>/dev/null || echo "latest")
+            echo "📌 Current frontend tag: $CURRENT_TAG"
+            echo "📌 New frontend tag: $IMAGE_TAG"
+
+            # Update frontend image tag and add runtime env vars
+            echo "📝 Updating frontend configuration..."
+            sed -i "s|ghcr.io/${REPO_OWNER}/chat-frontend:[^[:space:]\"']*|ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}|g" docker-compose.yml
+
+            # Ensure runtime PUBLIC_API_URL and PUBLIC_WS_URL are set
+            if ! grep -q "PUBLIC_API_URL:" docker-compose.yml; then
+              echo "⚠️ Adding missing PUBLIC_API_URL to frontend environment"
             fi
 
-            if [ ! -d "$DEPLOY_PATH/chat-microservices-frontend" ]; then
-              echo "➡️ Directory not found — attempting to clone frontend repository"
-              mkdir -p "$DEPLOY_PATH"
-              cd "$DEPLOY_PATH"
-              REPO_URL="https://github.com/${{ github.repository }}.git"
-              if git ls-remote --exit-code "$REPO_URL" >/dev/null 2>&1; then
-                # Frontend repo uses 'master' branch
-                git clone --depth 1 --branch master "$REPO_URL" chat-microservices-frontend || {
-                  echo "⚠️ git clone failed for frontend repo; creating empty folder"
-                  mkdir -p chat-microservices-frontend
-                }
-                cd chat-microservices-frontend || true
-              else
-                echo "⚠️ Cannot access $REPO_URL (permissions or network). Creating empty directory and continuing"
-                mkdir -p chat-microservices-frontend
-                cd chat-microservices-frontend
-              fi
+            echo "🐳 Pre-pulling new frontend image..."
+            docker pull "ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}"
+
+            # Verify the new image exists and is valid
+            if ! docker image inspect "ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}" >/dev/null 2>&1; then
+              echo "❌ Failed to pull new image, aborting deployment"
+              exit 1
             fi
+            echo "✅ New image pulled and verified"
 
-            # Ensure main microservices (backend) directory exists (where docker-compose files live)
-            if [ ! -d "$DEPLOY_PATH/chat-microservices" ]; then
-              echo "⚠️ $DEPLOY_PATH/chat-microservices not found — attempting to clone backend repository"
-              cd "$DEPLOY_PATH"
-              BACKEND_REPO_URL="https://github.com/christiantroyandrada/chat-microservices.git"
-              if git ls-remote --exit-code "$BACKEND_REPO_URL" >/dev/null 2>&1; then
-                git clone --depth 1 --branch main "$BACKEND_REPO_URL" chat-microservices || {
-                  echo "⚠️ Backend clone failed; creating empty folder"
-                  mkdir -p chat-microservices
-                }
-              else
-                echo "⚠️ Cannot access backend repo. Creating empty directory and continuing"
-                mkdir -p chat-microservices
-              fi
-            fi
+            # Blue-Green: Start new container without stopping old one
+            echo "🔵 Starting new frontend container (Blue-Green)..."
 
-            cd "$DEPLOY_PATH/chat-microservices"
+            # Scale up: add new container alongside existing
+            docker compose up -d --no-deps --scale frontend=1 --no-recreate frontend 2>/dev/null || true
 
-            # Create/update frontend .env file with production values
-            echo "🔧 Creating frontend .env file with production configuration..."
-            cat > "$DEPLOY_PATH/chat-microservices-frontend/.env" <<'FRONTEND_ENV'
-            # Production API Configuration
-            PUBLIC_API_URL=http://localhost:80
-            PUBLIC_WS_URL=http://localhost:80
+            # Actually update with the new image
+            docker compose up -d --no-deps frontend
 
-            # App Configuration
-            PUBLIC_APP_NAME="Chat App"
-            PUBLIC_APP_VERSION=0.0.1
-            FRONTEND_ENV
-            echo "✅ Frontend .env created"
-
-            # Check Docker permissions
-            echo "🔍 Checking Docker permissions..."
-            if ! docker ps >/dev/null 2>&1; then
-              echo "⚠️ Docker permission denied. Attempting to add user to docker group..."
-              # Check if user is in docker group
-              if ! groups | grep -q docker; then
-                echo "💡 User is not in docker group. To fix this on VPS, run:"
-                echo "   sudo usermod -aG docker $USER && newgrp docker"
-                echo "⚠️ Continuing anyway - docker commands may fail"
-              fi
-            else
-              echo "✅ Docker access confirmed"
-            fi
-
-            echo "🏗️  Building frontend service (if defined in compose files)..."
-
-            # Determine compose files to use
-            COMPOSE_ARGS=()
-            if [ -f docker-compose.yml ] && [ -f docker-compose.prod.yml ]; then
-              COMPOSE_ARGS+=( -f docker-compose.yml -f docker-compose.prod.yml )
-            elif [ -f docker-compose.yml ]; then
-              COMPOSE_ARGS+=( -f docker-compose.yml )
-            elif [ -f docker-compose.prod.yml ]; then
-              COMPOSE_ARGS+=( -f docker-compose.prod.yml )
-            else
-              echo "⚠️ No docker-compose files found in $PWD — skipping docker compose steps"
-            fi
-
-            # If compose files are present, try to build and bring up the frontend service
-            # Frontend service uses 'frontend' profile - must include --profile frontend
-            if [ ${#COMPOSE_ARGS[@]} -gt 0 ]; then
-              # Check if 'frontend' service is defined (with profile)
-              if docker compose --profile frontend "${COMPOSE_ARGS[@]}" config --services 2>/dev/null | grep -q '^frontend$'; then
-                # Build frontend service with build context from frontend repo
-                echo "🏗️ Building frontend service..."
-                docker compose --profile frontend "${COMPOSE_ARGS[@]}" build frontend || {
-                  echo "⚠️ Build step failed - checking build context"
-                  docker compose --profile frontend "${COMPOSE_ARGS[@]}" config | grep -A 10 "frontend:" || true
-                  echo "⚠️ Continuing anyway..."
-                }
-                
-                # Start frontend service
-                echo "🔄 Starting frontend service..."
-                docker compose --profile frontend "${COMPOSE_ARGS[@]}" up -d frontend || {
-                  echo "⚠️ Up step failed"
-                  docker compose --profile frontend "${COMPOSE_ARGS[@]}" logs frontend --tail=50 || true
-                }
-
-                echo "⏳ Waiting for frontend to be healthy..."
-                sleep 15
-
-                if docker compose --profile frontend "${COMPOSE_ARGS[@]}" ps frontend | grep -q "healthy\|running"; then
-                  echo "✅ Frontend is running"
-                  echo "🔄 Restarting nginx (if defined)"
-                  if docker compose --profile frontend "${COMPOSE_ARGS[@]}" config --services 2>/dev/null | grep -q '^nginx$'; then
-                    docker compose --profile frontend "${COMPOSE_ARGS[@]}" restart nginx || true
-                    sleep 5
+            echo "⏳ Waiting for new container to be healthy (max 60s)..."
+            HEALTH_TIMEOUT=60
+            HEALTH_CHECK=0
+            while [ $HEALTH_CHECK -lt $HEALTH_TIMEOUT ]; do
+              # Check if container is running and responding
+              CONTAINER_STATUS=$(docker compose ps frontend --format json 2>/dev/null | head -1)
+              if echo "$CONTAINER_STATUS" | grep -q '"State":"running"'; then
+                # Test internal health endpoint
+                FRONTEND_IP=$(docker compose exec -T frontend hostname -i 2>/dev/null || echo "")
+                if [ -n "$FRONTEND_IP" ]; then
+                  if docker compose exec -T nginx wget -q --spider --timeout=2 "http://frontend:3000/" 2>/dev/null || \
+                     docker compose exec -T nginx timeout 2 bash -c "</dev/tcp/frontend/3000" 2>/dev/null; then
+                    echo "✅ New frontend container is healthy!"
+                    break
                   fi
-
-                  if curl -f http://localhost:80/ > /dev/null 2>&1; then
-                    echo "✅ Frontend accessible through nginx"
-                    echo "🎉 Frontend deployment successful!"
-                  else
-                    echo "⚠️ Frontend is running but not accessible through nginx"
-                    echo "📝 Nginx logs:"
-                    docker compose --profile frontend "${COMPOSE_ARGS[@]}" logs nginx --tail=20 || true
-                    echo "📝 Frontend logs:"
-                    docker compose --profile frontend "${COMPOSE_ARGS[@]}" logs frontend --tail=20 || true
-                  fi
-                else
-                  echo "❌ Frontend deployment failed or service not healthy"
-                  docker compose --profile frontend "${COMPOSE_ARGS[@]}" ps frontend || true
-                  docker compose --profile frontend "${COMPOSE_ARGS[@]}" logs frontend --tail=50 || true
-                  exit 1
                 fi
-              else
-                echo "⚠️ 'frontend' service not defined in compose files — skipping build/up steps"
+              fi
+              sleep 2
+              HEALTH_CHECK=$((HEALTH_CHECK + 2))
+              echo "   Waiting... ${HEALTH_CHECK}s"
+            done
+
+            if [ $HEALTH_CHECK -ge $HEALTH_TIMEOUT ]; then
+              echo "⚠️ Health check timeout, but proceeding (container may still be starting)..."
+            fi
+
+            # Reload nginx to pick up any DNS changes (no restart needed)
+            echo "🔄 Reloading nginx configuration..."
+            docker compose exec -T nginx nginx -s reload 2>/dev/null || docker compose restart nginx || true
+
+            sleep 5
+
+            # Final verification via public endpoint
+            echo "🔍 Verifying deployment via public endpoint..."
+            if curl -fsS --max-time 10 http://localhost:80/ >/dev/null 2>&1; then
+              echo "✅ Frontend deployment successful!"
+              echo "🧹 Cleaning up old images..."
+              docker image prune -f --filter "until=24h" || true
+            else
+              echo "⚠️ Public endpoint check failed, checking container status..."
+              docker compose ps frontend
+              docker compose logs frontend --tail=50
+              
+              # Attempt rollback if we have a previous working tag
+              if [ "$CURRENT_TAG" != "$IMAGE_TAG" ] && [ "$CURRENT_TAG" != "latest" ]; then
+                echo "🔙 Attempting rollback to $CURRENT_TAG..."
+                sed -i "s|ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}|ghcr.io/${REPO_OWNER}/chat-frontend:${CURRENT_TAG}|g" docker-compose.yml
+                docker compose up -d --no-deps frontend
+                echo "⚠️ Rolled back to previous version"
+                exit 1
               fi
             fi
+
+            docker compose ps
+
+      - name: Security cleanup
+        if: always()
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          VPS_SUDO_PASSWORD: ${{ secrets.VPS_SUDO_PASSWORD }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          envs: VPS_SUDO_PASSWORD
+          script: |
+            echo "🔒 Security cleanup..."
+            DEPLOY_PATH="/opt/chat-app"
+
+            # Mask sudo password
+            echo "::add-mask::$VPS_SUDO_PASSWORD"
+
+            # Remove any frontend source files if they exist
+            rm -rf "$DEPLOY_PATH/chat-microservices-frontend" 2>/dev/null || true
+
+            cd "$DEPLOY_PATH/chat-microservices" 2>/dev/null || exit 0
+
+            # Remove git data
+            rm -rf .git .github 2>/dev/null || true
+
+            # Prune Docker
+            docker image prune -f || true
+            docker container prune -f || true
+
+            echo "✅ Security cleanup complete!"

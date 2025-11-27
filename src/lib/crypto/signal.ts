@@ -19,6 +19,8 @@
  */
 
 import { IndexedDBSignalProtocolStore } from './signalStore';
+import type { PublicPreKeyBundle, EncryptedMessage } from './types';
+import type { SignalKeySet, EncryptedKeyBundle } from '$lib/types';
 import * as Session from './signalSession';
 import * as KeyManager from './signalKeyManager';
 import * as Backup from './signalBackup';
@@ -131,7 +133,7 @@ export async function publishSignalPrekey(
 	apiBase: string,
 	userId: string,
 	deviceId: string,
-	bundle: import('./types').PublicPreKeyBundle
+	bundle: PublicPreKeyBundle
 ) {
 	return KeyManager.publishSignalPrekey(apiBase, userId, deviceId, bundle);
 }
@@ -177,7 +179,7 @@ export async function encryptMessage(
  */
 export async function decryptMessage(
 	senderId: string,
-	ciphertext: import('./types').EncryptedMessage | string,
+	ciphertext: EncryptedMessage | string,
 	currentUserId?: string
 ) {
 	await initSignal(currentUserId);
@@ -223,7 +225,7 @@ export async function exportSignalKeys(userId: string) {
 /**
  * Import Signal keys from backend
  */
-export async function importSignalKeys(userId: string, keySet: import('$lib/types').SignalKeySet) {
+export async function importSignalKeys(userId: string, keySet: SignalKeySet) {
 	await initSignal(userId);
 	return KeyManager.importSignalKeys(getStore(), keySet);
 }
@@ -245,7 +247,7 @@ export async function exportAndEncryptSignalKeys(
  */
 export async function decryptAndImportSignalKeys(
 	userId: string,
-	encryptedBundle: import('$lib/types').EncryptedKeyBundle,
+	encryptedBundle: EncryptedKeyBundle,
 	password: string
 ) {
 	await initSignal(userId);

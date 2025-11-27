@@ -55,7 +55,7 @@
 					localStorage.setItem('deviceId', deviceId);
 				}
 
-				const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
+				const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
 
 				// Initialize keys if needed and publish prekeys
 				await initSignalWithRestore(userId, deviceId, apiBase, undefined);

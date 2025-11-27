@@ -14,7 +14,7 @@ import {
 } from '@privacyresearch/libsignal-protocol-typescript';
 import type { DeviceType } from '@privacyresearch/libsignal-protocol-typescript';
 import type { PrekeyBundleData, PrekeyBundlePayload, EncryptedMessage } from './types';
-import { IndexedDBSignalProtocolStore } from './signalStore';
+import type { IndexedDBSignalProtocolStore } from './signalStore';
 import { base64ToArrayBuffer, arrayBufferToBase64 } from './signalUtils';
 import { DEFAULT_DEVICE_ID } from './signalConstants';
 import { logger } from '$lib/services/dev-logger';

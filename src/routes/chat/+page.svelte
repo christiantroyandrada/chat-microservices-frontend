@@ -65,7 +65,7 @@
 						: String(Date.now()) + '-' + Math.floor(Math.random() * 1e6);
 				localStorage.setItem('deviceId', deviceId);
 			}
-			const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
+			const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
 
 			// AWAIT initialization to prevent race conditions with message decryption
 			// NOTE: No encryption password provided - keys will NOT be backed up to server

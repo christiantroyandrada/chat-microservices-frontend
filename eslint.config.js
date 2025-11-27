@@ -12,6 +12,19 @@ const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url));
 
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
+	// Ignore patterns for generated files, build outputs, and documentation
+	{
+		ignores: [
+			'build/**',
+			'dist/**',
+			'.svelte-kit/**',
+			'coverage/**',
+			'static/vendor/**',
+			'**/*.min.js',
+			'**/*.bundle.js',
+			'**/*.md'
+		]
+	},
 	js.configs.recommended,
 	...ts.configs.recommended,
 	...svelte.configs.recommended,
@@ -24,7 +37,9 @@ export default defineConfig(
 		rules: {
 			// typescript-eslint strongly recommend that you do not use the no-undef lint rule on TypeScript projects.
 			// see: https://typescript-eslint.io/troubleshooting/faqs/eslint/#i-get-errors-from-the-no-undef-rule-about-global-variables-not-being-defined-even-though-there-are-no-typescript-errors
-			'no-undef': 'off'
+			'no-undef': 'off',
+			// Enforce consistent type imports for better tree-shaking and clearer intent
+			'@typescript-eslint/consistent-type-imports': 'warn'
 		}
 	},
 	{
@@ -38,8 +53,9 @@ export default defineConfig(
 			}
 		}
 	},
-	// Disable floating-promise checks for client-side navigation calls (goto)
-	// These are false positives for SvelteKit client code where `void goto()` is intentional.
+	// SvelteKit client-side overrides
+	// These rules are relaxed for SvelteKit's navigation pattern where promises
+	// don't need to be awaited (fire-and-forget navigation like `void goto()`)
 	{
 		files: ['src/**/stores/**', 'src/**/routes/**', 'src/**/*.svelte'],
 		rules: {

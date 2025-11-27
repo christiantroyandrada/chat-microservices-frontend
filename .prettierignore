@@ -1,3 +1,36 @@
+# Prettier ignore file — excludes generated files and Markdown docs from automatic formatting
+
+# Node/npm artefacts
+node_modules/
+
+# Build outputs
+build/
+dist/
+.svelte-kit/
+
+# Coverage reports
+coverage/
+lcov.info
+lcov-report/
+
+# Static/vendor assets and minified bundles
+static/vendor/
+vendor/
+*.min.js
+*.bundle.js
+
+# Docker, certs, and secrets
+docker-secrets/
+nginx/ssl/
+
+# Generated code or migration outputs
+src/lib/generated/
+**/migrations/*
+
+# Don't format Markdown files automatically
+*.md
+docs/**/*.md
+*.markdown
 # Package Managers
 # Miscellaneous
 src/types/libsignal-protocol.d.ts

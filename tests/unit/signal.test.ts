@@ -59,7 +59,8 @@ import {
 vi.mock('$lib/services/auth.service', () => ({ authService }));
 
 // Now import the module under test freshly per test when needed
-let Signal: typeof import('$lib/crypto/signal');
+import type * as SignalModule from '$lib/crypto/signal';
+let Signal: typeof SignalModule;
 
 beforeEach(async () => {
 	vi.resetModules();
