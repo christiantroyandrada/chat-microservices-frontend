@@ -105,27 +105,60 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - name: Fetch secrets from Infisical
+        id: infisical
+        uses: Infisical/secrets-action@v1.0.7
+        with:
+          method: universal
+          client-id: ${{ secrets.INFISCAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISCAL_CLIENT_SECRET }}
+          project-slug: ${{ secrets.INFISCAL_PROJECT_SLUG }}
+          env-slug: prod
+          secret-path: /
+
       - name: Deploy Frontend via SSH
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
+        env:
+          # Infisical secrets-action sets secrets as ENV VARS (not outputs)
+          # Only database credentials needed for docker compose ps/config commands
+          ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           port: ${{ secrets.VPS_PORT || '22' }}
           command_timeout: 20m
+          envs: ADMIN_USERNAME,ADMIN_PASSWORD
           script: |
             set -euo pipefail
             export DEPLOY_PATH="${{ secrets.DEPLOY_PATH || '/opt/chat-app' }}"
 
+            # Export minimal environment variables for docker compose commands
+            # (Only needed because postgres service references these in compose file)
+            export ADMIN_USERNAME
+            export ADMIN_PASSWORD
+
             echo "🚀 Starting frontend deployment..."
+
+            # Ensure DEPLOY_PATH is writable; fall back to $HOME if needed
+            if ! mkdir -p "$DEPLOY_PATH" 2>/dev/null; then
+              echo "⚠️ Cannot create $DEPLOY_PATH (permission denied). Falling back to home directory"
+              FALLBACK="$HOME/chat-app"
+              mkdir -p "$FALLBACK"
+              export DEPLOY_PATH="$FALLBACK"
+              echo "➡️ Using fallback DEPLOY_PATH=$DEPLOY_PATH"
+            fi
 
             # Ensure frontend repo directory exists; clone if missing
             if [ -d "$DEPLOY_PATH/chat-microservices-frontend" ]; then
               echo "➡️ Found existing $DEPLOY_PATH/chat-microservices-frontend — updating"
               cd "$DEPLOY_PATH/chat-microservices-frontend"
               if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+                # Detect current branch (master or main)
+                CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
                 git fetch origin --prune || true
-                git reset --hard origin/main || true
+                git reset --hard origin/$CURRENT_BRANCH || git reset --hard origin/master || true
               else
                 echo "⚠️ Directory exists but is not a git repo — removing and re-cloning"
                 cd "$DEPLOY_PATH"
@@ -139,7 +172,8 @@ jobs:
               cd "$DEPLOY_PATH"
               REPO_URL="https://github.com/${{ github.repository }}.git"
               if git ls-remote --exit-code "$REPO_URL" >/dev/null 2>&1; then
-                git clone --depth 1 --branch main "$REPO_URL" chat-microservices-frontend || {
+                # Frontend repo uses 'master' branch
+                git clone --depth 1 --branch master "$REPO_URL" chat-microservices-frontend || {
                   echo "⚠️ git clone failed for frontend repo; creating empty folder"
                   mkdir -p chat-microservices-frontend
                 }
@@ -151,13 +185,50 @@ jobs:
               fi
             fi
 
-            # Ensure main microservices directory exists (where docker-compose files live)
+            # Ensure main microservices (backend) directory exists (where docker-compose files live)
             if [ ! -d "$DEPLOY_PATH/chat-microservices" ]; then
-              echo "⚠️ $DEPLOY_PATH/chat-microservices not found — creating and continuing"
-              mkdir -p "$DEPLOY_PATH/chat-microservices"
+              echo "⚠️ $DEPLOY_PATH/chat-microservices not found — attempting to clone backend repository"
+              cd "$DEPLOY_PATH"
+              BACKEND_REPO_URL="https://github.com/christiantroyandrada/chat-microservices.git"
+              if git ls-remote --exit-code "$BACKEND_REPO_URL" >/dev/null 2>&1; then
+                git clone --depth 1 --branch main "$BACKEND_REPO_URL" chat-microservices || {
+                  echo "⚠️ Backend clone failed; creating empty folder"
+                  mkdir -p chat-microservices
+                }
+              else
+                echo "⚠️ Cannot access backend repo. Creating empty directory and continuing"
+                mkdir -p chat-microservices
+              fi
             fi
 
             cd "$DEPLOY_PATH/chat-microservices"
+
+            # Create/update frontend .env file with production values
+            echo "🔧 Creating frontend .env file with production configuration..."
+            cat > "$DEPLOY_PATH/chat-microservices-frontend/.env" <<'FRONTEND_ENV'
+            # Production API Configuration
+            PUBLIC_API_URL=http://localhost:80
+            PUBLIC_WS_URL=http://localhost:80
+
+            # App Configuration
+            PUBLIC_APP_NAME="Chat App"
+            PUBLIC_APP_VERSION=0.0.1
+            FRONTEND_ENV
+            echo "✅ Frontend .env created"
+
+            # Check Docker permissions
+            echo "🔍 Checking Docker permissions..."
+            if ! docker ps >/dev/null 2>&1; then
+              echo "⚠️ Docker permission denied. Attempting to add user to docker group..."
+              # Check if user is in docker group
+              if ! groups | grep -q docker; then
+                echo "💡 User is not in docker group. To fix this on VPS, run:"
+                echo "   sudo usermod -aG docker $USER && newgrp docker"
+                echo "⚠️ Continuing anyway - docker commands may fail"
+              fi
+            else
+              echo "✅ Docker access confirmed"
+            fi
 
             echo "🏗️  Building frontend service (if defined in compose files)..."
 
@@ -174,34 +245,50 @@ jobs:
             fi
 
             # If compose files are present, try to build and bring up the frontend service
+            # Frontend service uses 'frontend' profile - must include --profile frontend
             if [ ${#COMPOSE_ARGS[@]} -gt 0 ]; then
-              # Check if 'frontend' service is defined
-              if docker compose "${COMPOSE_ARGS[@]}" config --services 2>/dev/null | grep -q '^frontend$'; then
-                docker compose "${COMPOSE_ARGS[@]}" build frontend || echo "⚠️ Build step failed (continuing)"
-                docker compose "${COMPOSE_ARGS[@]}" up -d frontend || echo "⚠️ Up step failed (continuing)"
+              # Check if 'frontend' service is defined (with profile)
+              if docker compose --profile frontend "${COMPOSE_ARGS[@]}" config --services 2>/dev/null | grep -q '^frontend$'; then
+                # Build frontend service with build context from frontend repo
+                echo "🏗️ Building frontend service..."
+                docker compose --profile frontend "${COMPOSE_ARGS[@]}" build frontend || {
+                  echo "⚠️ Build step failed - checking build context"
+                  docker compose --profile frontend "${COMPOSE_ARGS[@]}" config | grep -A 10 "frontend:" || true
+                  echo "⚠️ Continuing anyway..."
+                }
+                
+                # Start frontend service
+                echo "🔄 Starting frontend service..."
+                docker compose --profile frontend "${COMPOSE_ARGS[@]}" up -d frontend || {
+                  echo "⚠️ Up step failed"
+                  docker compose --profile frontend "${COMPOSE_ARGS[@]}" logs frontend --tail=50 || true
+                }
 
                 echo "⏳ Waiting for frontend to be healthy..."
                 sleep 15
 
-                if docker compose "${COMPOSE_ARGS[@]}" ps frontend | grep -q "healthy"; then
-                  echo "✅ Frontend is healthy"
+                if docker compose --profile frontend "${COMPOSE_ARGS[@]}" ps frontend | grep -q "healthy\|running"; then
+                  echo "✅ Frontend is running"
                   echo "🔄 Restarting nginx (if defined)"
-                  if docker compose "${COMPOSE_ARGS[@]}" config --services 2>/dev/null | grep -q '^nginx$'; then
-                    docker compose restart nginx || true
+                  if docker compose --profile frontend "${COMPOSE_ARGS[@]}" config --services 2>/dev/null | grep -q '^nginx$'; then
+                    docker compose --profile frontend "${COMPOSE_ARGS[@]}" restart nginx || true
                     sleep 5
                   fi
 
-                  if curl -f http://localhost:85/ > /dev/null 2>&1; then
+                  if curl -f http://localhost:80/ > /dev/null 2>&1; then
                     echo "✅ Frontend accessible through nginx"
                     echo "🎉 Frontend deployment successful!"
                   else
                     echo "⚠️ Frontend is running but not accessible through nginx"
-                    docker compose logs nginx --tail=20 || true
+                    echo "📝 Nginx logs:"
+                    docker compose --profile frontend "${COMPOSE_ARGS[@]}" logs nginx --tail=20 || true
+                    echo "📝 Frontend logs:"
+                    docker compose --profile frontend "${COMPOSE_ARGS[@]}" logs frontend --tail=20 || true
                   fi
                 else
                   echo "❌ Frontend deployment failed or service not healthy"
-                  docker compose "${COMPOSE_ARGS[@]}" ps frontend || true
-                  docker compose "${COMPOSE_ARGS[@]}" logs frontend --tail=50 || true
+                  docker compose --profile frontend "${COMPOSE_ARGS[@]}" ps frontend || true
+                  docker compose --profile frontend "${COMPOSE_ARGS[@]}" logs frontend --tail=50 || true
                   exit 1
                 fi
               else
