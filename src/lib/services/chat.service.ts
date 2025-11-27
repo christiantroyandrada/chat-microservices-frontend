@@ -215,7 +215,7 @@ export const chatService = {
 		}
 
 		// Require end-to-end encryption: initialize Signal and encrypt before sending.
-		const apiBase = env.PUBLIC_API_URL || 'http://localhost:85';
+		const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
 		await initSignal(currentUserId);
 
 		// Fetch recipient prekey bundle (must be present for E2EE)

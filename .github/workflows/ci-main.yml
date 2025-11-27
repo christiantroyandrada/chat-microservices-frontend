@@ -203,18 +203,14 @@ jobs:
 
             cd "$DEPLOY_PATH/chat-microservices"
 
-            # Create/update frontend .env file with production values
-            echo "🔧 Creating frontend .env file with production configuration..."
-            cat > "$DEPLOY_PATH/chat-microservices-frontend/.env" <<'FRONTEND_ENV'
-            # Production API Configuration
-            PUBLIC_API_URL=http://localhost:80
-            PUBLIC_WS_URL=http://localhost:80
+            # Pull latest backend repo to get updated docker-compose.prod.yml (with build args)
+            echo "🔄 Pulling latest backend repo for docker-compose files..."
+            git fetch origin --prune || true
+            git reset --hard origin/main || true
 
-            # App Configuration
-            PUBLIC_APP_NAME="Chat App"
-            PUBLIC_APP_VERSION=0.0.1
-            FRONTEND_ENV
-            echo "✅ Frontend .env created"
+            # Note: Frontend .env file is NOT used for PUBLIC_* vars in SvelteKit
+            # SvelteKit bakes PUBLIC_* env vars at BUILD TIME via Docker build args
+            # The build args are defined in docker-compose.prod.yml
 
             # Check Docker permissions
             echo "🔍 Checking Docker permissions..."
@@ -249,9 +245,10 @@ jobs:
             if [ ${#COMPOSE_ARGS[@]} -gt 0 ]; then
               # Check if 'frontend' service is defined (with profile)
               if docker compose --profile frontend "${COMPOSE_ARGS[@]}" config --services 2>/dev/null | grep -q '^frontend$'; then
-                # Build frontend service with build context from frontend repo
-                echo "🏗️ Building frontend service..."
-                docker compose --profile frontend "${COMPOSE_ARGS[@]}" build frontend || {
+                # Build frontend service with --no-cache to ensure PUBLIC_* URLs are baked in fresh
+                # The build args (PUBLIC_API_URL, PUBLIC_WS_URL) are defined in docker-compose.prod.yml
+                echo "🏗️ Building frontend service with production URLs..."
+                docker compose --profile frontend "${COMPOSE_ARGS[@]}" build --no-cache frontend || {
                   echo "⚠️ Build step failed - checking build context"
                   docker compose --profile frontend "${COMPOSE_ARGS[@]}" config | grep -A 10 "frontend:" || true
                   echo "⚠️ Continuing anyway..."

@@ -25,7 +25,7 @@ class WebSocketService {
 
 	constructor(wsUrl?: string) {
 		// Use PUBLIC_WS_URL from env or default to nginx gateway
-		this.wsUrl = wsUrl || env.PUBLIC_WS_URL || 'http://localhost:85';
+		this.wsUrl = wsUrl || env.PUBLIC_WS_URL || 'http://localhost:80';
 		// Bind utility here rather than at field-initializer time
 		this.safeToString = safeToString;
 	}

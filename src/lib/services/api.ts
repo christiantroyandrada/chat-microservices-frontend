@@ -2,7 +2,7 @@ import { env } from '$env/dynamic/public';
 import type { ApiResponse, ApiError, ResponseShape } from '$lib/types';
 import { safeToString } from '$lib/utils';
 
-const API_URL = env.PUBLIC_API_URL || 'http://localhost:85';
+const API_URL = env.PUBLIC_API_URL || 'http://localhost:80';
 
 class ApiClient {
 	private readonly baseURL: string;

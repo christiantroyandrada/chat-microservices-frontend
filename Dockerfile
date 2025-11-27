@@ -7,8 +7,9 @@ RUN npm install -g pnpm@latest
 WORKDIR /usr/src/app
 
 # Build arguments for SvelteKit public env vars (baked into client JS)
-ARG PUBLIC_API_URL=http://localhost:85
-ARG PUBLIC_WS_URL=http://localhost:85
+# Default to localhost:80 for local dev, override with production URLs in docker-compose.prod.yml
+ARG PUBLIC_API_URL=http://localhost:80
+ARG PUBLIC_WS_URL=http://localhost:80
 
 # Set as environment variables for the build process
 ENV PUBLIC_API_URL=$PUBLIC_API_URL
