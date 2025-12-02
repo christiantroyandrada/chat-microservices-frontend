@@ -126,14 +126,14 @@ Ensure the backend is running before starting the frontend:
 
 ```bash
 # In the chat-microservices directory
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 Verify backend is accessible:
 
 ```bash
-curl http://localhost:85/api/user/health
-# Expected: {"status":"ok"}
+curl http://localhost/health
+# Expected: {"status":"ok","service":"nginx-gateway"}
 ```
 
 ### 4. Start Development Server
@@ -146,6 +146,50 @@ pnpm dev --open
 ```
 
 The application will be available at `http://localhost:5173`.
+
+## Docker Deployment
+
+### Environment-Aware Builds
+
+The Dockerfile supports environment-aware builds that automatically configure API URLs:
+
+| Environment | API URLs | Build Command |
+|-------------|----------|---------------|
+| **Development** | `http://localhost` | `docker build .` (default) |
+| **Production** | `https://chat.ctaprojects.xyz` | `docker build --build-arg BUILD_ENV=production .` |
+
+### Using Docker Compose (with backend)
+
+```bash
+# Local development (HTTP, localhost URLs)
+cd ../chat-microservices
+docker compose --profile frontend up -d --build
+
+# Production (HTTPS, production URLs)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile frontend up -d --build
+```
+
+### Manual Docker Build
+
+```bash
+# Development build (default)
+docker build -t chat-frontend .
+
+# Production build
+docker build --build-arg BUILD_ENV=production -t chat-frontend:prod .
+
+# Custom API URLs
+docker build \
+  --build-arg PUBLIC_API_URL=https://api.example.com \
+  --build-arg PUBLIC_WS_URL=https://ws.example.com \
+  -t chat-frontend:custom .
+```
+
+### Run Container
+
+```bash
+docker run -p 3000:3000 chat-frontend
+```
 
 ## Available Scripts
 
