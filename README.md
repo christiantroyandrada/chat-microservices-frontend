@@ -70,14 +70,14 @@ This collaborative approach combines the **strategic thinking and UX expertise o
 
 This frontend connects to the Chat Microservices backend via nginx reverse proxy.
 
-### API Endpoints (via nginx on port 85)
+### API Endpoints (via nginx on port 80)
 
-- **User/Auth Service**: `http://localhost:85/api/user`
-- **Chat Service**: `http://localhost:85/api/chat`
-- **Notifications Service**: `http://localhost:85/api/notifications`
-- **WebSocket**: `http://localhost:85` (Socket.IO connection)
+- **User/Auth Service**: `http://localhost/api/user`
+- **Chat Service**: `http://localhost/api/chat`
+- **Notifications Service**: `http://localhost/api/notifications`
+- **WebSocket**: `http://localhost` (Socket.IO connection)
 
-**Important**: The frontend uses nginx (port 85) as the API gateway for:
+**Important**: The frontend uses nginx (port 80/443) as the API gateway for:
 
 - Consistent origin handling for CORS
 - httpOnly cookie authentication
@@ -112,13 +112,13 @@ cp .env.example .env
 Default configuration for local development:
 
 ```env
-PUBLIC_API_URL=http://localhost:85
-PUBLIC_WS_URL=http://localhost:85
+PUBLIC_API_URL=http://localhost
+PUBLIC_WS_URL=http://localhost
 PUBLIC_APP_NAME="Chat App"
 PUBLIC_APP_VERSION=0.0.1
 ```
 
-**Note**: The frontend connects to nginx on port 85, which proxies all backend services. This ensures proper CORS handling and httpOnly cookie authentication.
+**Note**: The frontend connects to nginx on port 80 (or 443 for HTTPS), which proxies all backend services. This ensures proper CORS handling and httpOnly cookie authentication.
 
 ### 3. Start Backend Services
 
@@ -290,7 +290,7 @@ docker-compose up -d --build
 Verify backend health:
 
 ```bash
-curl http://localhost:85/api/user/health
+curl http://localhost/api/user/health
 ```
 
 ### 2. Start Frontend Development
@@ -443,7 +443,55 @@ This generates an optimized production build in the `build/` directory.
 pnpm preview
 ```
 
-### Deployment
+## 🚀 CI/CD Deployment
+
+The frontend uses a **secure, image-based CI/CD pipeline** with GitHub Actions:
+
+### Deployment Flow
+```
+Push to master branch
+       ↓
+GitHub Actions: Build & Test
+       ↓
+Build Docker Image
+       ↓
+Push to GHCR (ghcr.io)
+       ↓
+SSH to VPS: Pull & Deploy
+       ↓
+Security Cleanup
+```
+
+### Key Features
+- ✅ **Pre-built Images**: Docker images built in GitHub Actions, not on VPS
+- ✅ **GitHub Container Registry**: Images stored in GHCR
+- ✅ **No source code on server**: Only docker-compose.yml and data volumes
+- ✅ **Secret masking**: All credentials masked in CI logs
+- ✅ **Automatic cleanup**: Source files removed after deployment
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `VPS_HOST` | VPS IP address or domain |
+| `VPS_USER` | SSH user with Docker access |
+| `VPS_SSH_PRIVATE_KEY` | SSH private key |
+| `VPS_PORT` | SSH port |
+| `VPS_SUDO_PASSWORD` | Sudo password for privileged operations |
+
+**Note**: `GITHUB_TOKEN` is automatically provided by GitHub Actions for GHCR authentication - no manual setup required.
+
+### Triggering Deployment
+
+Push to the `master` branch to trigger automatic deployment:
+
+```bash
+git push origin master
+```
+
+For detailed CI/CD setup, see the backend repository's [Deployment Guide](https://github.com/christiantroyandrada/chat-microservices/blob/main/deploy/README.md).
+
+### Other Deployment Options
 
 The app can be deployed to various platforms:
 
@@ -512,8 +560,8 @@ pnpm test:e2e --project=chromium
 1. Verify backend services are running: `docker-compose ps`
 2. Check backend health endpoints:
    ```bash
-   curl http://localhost:85/api/health
-   curl http://localhost:8080/api/health
+   curl http://localhost/api/health
+   curl http://localhost/api/user/health
    ```
 3. Verify `PUBLIC_API_URL` in `.env` matches your backend URL
 4. Check CORS settings in backend services
