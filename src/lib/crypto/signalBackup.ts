@@ -7,7 +7,7 @@
  */
 
 import type { EncryptedKeyBundle } from '$lib/types';
-import { IndexedDBSignalProtocolStore } from './signalStore';
+import type { IndexedDBSignalProtocolStore } from './signalStore';
 import {
 	exportSignalKeys,
 	importSignalKeys,
