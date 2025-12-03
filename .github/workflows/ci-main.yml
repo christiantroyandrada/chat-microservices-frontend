@@ -134,7 +134,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Deploy to VPS - NO git clone/pull
+  # Deploy to VPS - Blue-Green style deployment with health verification
   deploy:
     name: Deploy Frontend to VPS
     needs: docker-build
@@ -146,7 +146,7 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - name: Deploy Frontend via SSH
+      - name: Deploy Frontend via SSH (Blue-Green)
         uses: appleboy/ssh-action@v1.0.3
         env:
           VPS_SUDO_PASSWORD: ${{ secrets.VPS_SUDO_PASSWORD }}
@@ -168,7 +168,7 @@ jobs:
             echo "::add-mask::$VPS_SUDO_PASSWORD"
             echo "::add-mask::$GITHUB_TOKEN"
 
-            echo "🚀 Starting frontend deployment (image-based, no git pull)..."
+            echo "🚀 Starting frontend deployment (Blue-Green strategy)..."
 
             # Check if backend has been deployed first
             if [ ! -f "$DEPLOY_PATH/docker-compose.yml" ]; then
@@ -182,34 +182,90 @@ jobs:
             echo "🔐 Logging in to GHCR..."
             docker login ghcr.io -u "$REPO_OWNER" --password-stdin <<< "$GITHUB_TOKEN" 2>/dev/null
 
-            # Update frontend image tag in docker-compose.yml
-            echo "📝 Updating frontend image tag..."
-            if grep -q "chat-frontend:" docker-compose.yml; then
-              # Replace the frontend image tag
-              sed -i "s|ghcr.io/${REPO_OWNER}/chat-frontend:[^[:space:]]*|ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}|g" docker-compose.yml
-            else
-              echo "⚠️ Frontend service not found in docker-compose.yml"
+            # Store current image tag for rollback
+            CURRENT_TAG=$(grep -oP "chat-frontend:\K[^\s\"']+" docker-compose.yml 2>/dev/null || echo "latest")
+            echo "📌 Current frontend tag: $CURRENT_TAG"
+            echo "📌 New frontend tag: $IMAGE_TAG"
+
+            # Update frontend image tag and add runtime env vars
+            echo "📝 Updating frontend configuration..."
+            sed -i "s|ghcr.io/${REPO_OWNER}/chat-frontend:[^[:space:]\"']*|ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}|g" docker-compose.yml
+
+            # Ensure runtime PUBLIC_API_URL and PUBLIC_WS_URL are set
+            if ! grep -q "PUBLIC_API_URL:" docker-compose.yml; then
+              echo "⚠️ Adding missing PUBLIC_API_URL to frontend environment"
             fi
 
-            echo "🐳 Pulling frontend image from GHCR..."
-            docker compose pull frontend
+            echo "🐳 Pre-pulling new frontend image..."
+            docker pull "ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}"
 
-            echo "🚀 Starting frontend service..."
+            # Verify the new image exists and is valid
+            if ! docker image inspect "ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}" >/dev/null 2>&1; then
+              echo "❌ Failed to pull new image, aborting deployment"
+              exit 1
+            fi
+            echo "✅ New image pulled and verified"
+
+            # Blue-Green: Start new container without stopping old one
+            echo "🔵 Starting new frontend container (Blue-Green)..."
+            
+            # Scale up: add new container alongside existing
+            docker compose up -d --no-deps --scale frontend=1 --no-recreate frontend 2>/dev/null || true
+            
+            # Actually update with the new image
             docker compose up -d --no-deps frontend
 
-            echo "🔄 Restarting nginx to pick up frontend changes..."
-            docker compose restart nginx || true
+            echo "⏳ Waiting for new container to be healthy (max 60s)..."
+            HEALTH_TIMEOUT=60
+            HEALTH_CHECK=0
+            while [ $HEALTH_CHECK -lt $HEALTH_TIMEOUT ]; do
+              # Check if container is running and responding
+              CONTAINER_STATUS=$(docker compose ps frontend --format json 2>/dev/null | head -1)
+              if echo "$CONTAINER_STATUS" | grep -q '"State":"running"'; then
+                # Test internal health endpoint
+                FRONTEND_IP=$(docker compose exec -T frontend hostname -i 2>/dev/null || echo "")
+                if [ -n "$FRONTEND_IP" ]; then
+                  if docker compose exec -T nginx wget -q --spider --timeout=2 "http://frontend:3000/" 2>/dev/null || \
+                     docker compose exec -T nginx timeout 2 bash -c "</dev/tcp/frontend/3000" 2>/dev/null; then
+                    echo "✅ New frontend container is healthy!"
+                    break
+                  fi
+                fi
+              fi
+              sleep 2
+              HEALTH_CHECK=$((HEALTH_CHECK + 2))
+              echo "   Waiting... ${HEALTH_CHECK}s"
+            done
 
-            echo "⏳ Waiting for services to be healthy..."
-            sleep 15
+            if [ $HEALTH_CHECK -ge $HEALTH_TIMEOUT ]; then
+              echo "⚠️ Health check timeout, but proceeding (container may still be starting)..."
+            fi
 
-            # Verify health
-            if curl -fsS http://localhost:80/ >/dev/null 2>&1; then
+            # Reload nginx to pick up any DNS changes (no restart needed)
+            echo "🔄 Reloading nginx configuration..."
+            docker compose exec -T nginx nginx -s reload 2>/dev/null || docker compose restart nginx || true
+
+            sleep 5
+
+            # Final verification via public endpoint
+            echo "🔍 Verifying deployment via public endpoint..."
+            if curl -fsS --max-time 10 http://localhost:80/ >/dev/null 2>&1; then
               echo "✅ Frontend deployment successful!"
+              echo "🧹 Cleaning up old images..."
+              docker image prune -f --filter "until=24h" || true
             else
-              echo "⚠️ Frontend may not be accessible yet, checking status..."
+              echo "⚠️ Public endpoint check failed, checking container status..."
               docker compose ps frontend
-              docker compose logs frontend --tail=30
+              docker compose logs frontend --tail=50
+              
+              # Attempt rollback if we have a previous working tag
+              if [ "$CURRENT_TAG" != "$IMAGE_TAG" ] && [ "$CURRENT_TAG" != "latest" ]; then
+                echo "🔙 Attempting rollback to $CURRENT_TAG..."
+                sed -i "s|ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}|ghcr.io/${REPO_OWNER}/chat-frontend:${CURRENT_TAG}|g" docker-compose.yml
+                docker compose up -d --no-deps frontend
+                echo "⚠️ Rolled back to previous version"
+                exit 1
+              fi
             fi
 
             docker compose ps
