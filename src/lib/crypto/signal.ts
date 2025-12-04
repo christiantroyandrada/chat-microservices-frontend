@@ -35,6 +35,9 @@ export type {
 	PublishPrekeyResponse
 } from './types';
 
+// Re-export error class for handling
+export { SignalDecryptionError } from './signalSession';
+
 // ============================================================================
 // Global State Management
 // ============================================================================

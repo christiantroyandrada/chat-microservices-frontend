@@ -4,7 +4,8 @@ import {
 	initSignal,
 	createSessionWithPrekeyBundle,
 	encryptMessage,
-	decryptMessage
+	decryptMessage,
+	SignalDecryptionError
 } from '$lib/crypto/signal';
 import { getMessageStore } from '$lib/crypto/messageStore';
 import type { Message, SendMessagePayload, ChatConversation, ServerMessage } from '$lib/types';
@@ -181,16 +182,31 @@ export const chatService = {
 
 					return decryptedMsg;
 				} catch (decryptError) {
-					logger.error('[ChatService] Failed to decrypt message:', decryptError);
-					logger.error('[ChatService] Message details:', {
-						messageId: msg._id,
-						senderId: msg.senderId,
-						timestamp: msg.timestamp
-					});
+					// Provide detailed error information for Signal-specific errors
+					let errorContent: string;
+					if (decryptError instanceof SignalDecryptionError) {
+						logger.error('[ChatService] Signal decryption error:', {
+							message: decryptError.message,
+							hasIdentityKey: String(decryptError.hasIdentityKey),
+							hasSignedPreKey: String(decryptError.hasSignedPreKey),
+							hasSession: String(decryptError.hasSession),
+							messageId: msg._id
+						});
+						errorContent = `🔒 ${decryptError.message}`;
+					} else {
+						logger.error('[ChatService] Failed to decrypt message:', decryptError);
+						logger.error('[ChatService] Message details:', {
+							messageId: msg._id,
+							senderId: msg.senderId,
+							timestamp: msg.timestamp
+						});
+						errorContent = '🔒 [Message could not be decrypted - encryption keys may be missing]';
+					}
+
 					// Store with error message
 					const errorMsg = {
 						...msg,
-						content: '[Message could not be decrypted - encryption keys may be missing]'
+						content: errorContent
 					};
 					await messageStore.saveMessage(errorMsg);
 					return errorMsg;

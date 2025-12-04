@@ -283,12 +283,28 @@
 			if (parsed && parsed.__encrypted && $user) {
 				logger.info('[Chat] Message is encrypted, attempting decryption...');
 				const currentUserId = $user._id as string;
-				const { decryptMessage } = await import('$lib/crypto/signal');
+				const { decryptMessage, SignalDecryptionError } = await import('$lib/crypto/signal');
 				const ctObj = { type: parsed.type, body: parsed.body };
-				displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
-				// Update the message object with decrypted content
-				message.content = displayContent;
-				logger.success('[Chat] Message decrypted successfully');
+				try {
+					displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
+					// Update the message object with decrypted content
+					message.content = displayContent;
+					logger.success('[Chat] Message decrypted successfully');
+				} catch (decryptErr) {
+					// Handle Signal-specific decryption errors with better messaging
+					if (decryptErr instanceof SignalDecryptionError) {
+						logger.error('[Chat] Signal decryption error:', {
+							message: decryptErr.message,
+							hasIdentityKey: String(decryptErr.hasIdentityKey),
+							hasSignedPreKey: String(decryptErr.hasSignedPreKey),
+							hasSession: String(decryptErr.hasSession)
+						});
+						_decryptionFailed = true;
+						message.content = `🔒 ${decryptErr.message}`;
+					} else {
+						throw decryptErr;
+					}
+				}
 			}
 		} catch (decryptError) {
 			logger.error('[Chat] Decryption failed:', decryptError);

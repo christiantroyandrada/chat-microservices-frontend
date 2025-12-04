@@ -162,18 +162,77 @@ export async function encryptMessage(
 }
 
 /**
+ * Custom error class for Signal Protocol decryption failures
+ */
+export class SignalDecryptionError extends Error {
+	public readonly senderId: string;
+	public readonly messageType: number;
+	public readonly hasIdentityKey: boolean;
+	public readonly hasSignedPreKey: boolean;
+	public readonly hasSession: boolean;
+	public readonly originalError: Error;
+
+	constructor(
+		message: string,
+		details: {
+			senderId: string;
+			messageType: number;
+			hasIdentityKey: boolean;
+			hasSignedPreKey: boolean;
+			hasSession: boolean;
+			originalError: Error;
+		}
+	) {
+		super(message);
+		this.name = 'SignalDecryptionError';
+		this.senderId = details.senderId;
+		this.messageType = details.messageType;
+		this.hasIdentityKey = details.hasIdentityKey;
+		this.hasSignedPreKey = details.hasSignedPreKey;
+		this.hasSession = details.hasSession;
+		this.originalError = details.originalError;
+	}
+}
+
+/**
  * Decrypt a ciphertext message from a sender using Signal Protocol
  *
  * @param store - IndexedDB store instance
  * @param senderId - User ID of the sender
  * @param ciphertext - Encrypted message (object or string)
  * @returns Decrypted plaintext message
+ * @throws SignalDecryptionError with detailed diagnostics on failure
  */
 export async function decryptMessage(
 	store: IndexedDBSignalProtocolStore,
 	senderId: string,
 	ciphertext: EncryptedMessage | string
 ): Promise<string> {
+	// First, verify we have our own identity keys (required for decryption)
+	const identityKeyPair = await store.getIdentityKeyPair();
+	const signedPreKey = await store.loadSignedPreKey(1); // DEFAULT_SIGNED_PREKEY_ID = 1
+
+	const hasIdentityKey = !!identityKeyPair;
+	const hasSignedPreKey = !!signedPreKey;
+
+	if (!hasIdentityKey || !hasSignedPreKey) {
+		logger.error('[SignalSession] Missing local keys for decryption:', {
+			hasIdentityKey,
+			hasSignedPreKey
+		});
+		throw new SignalDecryptionError(
+			'Cannot decrypt: local encryption keys are missing. You may need to re-establish your session.',
+			{
+				senderId,
+				messageType: typeof ciphertext === 'string' ? 3 : ciphertext.type,
+				hasIdentityKey,
+				hasSignedPreKey,
+				hasSession: false,
+				originalError: new Error('Missing local keys')
+			}
+		);
+	}
+
 	// Determine message type and decode body from base64
 	let ctType: EncryptionResultMessageType;
 	let ctBody: ArrayBuffer;
@@ -192,11 +251,14 @@ export async function decryptMessage(
 		senderId,
 		messageType: ctType,
 		messageTypeName: ctType === 3 ? 'PreKeyWhisperMessage' : 'WhisperMessage',
-		bodyLength: ctBody.byteLength
+		bodyLength: ctBody.byteLength,
+		hasIdentityKey,
+		hasSignedPreKey
 	});
 
 	const address = new SignalProtocolAddress(senderId, DEFAULT_DEVICE_ID);
 	const sessionCipher = new SessionCipher(store.asStorageType(), address);
+	const existingSession = await store.loadSession(address.toString());
 
 	let plaintext: ArrayBuffer;
 
@@ -212,13 +274,42 @@ export async function decryptMessage(
 		}
 		logger.info('[SignalSession] Decryption successful, plaintext length:', plaintext.byteLength);
 	} catch (error) {
+		const err = error instanceof Error ? error : new Error(String(error));
+
 		logger.error('[SignalSession] Decryption error details:', {
-			error,
+			errorName: err.name,
+			errorMessage: err.message,
 			senderId,
 			messageType: ctType,
-			hasSession: !!(await store.loadSession(address.toString()))
+			hasSession: !!existingSession,
+			hasIdentityKey,
+			hasSignedPreKey
 		});
-		throw error;
+
+		// Provide more helpful error messages based on the failure mode
+		let userMessage: string;
+		if (!existingSession && ctType === EncryptionResultMessageType.WhisperMessage) {
+			userMessage =
+				'Cannot decrypt: no session exists with sender. The sender may need to re-send the message.';
+		} else if (err.message.includes('identity') || err.message.includes('Identity')) {
+			userMessage =
+				'Cannot decrypt: encryption keys have changed. This can happen if you logged in on a new device or cleared browser data.';
+		} else if (err.message.includes('prekey') || err.message.includes('PreKey')) {
+			userMessage =
+				'Cannot decrypt: the message was encrypted with an outdated key. Ask the sender to re-send.';
+		} else {
+			userMessage =
+				'Cannot decrypt: encryption error. This may be due to key synchronization issues between devices.';
+		}
+
+		throw new SignalDecryptionError(userMessage, {
+			senderId,
+			messageType: ctType,
+			hasIdentityKey,
+			hasSignedPreKey,
+			hasSession: !!existingSession,
+			originalError: err
+		});
 	}
 
 	// Decode UTF-8 plaintext
