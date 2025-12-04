@@ -434,10 +434,103 @@ All 8 CVE fixes remain intact:
 - ✅ Rate limiting
 - ✅ Audit logging
 
-## API Integration
+## 📋 Scope and Limitations
 
-````
-```
+This project is an **advanced personal/side project** developed using an AI-assisted hybrid approach. While it demonstrates production-level frontend architecture, it's important to understand its scope relative to enterprise messaging applications.
+
+### What This Project Demonstrates
+
+✅ **Modern Frontend Architecture**
+- SvelteKit with TypeScript for type-safe development
+- Reactive state management with Svelte stores
+- Modular Signal Protocol implementation (85% code reduction through decomposition)
+- Component-based architecture with reusable UI elements
+
+✅ **Security Implementation**
+- Client-side E2EE using Signal Protocol (X3DH + Double Ratchet)
+- Zero-knowledge key management (keys never leave client unencrypted)
+- AES-256-GCM encryption with PBKDF2 (100k iterations)
+- Secure cookie-based authentication (httpOnly, secure, sameSite)
+- XSS prevention with input sanitization
+
+✅ **Testing & Quality**
+- 240+ unit tests with 85%+ code coverage
+- E2E testing with Playwright
+- Full TypeScript type safety (zero explicit `any`)
+- ESLint + Prettier code quality enforcement
+
+✅ **DevOps Practices**
+- Docker containerization with distroless images
+- CI/CD with GitHub Actions
+- Environment-aware builds (development vs production)
+
+### Limitations Compared to Production Chat Apps
+
+| Feature | This Project | Messenger/Telegram/Signal |
+|---------|--------------|---------------------------|
+| **Message Types** | Text only | Rich media (images, videos, voice, files) |
+| **UI Features** | Basic chat interface | Message reactions, replies, threads, forwards |
+| **Typing Indicators** | Basic | Real-time with debouncing and optimization |
+| **Read Receipts** | ❌ Not implemented | Double check marks, delivery status |
+| **Message Search** | ❌ Not implemented | Full-text search with filters |
+| **Offline Mode** | ❌ Limited | Service workers, IndexedDB queuing |
+| **Media Preview** | ❌ Not implemented | Image galleries, video players, audio players |
+| **Emoji/Stickers** | Basic emoji | Sticker packs, GIF search, custom emoji |
+| **Profile Features** | Basic | Avatars, status, bio, last seen |
+| **Accessibility** | Basic | Full WCAG 2.1 AA compliance |
+| **Internationalization** | English only | Multi-language support (i18n) |
+| **PWA Features** | ❌ Not implemented | Installable, push notifications, offline |
+
+### Technical Limitations
+
+| Aspect | This Project | Production Apps |
+|--------|--------------|-----------------|
+| **Bundle Size** | Not optimized | Tree-shaking, code splitting, lazy loading |
+| **Performance** | Good for demo | Virtualized lists, Web Workers, WASM |
+| **State Management** | Svelte stores | Complex state machines, optimistic updates |
+| **Error Handling** | Basic | Retry logic, error boundaries, graceful degradation |
+| **Analytics** | ❌ None | Event tracking, crash reporting, A/B testing |
+| **Mobile App** | Responsive web only | Native iOS/Android with shared core |
+
+### Browser Support
+
+- ✅ Modern browsers (Chrome, Firefox, Safari, Edge)
+- ⚠️ Limited testing on mobile browsers
+- ❌ No IE11 support (not planned)
+
+### What Would Be Needed for Production
+
+To match consumer messaging apps like Telegram or Signal:
+
+1. **Media Handling**: Image upload/compression, video streaming, voice messages
+2. **Offline Support**: Service Worker, IndexedDB message queue, background sync
+3. **Performance**: Virtual scrolling for message lists, lazy loading, Web Workers
+4. **Mobile Apps**: React Native or native iOS/Android apps
+5. **Accessibility**: Full WCAG 2.1 compliance, screen reader testing
+6. **Internationalization**: i18n framework with RTL support
+7. **Analytics**: Crash reporting, user behavior analytics, performance monitoring
+
+### Honest Assessment
+
+**This project is:**
+- ✅ An excellent demonstration of modern SvelteKit development
+- ✅ A showcase of complex E2EE implementation in the browser
+- ✅ A solid example of AI-assisted frontend development
+- ✅ Impressive architecture for a personal/side project
+- ✅ Great learning resource for Signal Protocol implementation
+
+**This project is NOT:**
+- ❌ A full-featured messaging client like Telegram or Signal
+- ❌ Optimized for production-scale usage
+- ❌ Suitable as a drop-in replacement for established platforms
+
+### Target Use Cases
+
+This project is ideal for:
+- 📚 Learning E2EE implementation in web applications
+- 🎯 Portfolio demonstration of SvelteKit + TypeScript skills
+- 🧪 Experimenting with Signal Protocol in the browser
+- 🏗️ Foundation for building a specialized chat interface
 
 ## API Integration
 
