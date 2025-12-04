@@ -129,8 +129,8 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/chat-frontend:latest
           build-args: |
             BUILD_ENV=production
-            PUBLIC_API_URL=${{ env.PUBLIC_API_URL || 'https://chat.ctaprojects.xyz' }}
-            PUBLIC_WS_URL=${{ env.PUBLIC_WS_URL || 'https://chat.ctaprojects.xyz' }}
+            PUBLIC_API_URL=https://chat.ctaprojects.xyz
+            PUBLIC_WS_URL=https://chat.ctaprojects.xyz
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -208,10 +208,10 @@ jobs:
 
             # Blue-Green: Start new container without stopping old one
             echo "🔵 Starting new frontend container (Blue-Green)..."
-            
+
             # Scale up: add new container alongside existing
             docker compose up -d --no-deps --scale frontend=1 --no-recreate frontend 2>/dev/null || true
-            
+
             # Actually update with the new image
             docker compose up -d --no-deps frontend
 

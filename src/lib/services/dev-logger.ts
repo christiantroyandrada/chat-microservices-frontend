@@ -104,20 +104,23 @@ class Logger {
 	}
 
 	/**
-	 * Central emit helper to output structured logs: Title, { caller, value }
+	 * Central emit helper to output structured logs with prominent file:line location
 	 */
 	private emit(title: string, msg: unknown, color = 'color:#577D86'): void {
 		if (!this.isUAT) return;
 		const ctx = this.getCallerContext();
-		// Compact mode: only include short location (file:line). Full stack is available on ctx.stack if needed.
 		const caller = ctx.location;
-		// Use a simple styled title and structured object for the value
-		console.log(`%c${title}`, color, { caller, value: msg });
+		// Show file:line prominently in gray after the title, then the value
+		if (caller) {
+			console.log(`%c${title} %c@ ${caller}`, color, 'color:#888;font-style:italic', msg);
+		} else {
+			console.log(`%c${title}`, color, msg);
+		}
 	}
 
 	/**
 	 * Emit a structured log that may be grouped when `msg` is a non-empty object.
-	 * This consolidates the repeated branching used by request/requestor/debug.
+	 * Shows file:line prominently in the group title or inline.
 	 */
 	private emitStructured(
 		titleParam: TitleParam,
@@ -130,16 +133,38 @@ class Logger {
 		const caller = ctx.location;
 		const titleText = Array.isArray(titleParam) ? titleParam[0] : titleParam;
 		const titleExtra = Array.isArray(titleParam) ? titleParam[1] : '';
+		const locationSuffix = caller ? ` %c@ ${caller}` : '';
+		const locationStyle = 'color:#888;font-style:italic';
 
 		if (typeof msg === 'object' && msg !== null && Object.keys(msg).length > 0) {
-			console.groupCollapsed(`%c${icon} ${titleText}`, `color:${color}`);
-			console.log({ caller, value: titleExtra });
+			if (caller) {
+				console.groupCollapsed(
+					`%c${icon} ${titleText}${locationSuffix}`,
+					`color:${color}`,
+					locationStyle
+				);
+			} else {
+				console.groupCollapsed(`%c${icon} ${titleText}`, `color:${color}`);
+			}
+			if (titleExtra) {
+				console.log('%ccontext:', 'color:#888', titleExtra);
+			}
 			Object.keys(msg as Record<string, unknown>).forEach((key) => {
 				console.log(`%c${key}`, 'color:#f5a15a', (msg as Record<string, unknown>)[key]);
 			});
 			console.groupEnd();
 		} else {
-			console.log(`%c${icon} ${titleText}`, `color:${color}`, { caller, value: titleExtra || msg });
+			const value = titleExtra || msg;
+			if (caller) {
+				console.log(
+					`%c${icon} ${titleText}${locationSuffix}`,
+					`color:${color}`,
+					locationStyle,
+					value
+				);
+			} else {
+				console.log(`%c${icon} ${titleText}`, `color:${color}`, value);
+			}
 		}
 	}
 
@@ -183,8 +208,17 @@ class Logger {
 		if (this.isUAT) {
 			const ctx = this.getCallerContext();
 			const caller = ctx.location;
-			console.groupCollapsed(`%c⛤ ${title}`, `color:${color}`);
-			console.log({ caller, value: msg });
+			const locationSuffix = caller ? ` %c@ ${caller}` : '';
+			const locationStyle = 'color:#888;font-style:italic';
+
+			if (caller) {
+				console.groupCollapsed(`%c⛤ ${title}${locationSuffix}`, `color:${color}`, locationStyle);
+			} else {
+				console.groupCollapsed(`%c⛤ ${title}`, `color:${color}`);
+			}
+			if (msg) {
+				console.log('%ccontext:', 'color:#888', msg);
+			}
 
 			Object.keys(msgMap).forEach((key) => {
 				console.log(`%c${key}`, 'color:#f5a15a', msgMap[key]);
