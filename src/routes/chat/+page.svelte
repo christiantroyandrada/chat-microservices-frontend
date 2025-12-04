@@ -56,7 +56,7 @@
 		// Initialize Signal Protocol keys (MUST complete before loading messages)
 		// This ensures encryption keys are ready before attempting to decrypt any messages
 		// NOTE: Keys should already be restored at login time with password-based backup
-		// Here we just initialize the local store - no password needed
+		// Here we check for cached password (from sessionStorage) for page refresh scenarios
 		if (typeof window !== 'undefined' && $user) {
 			const userId = $user._id as string;
 			let deviceId: string = localStorage.getItem('deviceId') ?? '';
@@ -70,10 +70,17 @@
 			const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
 
 			// AWAIT initialization to prevent race conditions with message decryption
-			// Keys are restored at login with password - here we just initialize local store
-			// If no keys exist locally, generate new ones (fallback for edge cases)
+			// Try to use cached password from sessionStorage for key restoration after page refresh
 			try {
-				const success = await initSignalWithRestore(userId, deviceId, apiBase, undefined);
+				const { getCachedEncryptionPassword } = await import('$lib/crypto/keyEncryption');
+				const cachedPassword = getCachedEncryptionPassword();
+
+				const success = await initSignalWithRestore(
+					userId,
+					deviceId,
+					apiBase,
+					cachedPassword || undefined
+				);
 				if (success) {
 					logger.success('[Chat] Signal Protocol initialized successfully');
 				} else {

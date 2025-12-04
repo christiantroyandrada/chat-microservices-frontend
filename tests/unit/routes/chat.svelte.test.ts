@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, waitFor } from '@testing-library/svelte';
 
 // Mocks for many services used by chat page
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
@@ -47,6 +47,9 @@ vi.mock('$lib/stores/notification.store', () => ({
 	}
 }));
 vi.mock('$lib/crypto/signal', () => ({ initSignalWithRestore: vi.fn().mockResolvedValue(true) }));
+vi.mock('$lib/crypto/keyEncryption', () => ({
+	getCachedEncryptionPassword: vi.fn().mockReturnValue(null)
+}));
 
 import ChatPage from '../../../src/routes/chat/+page.svelte';
 
@@ -61,7 +64,10 @@ describe('chat page', () => {
 	it('connects to websocket on mount', async () => {
 		render(ChatPage);
 		const { wsService } = await import('$lib/services/websocket.service');
-		expect(wsService.connect).toHaveBeenCalled();
+		// Wait for the async onMount to complete
+		await waitFor(() => {
+			expect(wsService.connect).toHaveBeenCalled();
+		});
 	});
 
 	it('initializes Signal Protocol on mount', async () => {

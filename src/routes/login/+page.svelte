@@ -43,6 +43,7 @@
 			// This allows keys to be securely backed up to the server and restored on login
 			try {
 				const { initSignalWithRestore } = await import('$lib/crypto/signal');
+				const { cacheEncryptionPassword } = await import('$lib/crypto/keyEncryption');
 				const { env } = await import('$env/dynamic/public');
 
 				const userId = loggedInUser._id;
@@ -61,6 +62,9 @@
 				// The password is used to encrypt keys before storing on server
 				const success = await initSignalWithRestore(userId, deviceId, apiBase, password);
 				if (success) {
+					// Cache the password in sessionStorage for key restoration after page refresh
+					// This is cleared when the browser tab is closed
+					cacheEncryptionPassword(password);
 					logger.success('[Login] Signal Protocol keys restored/initialized with backup');
 				} else {
 					logger.warning('[Login] Signal Protocol initialization completed without backup');
