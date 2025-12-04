@@ -492,28 +492,32 @@ This project is an **advanced personal/side project** developed using an AI-assi
 | **Analytics** | ❌ None | Event tracking, crash reporting, A/B testing |
 | **Mobile App** | Responsive web only | Native iOS/Android with shared core |
 
-### ⚠️ Critical E2EE Limitation: Key Persistence
+### ✅ E2EE Key Backup (Password-Based)
 
-**Important:** The current E2EE implementation stores encryption keys in browser-local IndexedDB **without cross-device synchronization**. This means:
+The E2EE implementation now supports **password-based key backup** for session persistence across devices:
 
-1. **Keys are browser-specific**: Each browser/device generates its own unique encryption keys
-2. **No cloud backup by default**: Keys are NOT automatically backed up to the server (requires user password for encryption)
-3. **Lost keys = lost messages**: If you clear browser data, switch devices, or use incognito mode:
-   - Your encryption keys are lost
-   - You cannot decrypt previous messages
-   - Other users cannot decrypt messages sent to your old keys
+**How it works:**
+1. **On Registration**: Signal Protocol keys are generated, published, AND encrypted with the user's password before being stored on the server
+2. **On Login**: Encrypted keys are fetched from the server and decrypted using the user's password, restoring the exact same keys
+3. **Zero-Knowledge**: The server only stores encrypted blobs - it never sees plaintext keys
 
-**Why this happens:**
-- The Signal Protocol requires matching private keys for decryption
-- Without a user-provided encryption password, keys cannot be securely backed up to the server
-- The system prioritizes security (zero-knowledge) over convenience
+**Security Details:**
+- Keys are encrypted using AES-256-GCM
+- Password is derived using PBKDF2 with 100,000 iterations
+- Each device gets a unique device ID for key isolation
+- Keys are automatically backed up after generation
 
-**Workaround for production:**
-1. Prompt users for an "encryption password" during registration/login
-2. Use this password to encrypt keys before storing them on the server
-3. Restore keys when logging in on a new device
+**Limitations:**
+- **Password Change**: If you change your password, you'll need to re-backup your keys (not yet implemented)
+- **Existing Users**: Users who registered before this feature will have different keys on different devices
+- **Lost Password**: If you forget your password, you cannot recover your keys (by design - zero-knowledge)
 
-**For this demo project:** Each login effectively creates a "new user" from an encryption perspective. Messages from previous sessions may show as "cannot be decrypted."
+**Migration for Existing Users:**
+To sync keys across devices, existing users should:
+1. Log out from all devices
+2. Clear browser data on all devices
+3. Re-register with the same email (or log in once to generate new keys)
+4. All future logins will use the same backed-up keys
 
 ### Browser Support
 
