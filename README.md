@@ -492,6 +492,29 @@ This project is an **advanced personal/side project** developed using an AI-assi
 | **Analytics** | ❌ None | Event tracking, crash reporting, A/B testing |
 | **Mobile App** | Responsive web only | Native iOS/Android with shared core |
 
+### ⚠️ Critical E2EE Limitation: Key Persistence
+
+**Important:** The current E2EE implementation stores encryption keys in browser-local IndexedDB **without cross-device synchronization**. This means:
+
+1. **Keys are browser-specific**: Each browser/device generates its own unique encryption keys
+2. **No cloud backup by default**: Keys are NOT automatically backed up to the server (requires user password for encryption)
+3. **Lost keys = lost messages**: If you clear browser data, switch devices, or use incognito mode:
+   - Your encryption keys are lost
+   - You cannot decrypt previous messages
+   - Other users cannot decrypt messages sent to your old keys
+
+**Why this happens:**
+- The Signal Protocol requires matching private keys for decryption
+- Without a user-provided encryption password, keys cannot be securely backed up to the server
+- The system prioritizes security (zero-knowledge) over convenience
+
+**Workaround for production:**
+1. Prompt users for an "encryption password" during registration/login
+2. Use this password to encrypt keys before storing them on the server
+3. Restore keys when logging in on a new device
+
+**For this demo project:** Each login effectively creates a "new user" from an encryption perspective. Messages from previous sessions may show as "cannot be decrypted."
+
 ### Browser Support
 
 - ✅ Modern browsers (Chrome, Firefox, Safari, Edge)
