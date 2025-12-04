@@ -49,7 +49,7 @@ jobs:
           pnpm run build
 
       - name: Install Playwright browsers
-        run: pnpm exec playwright install
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Run unit tests
         run: pnpm run coverage:unit
@@ -74,6 +74,7 @@ jobs:
       - name: Install and test
         run: |
           pnpm install
+          pnpm exec playwright install --with-deps chromium
           mkdir -p coverage/.tmp
           pnpm run coverage:unit || true
 

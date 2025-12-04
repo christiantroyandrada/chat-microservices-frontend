@@ -4,8 +4,15 @@ import { render } from '@testing-library/svelte';
 // Mock navigation
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 
-// Mock user store to simulate unauthenticated state
+// Mock auth store to simulate unauthenticated state
 vi.mock('$lib/stores/auth.store', () => ({
+	authStore: {
+		subscribe: (fn: (v: unknown) => void) => {
+			fn({ user: null, loading: false, error: null });
+			return () => {};
+		},
+		init: vi.fn().mockResolvedValue(undefined)
+	},
 	user: {
 		subscribe: (fn: (v: unknown) => void) => {
 			fn(null);

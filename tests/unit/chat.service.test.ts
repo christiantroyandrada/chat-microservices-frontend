@@ -34,12 +34,24 @@ vi.mock('$lib/services/dev-logger', () => ({
 	logger: mockLogger
 }));
 
+// Custom error class for Signal decryption errors
+class MockSignalDecryptionError extends Error {
+	constructor(
+		message: string,
+		public details?: unknown
+	) {
+		super(message);
+		this.name = 'SignalDecryptionError';
+	}
+}
+
 // Mock Signal Protocol
 vi.mock('$lib/crypto/signal', () => ({
 	initSignal: vi.fn().mockResolvedValue(undefined),
 	createSessionWithPrekeyBundle: vi.fn().mockResolvedValue(undefined),
 	encryptMessage: vi.fn().mockResolvedValue({ type: 3, body: 'encrypted-content' }),
-	decryptMessage: vi.fn().mockResolvedValue('decrypted-content')
+	decryptMessage: vi.fn().mockResolvedValue('decrypted-content'),
+	SignalDecryptionError: MockSignalDecryptionError
 }));
 
 // Mock message store
