@@ -4,7 +4,8 @@ import {
 	initSignal,
 	createSessionWithPrekeyBundle,
 	encryptMessage,
-	decryptMessage
+	decryptMessage,
+	SignalDecryptionError
 } from '$lib/crypto/signal';
 import { getMessageStore } from '$lib/crypto/messageStore';
 import type { Message, SendMessagePayload, ChatConversation, ServerMessage } from '$lib/types';
@@ -121,7 +122,29 @@ export const chatService = {
 				// Check if already in local storage
 				const existing = await messageStore.getMessage(msg._id);
 				if (existing) {
-					return existing; // Already have it, use cached version
+					// If the cached message is a decryption error, try to decrypt again
+					// This allows recovery when keys are restored after a failed attempt
+					const existingWithMeta = existing as Message & {
+						_decryptionFailed?: boolean;
+						_encryptedContent?: string;
+					};
+					const isDecryptionError =
+						existing.content.startsWith('🔒') || existingWithMeta._decryptionFailed === true;
+
+					if (!isDecryptionError) {
+						return existing; // Already have successfully decrypted version
+					}
+
+					logger.info(
+						'[ChatService] Found cached decryption error, attempting to decrypt again:',
+						msg._id
+					);
+
+					// Use preserved encrypted content if available, otherwise use server response
+					if (existingWithMeta._encryptedContent) {
+						msg = { ...msg, content: existingWithMeta._encryptedContent };
+					}
+					// Fall through to try decryption again with current keys
 				}
 
 				try {
@@ -181,17 +204,35 @@ export const chatService = {
 
 					return decryptedMsg;
 				} catch (decryptError) {
-					logger.error('[ChatService] Failed to decrypt message:', decryptError);
-					logger.error('[ChatService] Message details:', {
-						messageId: msg._id,
-						senderId: msg.senderId,
-						timestamp: msg.timestamp
-					});
-					// Store with error message
+					// Provide detailed error information for Signal-specific errors
+					let errorContent: string;
+					if (decryptError instanceof SignalDecryptionError) {
+						logger.error('[ChatService] Signal decryption error:', {
+							message: decryptError.message,
+							hasIdentityKey: String(decryptError.hasIdentityKey),
+							hasSignedPreKey: String(decryptError.hasSignedPreKey),
+							hasSession: String(decryptError.hasSession),
+							messageId: msg._id
+						});
+						errorContent = `🔒 ${decryptError.message}`;
+					} else {
+						logger.error('[ChatService] Failed to decrypt message:', decryptError);
+						logger.error('[ChatService] Message details:', {
+							messageId: msg._id,
+							senderId: msg.senderId,
+							timestamp: msg.timestamp
+						});
+						errorContent = '🔒 [Message could not be decrypted - encryption keys may be missing]';
+					}
+
+					// Store with error message AND mark for retry
+					// Keep original encrypted content so we can retry decryption later
 					const errorMsg = {
 						...msg,
-						content: '[Message could not be decrypted - encryption keys may be missing]'
-					};
+						content: errorContent,
+						_decryptionFailed: true,
+						_encryptedContent: msg.content // Preserve original for retry
+					} as Message & { _decryptionFailed: boolean; _encryptedContent: string };
 					await messageStore.saveMessage(errorMsg);
 					return errorMsg;
 				}

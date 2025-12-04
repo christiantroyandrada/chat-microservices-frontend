@@ -1,18 +1,24 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { authService } from '$lib/services/auth.service';
 import type { LoginCredentials, RegisterCredentials, ApiError, AuthState } from '$lib/types';
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { logger } from '$lib/services/dev-logger';
 
-const initialState: AuthState = {
+// Extended auth state with initialization tracking
+interface ExtendedAuthState extends AuthState {
+	initialized: boolean;
+}
+
+const initialState: ExtendedAuthState = {
 	user: null,
 	loading: false,
-	error: null
+	error: null,
+	initialized: false
 };
 
 function createAuthStore() {
-	const { subscribe, set, update } = writable<AuthState>(initialState);
+	const { subscribe, set, update } = writable<ExtendedAuthState>(initialState);
 	let initPromise: Promise<void> | null = null;
 
 	return {
@@ -24,6 +30,12 @@ function createAuthStore() {
 		 */
 		async init() {
 			if (!browser) return;
+
+			// If already initialized, don't re-run
+			const currentState = get({ subscribe });
+			if (currentState.initialized) {
+				return;
+			}
 
 			// If already initializing, wait for existing init to complete
 			if (initPromise) {
@@ -45,7 +57,7 @@ function createAuthStore() {
 
 			try {
 				const user = await authService.getCurrentUser();
-				update((state) => ({ ...state, user, loading: false, error: null }));
+				update((state) => ({ ...state, user, loading: false, error: null, initialized: true }));
 			} catch {
 				// Token is invalid, clear it
 				try {
@@ -53,7 +65,7 @@ function createAuthStore() {
 				} catch (e) {
 					logger.warning('Logout during init failed', e);
 				}
-				set(initialState);
+				set({ ...initialState, initialized: true });
 			}
 		},
 
@@ -111,6 +123,15 @@ function createAuthStore() {
 		 * Logout user
 		 */
 		async logout() {
+			// Clear the cached encryption key from session storage
+			if (browser) {
+				try {
+					sessionStorage.removeItem('_ek');
+				} catch {
+					// Ignore if sessionStorage is unavailable
+				}
+			}
+
 			// Ensure backend clears the httpOnly cookie, wait for it before redirecting
 			try {
 				await authService.logout();
@@ -119,7 +140,7 @@ function createAuthStore() {
 				logger.warning('Logout API failed', e);
 			}
 			// Clear local auth state and navigate to login
-			set(initialState);
+			set({ ...initialState, initialized: true });
 			void goto('/login');
 		} /**
 		 * Clear error
@@ -137,3 +158,4 @@ export const user = derived(authStore, ($auth) => $auth.user);
 export const isAuthenticated = derived(authStore, ($auth) => !!$auth.user);
 export const authLoading = derived(authStore, ($auth) => $auth.loading);
 export const authError = derived(authStore, ($auth) => $auth.error);
+export const authInitialized = derived(authStore, ($auth) => $auth.initialized);

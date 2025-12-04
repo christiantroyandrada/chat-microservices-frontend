@@ -56,6 +56,20 @@ vi.mock('$lib/services/chat.service', () => ({
 }));
 
 vi.mock('$lib/crypto/signal', () => ({ initSignalWithRestore: vi.fn().mockResolvedValue(true) }));
+vi.mock('$lib/crypto/keyEncryption', () => ({
+	getCachedEncryptionPassword: vi.fn().mockReturnValue(null)
+}));
+
+// Also need to mock notification store
+vi.mock('$lib/stores/notification.store', () => ({
+	notificationStore: {
+		fetch: vi.fn().mockResolvedValue([]),
+		subscribe: (fn: (value: { notifications: unknown[]; unreadCount: number }) => void) => {
+			fn({ notifications: [], unreadCount: 0 });
+			return () => {};
+		}
+	}
+}));
 
 import ChatPage from '../../../src/routes/chat/+page.svelte';
 
@@ -87,8 +101,10 @@ describe('Chat route behaviors', () => {
 
 		render(ChatPage);
 		const toast = await import('$lib/stores/toast.store');
-		// toastStore.error should be called with message
-		expect(toast.toastStore.error).toHaveBeenCalledWith('Failed to initialize encryption');
+		// toastStore.error should be called with message - wait for async onMount
+		await waitFor(() => {
+			expect(toast.toastStore.error).toHaveBeenCalledWith('Failed to initialize encryption');
+		});
 	});
 
 	it('shows toast error when getConversations fails', async () => {

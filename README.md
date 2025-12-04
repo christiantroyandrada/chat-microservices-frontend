@@ -492,6 +492,33 @@ This project is an **advanced personal/side project** developed using an AI-assi
 | **Analytics** | ❌ None | Event tracking, crash reporting, A/B testing |
 | **Mobile App** | Responsive web only | Native iOS/Android with shared core |
 
+### ✅ E2EE Key Backup (Password-Based)
+
+The E2EE implementation now supports **password-based key backup** for session persistence across devices:
+
+**How it works:**
+1. **On Registration**: Signal Protocol keys are generated, published, AND encrypted with the user's password before being stored on the server
+2. **On Login**: Encrypted keys are fetched from the server and decrypted using the user's password, restoring the exact same keys
+3. **Zero-Knowledge**: The server only stores encrypted blobs - it never sees plaintext keys
+
+**Security Details:**
+- Keys are encrypted using AES-256-GCM
+- Password is derived using PBKDF2 with 100,000 iterations
+- Each device gets a unique device ID for key isolation
+- Keys are automatically backed up after generation
+
+**Limitations:**
+- **Password Change**: If you change your password, you'll need to re-backup your keys (not yet implemented)
+- **Existing Users**: Users who registered before this feature will have different keys on different devices
+- **Lost Password**: If you forget your password, you cannot recover your keys (by design - zero-knowledge)
+
+**Migration for Existing Users:**
+To sync keys across devices, existing users should:
+1. Log out from all devices
+2. Clear browser data on all devices
+3. Re-register with the same email (or log in once to generate new keys)
+4. All future logins will use the same backed-up keys
+
 ### Browser Support
 
 - ✅ Modern browsers (Chrome, Firefox, Safari, Edge)

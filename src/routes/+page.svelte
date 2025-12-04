@@ -1,19 +1,18 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { user } from '$lib/stores/auth.store';
+	import { authStore, user } from '$lib/stores/auth.store';
 
-	onMount(() => {
-		// Redirect based on auth status
-		const unsubscribe = user.subscribe(($user) => {
-			if ($user) {
-				void goto('/chat');
-			} else {
-				void goto('/login');
-			}
-		});
+	onMount(async () => {
+		// First, ensure auth state is initialized from cookie
+		await authStore.init();
 
-		return unsubscribe;
+		// Then redirect based on auth status
+		if ($user) {
+			void goto('/chat');
+		} else {
+			void goto('/login');
+		}
 	});
 </script>
 

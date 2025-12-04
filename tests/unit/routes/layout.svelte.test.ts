@@ -30,15 +30,23 @@ vi.mock('$app/state', () => ({
 	}
 }));
 
-vi.mock('$lib/stores/auth.store', () => ({
-	authStore: {
-		init: vi.fn().mockResolvedValue(undefined),
-		subscribe: vi.fn((callback) => {
-			callback(null);
-			return () => {};
-		})
-	}
-}));
+vi.mock('$lib/stores/auth.store', () => {
+	return {
+		authStore: {
+			init: vi.fn().mockResolvedValue(undefined),
+			subscribe: vi.fn((callback) => {
+				callback({ user: null, loading: false, error: null, initialized: true });
+				return () => {};
+			})
+		},
+		authInitialized: {
+			subscribe: (fn: (value: boolean) => void) => {
+				fn(true); // Return initialized as true
+				return () => {};
+			}
+		}
+	};
+});
 
 vi.mock('$lib/components/Toast.svelte', () => {
 	return {

@@ -55,6 +55,8 @@
 
 		// Initialize Signal Protocol keys (MUST complete before loading messages)
 		// This ensures encryption keys are ready before attempting to decrypt any messages
+		// NOTE: Keys should already be restored at login time with password-based backup
+		// Here we check for cached password (from sessionStorage) for page refresh scenarios
 		if (typeof window !== 'undefined' && $user) {
 			const userId = $user._id as string;
 			let deviceId: string = localStorage.getItem('deviceId') ?? '';
@@ -68,16 +70,22 @@
 			const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
 
 			// AWAIT initialization to prevent race conditions with message decryption
-			// NOTE: No encryption password provided - keys will NOT be backed up to server
-			// For production: prompt user for encryption password to enable secure cloud backup
+			// Try to use cached password from sessionStorage for key restoration after page refresh
 			try {
-				const success = await initSignalWithRestore(userId, deviceId, apiBase, undefined);
+				const { getCachedEncryptionPassword } = await import('$lib/crypto/keyEncryption');
+				const cachedPassword = getCachedEncryptionPassword();
+
+				const success = await initSignalWithRestore(
+					userId,
+					deviceId,
+					apiBase,
+					cachedPassword || undefined
+				);
 				if (success) {
 					logger.success('[Chat] Signal Protocol initialized successfully');
-					logger.info('[Chat] Key backup disabled - no encryption password provided');
 				} else {
-					logger.warning('[Chat] Signal Protocol initialization failed');
-					toastStore.warning('Encryption setup incomplete. Messages may not be encrypted.');
+					logger.warning('[Chat] Signal Protocol initialization failed - may need to re-login');
+					toastStore.warning('Encryption keys not found. Please log out and log in again.');
 				}
 			} catch (err) {
 				logger.error('[Chat] Signal Protocol initialization error:', err);
@@ -283,12 +291,28 @@
 			if (parsed && parsed.__encrypted && $user) {
 				logger.info('[Chat] Message is encrypted, attempting decryption...');
 				const currentUserId = $user._id as string;
-				const { decryptMessage } = await import('$lib/crypto/signal');
+				const { decryptMessage, SignalDecryptionError } = await import('$lib/crypto/signal');
 				const ctObj = { type: parsed.type, body: parsed.body };
-				displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
-				// Update the message object with decrypted content
-				message.content = displayContent;
-				logger.success('[Chat] Message decrypted successfully');
+				try {
+					displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
+					// Update the message object with decrypted content
+					message.content = displayContent;
+					logger.success('[Chat] Message decrypted successfully');
+				} catch (decryptErr) {
+					// Handle Signal-specific decryption errors with better messaging
+					if (decryptErr instanceof SignalDecryptionError) {
+						logger.error('[Chat] Signal decryption error:', {
+							message: decryptErr.message,
+							hasIdentityKey: String(decryptErr.hasIdentityKey),
+							hasSignedPreKey: String(decryptErr.hasSignedPreKey),
+							hasSession: String(decryptErr.hasSession)
+						});
+						_decryptionFailed = true;
+						message.content = `🔒 ${decryptErr.message}`;
+					} else {
+						throw decryptErr;
+					}
+				}
 			}
 		} catch (decryptError) {
 			logger.error('[Chat] Decryption failed:', decryptError);

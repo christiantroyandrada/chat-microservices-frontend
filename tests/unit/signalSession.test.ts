@@ -134,7 +134,15 @@ describe('signalSession', () => {
 	it('decryptMessage handles string (legacy) and object forms', async () => {
 		const fakeStore = {
 			asStorageType: () => ({}),
-			loadSession: async () => undefined
+			loadSession: async () => undefined,
+			getIdentityKeyPair: async () => ({
+				pubKey: new ArrayBuffer(32),
+				privKey: new ArrayBuffer(32)
+			}),
+			loadSignedPreKey: async () => ({
+				keyId: 1,
+				keyPair: { pubKey: new ArrayBuffer(32), privKey: new ArrayBuffer(32) }
+			})
 		} as unknown as Parameters<typeof decryptMessage>[0];
 
 		// For PreKey (string) path
@@ -280,7 +288,15 @@ describe('signalSession', () => {
 	it('decryptMessage handles decryption error and logs details', async () => {
 		const fakeStore = {
 			asStorageType: () => ({}),
-			loadSession: async () => null
+			loadSession: async () => null,
+			getIdentityKeyPair: async () => ({
+				pubKey: new ArrayBuffer(32),
+				privKey: new ArrayBuffer(32)
+			}),
+			loadSignedPreKey: async () => ({
+				keyId: 1,
+				keyPair: { pubKey: new ArrayBuffer(32), privKey: new ArrayBuffer(32) }
+			})
 		} as unknown as Parameters<typeof decryptMessage>[0];
 
 		const libc = await import('@privacyresearch/libsignal-protocol-typescript');
@@ -291,6 +307,7 @@ describe('signalSession', () => {
 		).decryptPreKeyWhisperMessage = vi.fn().mockRejectedValue(new Error('Decryption failed'));
 
 		const encStr = 'QUJD';
-		await expect(decryptMessage(fakeStore, 'sender', encStr)).rejects.toThrow('Decryption failed');
+		// SignalDecryptionError wraps the original error with a user-friendly message
+		await expect(decryptMessage(fakeStore, 'sender', encStr)).rejects.toThrow('Cannot decrypt');
 	});
 });
