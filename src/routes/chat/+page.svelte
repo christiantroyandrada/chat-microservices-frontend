@@ -55,6 +55,8 @@
 
 		// Initialize Signal Protocol keys (MUST complete before loading messages)
 		// This ensures encryption keys are ready before attempting to decrypt any messages
+		// NOTE: Keys should already be restored at login time with password-based backup
+		// Here we just initialize the local store - no password needed
 		if (typeof window !== 'undefined' && $user) {
 			const userId = $user._id as string;
 			let deviceId: string = localStorage.getItem('deviceId') ?? '';
@@ -68,16 +70,15 @@
 			const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
 
 			// AWAIT initialization to prevent race conditions with message decryption
-			// NOTE: No encryption password provided - keys will NOT be backed up to server
-			// For production: prompt user for encryption password to enable secure cloud backup
+			// Keys are restored at login with password - here we just initialize local store
+			// If no keys exist locally, generate new ones (fallback for edge cases)
 			try {
 				const success = await initSignalWithRestore(userId, deviceId, apiBase, undefined);
 				if (success) {
 					logger.success('[Chat] Signal Protocol initialized successfully');
-					logger.info('[Chat] Key backup disabled - no encryption password provided');
 				} else {
-					logger.warning('[Chat] Signal Protocol initialization failed');
-					toastStore.warning('Encryption setup incomplete. Messages may not be encrypted.');
+					logger.warning('[Chat] Signal Protocol initialization failed - may need to re-login');
+					toastStore.warning('Encryption keys not found. Please log out and log in again.');
 				}
 			} catch (err) {
 				logger.error('[Chat] Signal Protocol initialization error:', err);

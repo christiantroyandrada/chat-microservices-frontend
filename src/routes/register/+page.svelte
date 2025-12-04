@@ -96,11 +96,13 @@
 		try {
 			const createdUser = await authStore.register({ username, email, password });
 
-			// SECURITY FIX: Initialize Signal Protocol keys immediately after registration
-			// This ensures prekey bundles are published and available for other users
-			// Without this, messages sent before first login cannot be decrypted
+			// E2EE KEY GENERATION & BACKUP: Generate Signal keys and backup encrypted with user's password
+			// This ensures:
+			// 1. Prekey bundles are available for other users immediately
+			// 2. Keys are backed up to server encrypted with user's password
+			// 3. Keys can be restored on future logins/devices
 			try {
-				const { generateAndPublishIdentity } = await import('$lib/crypto/signal');
+				const { initSignalWithRestore } = await import('$lib/crypto/signal');
 				const { env } = await import('$env/dynamic/public');
 
 				const userId = createdUser._id;
@@ -115,9 +117,14 @@
 
 				const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
 
-				// Initialize and publish prekeys immediately
-				await generateAndPublishIdentity(apiBase, userId, deviceId);
-				logger.success('[Registration] Signal Protocol keys published successfully');
+				// Initialize Signal with password-based backup
+				// This generates keys, publishes prekeys, AND backs up encrypted keys to server
+				const success = await initSignalWithRestore(userId, deviceId, apiBase, password);
+				if (success) {
+					logger.success('[Registration] Signal Protocol keys generated and backed up');
+				} else {
+					logger.warning('[Registration] Signal Protocol keys generated without backup');
+				}
 			} catch (signalError) {
 				logger.error('[Registration] Failed to initialize Signal keys:', signalError);
 				// Don't block registration - keys will be generated on first chat login

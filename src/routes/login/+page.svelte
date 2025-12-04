@@ -39,8 +39,8 @@
 		try {
 			const loggedInUser = await authStore.login({ email, password });
 
-			// SECURITY FIX: Ensure Signal Protocol keys are published immediately
-			// This makes prekey bundles available for incoming messages even before navigating to chat
+			// E2EE KEY RESTORATION: Use the user's password as the encryption key for Signal Protocol keys
+			// This allows keys to be securely backed up to the server and restored on login
 			try {
 				const { initSignalWithRestore } = await import('$lib/crypto/signal');
 				const { env } = await import('$env/dynamic/public');
@@ -57,9 +57,14 @@
 
 				const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
 
-				// Initialize keys if needed and publish prekeys
-				await initSignalWithRestore(userId, deviceId, apiBase, undefined);
-				logger.success('[Login] Signal Protocol keys ensured and published');
+				// Initialize keys with password-based encryption for backup/restore
+				// The password is used to encrypt keys before storing on server
+				const success = await initSignalWithRestore(userId, deviceId, apiBase, password);
+				if (success) {
+					logger.success('[Login] Signal Protocol keys restored/initialized with backup');
+				} else {
+					logger.warning('[Login] Signal Protocol initialization completed without backup');
+				}
 			} catch (signalError) {
 				logger.error('[Login] Failed to initialize Signal keys:', signalError);
 				// Don't block login - keys will be generated on chat page
