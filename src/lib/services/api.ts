@@ -75,8 +75,14 @@ class ApiClient {
 	};
 	// Token storage is deprecated — JWT is sent in an httpOnly cookie.
 
+	// Default timeout for requests (10 seconds)
+	private readonly defaultTimeout = 10000;
+
+	// Track timeouts to distinguish from user cancellation
+	private readonly timeoutIds = new Map<AbortController, boolean>();
+
 	/**
-	 * Make an HTTP request with automatic cancellation support
+	 * Make an HTTP request with automatic cancellation support and timeout
 	 */
 	async request<T>(
 		endpoint: string,
@@ -85,6 +91,12 @@ class ApiClient {
 	): Promise<ApiResponse<T>> {
 		// Create abort controller for this request
 		const abortController = new AbortController();
+
+		// Set up timeout and track that it's a timeout abort
+		const timeoutId = setTimeout(() => {
+			this.timeoutIds.set(abortController, true);
+			abortController.abort();
+		}, this.defaultTimeout);
 
 		// Track for cancellation if caller provided an id
 		if (requestId) {
@@ -130,6 +142,12 @@ class ApiClient {
 
 			if (error instanceof Error && error.name === 'AbortError') {
 				const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
+				// Check if this was a timeout vs user cancellation
+				const wasTimeout = this.timeoutIds.get(abortController);
+				this.timeoutIds.delete(abortController);
+				if (wasTimeout) {
+					throw new ErrClass('Request timed out. Please try again.', 0);
+				}
 				throw new ErrClass('Request cancelled', 0);
 			}
 
@@ -139,6 +157,10 @@ class ApiClient {
 
 			const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
 			throw new ErrClass('Network error. Please check your connection.', 0);
+		} finally {
+			// Always clear the timeout and cleanup
+			clearTimeout(timeoutId);
+			this.timeoutIds.delete(abortController);
 		}
 	}
 
