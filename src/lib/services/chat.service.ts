@@ -122,7 +122,29 @@ export const chatService = {
 				// Check if already in local storage
 				const existing = await messageStore.getMessage(msg._id);
 				if (existing) {
-					return existing; // Already have it, use cached version
+					// If the cached message is a decryption error, try to decrypt again
+					// This allows recovery when keys are restored after a failed attempt
+					const existingWithMeta = existing as Message & {
+						_decryptionFailed?: boolean;
+						_encryptedContent?: string;
+					};
+					const isDecryptionError =
+						existing.content.startsWith('🔒') || existingWithMeta._decryptionFailed === true;
+
+					if (!isDecryptionError) {
+						return existing; // Already have successfully decrypted version
+					}
+
+					logger.info(
+						'[ChatService] Found cached decryption error, attempting to decrypt again:',
+						msg._id
+					);
+
+					// Use preserved encrypted content if available, otherwise use server response
+					if (existingWithMeta._encryptedContent) {
+						msg = { ...msg, content: existingWithMeta._encryptedContent };
+					}
+					// Fall through to try decryption again with current keys
 				}
 
 				try {
@@ -203,11 +225,14 @@ export const chatService = {
 						errorContent = '🔒 [Message could not be decrypted - encryption keys may be missing]';
 					}
 
-					// Store with error message
+					// Store with error message AND mark for retry
+					// Keep original encrypted content so we can retry decryption later
 					const errorMsg = {
 						...msg,
-						content: errorContent
-					};
+						content: errorContent,
+						_decryptionFailed: true,
+						_encryptedContent: msg.content // Preserve original for retry
+					} as Message & { _decryptionFailed: boolean; _encryptedContent: string };
 					await messageStore.saveMessage(errorMsg);
 					return errorMsg;
 				}
