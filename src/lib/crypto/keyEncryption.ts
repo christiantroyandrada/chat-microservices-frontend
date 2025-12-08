@@ -228,11 +228,13 @@ export async function decryptKeySet(
 /**
  * Validate password strength
  *
- * Minimum requirements:
- * - At least 12 characters
+ * Minimum requirements (aligned with backend authValidation.ts):
+ * - At least 8 characters
  * - Contains uppercase and lowercase
  * - Contains numbers
- * - Contains special characters
+ * - Contains special characters (@$!%*?&)
+ *
+ * NOTE: This aligns with user-service/src/middleware/validation/authValidation.ts
  */
 export function validatePasswordStrength(password: string): {
 	valid: boolean;
@@ -240,8 +242,8 @@ export function validatePasswordStrength(password: string): {
 } {
 	const errors: string[] = [];
 
-	if (password.length < 12) {
-		errors.push('Password must be at least 12 characters long');
+	if (password.length < 8) {
+		errors.push('Password must be at least 8 characters long');
 	}
 
 	if (!/[a-z]/.test(password)) {
@@ -256,8 +258,8 @@ export function validatePasswordStrength(password: string): {
 		errors.push('Password must contain numbers');
 	}
 
-	if (!/[^a-zA-Z0-9]/.test(password)) {
-		errors.push('Password must contain special characters');
+	if (!/[@$!%*?&]/.test(password)) {
+		errors.push('Password must contain special characters (@$!%*?&)');
 	}
 
 	return {

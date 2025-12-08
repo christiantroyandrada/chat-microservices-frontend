@@ -59,12 +59,14 @@ function createAuthStore() {
 				const user = await authService.getCurrentUser();
 				update((state) => ({ ...state, user, loading: false, error: null, initialized: true }));
 			} catch {
-				// Token is invalid, clear it
+				// Token is invalid or network error, try logout but don't wait forever
 				try {
-					await authService.logout();
+					// Fire and forget logout - don't block initialization
+					authService.logout().catch((e) => logger.warning('Logout during init failed', e));
 				} catch (e) {
 					logger.warning('Logout during init failed', e);
 				}
+				// Always set initialized to true so the app can proceed
 				set({ ...initialState, initialized: true });
 			}
 		},
