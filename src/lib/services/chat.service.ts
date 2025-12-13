@@ -17,6 +17,14 @@ import { logger } from './dev-logger';
  */
 
 /**
+ * Session-scoped prekey bundle cache.
+ * Once a Signal session is established with a recipient, we don't need to
+ * re-fetch their prekey bundle for subsequent messages in the same browser session.
+ * Key: recipientUserId, Value: prekey bundle data
+ */
+const prekeyBundleCache = new Map<string, { userId: string; deviceId: string; bundle: unknown }>();
+
+/**
  * Helper to normalize server message shape -> frontend Message
  * Backend uses `message` field, frontend uses `content` field
  */
@@ -259,22 +267,30 @@ export const chatService = {
 		const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
 		await initSignal(currentUserId);
 
-		// Fetch recipient prekey bundle (must be present for E2EE)
-		// Backend returns: { status: 200, data: { userId, deviceId, bundle } }
-		let prekeyBundleData: { userId: string; deviceId: string; bundle: unknown } | null = null;
-		try {
-			const resp = await fetch(
-				`${apiBase}/api/user/prekeys/${encodeURIComponent(payload.receiverId)}`,
-				{ credentials: 'include' }
-			);
-			if (resp.ok) {
-				const json = await resp.json();
-				// Extract the nested data object containing userId, deviceId, and bundle
-				prekeyBundleData = json?.data || json;
+		// Check prekey bundle cache first (avoids redundant HTTP calls per message)
+		let prekeyBundleData = prekeyBundleCache.get(payload.receiverId) ?? null;
+
+		if (!prekeyBundleData) {
+			// Fetch recipient prekey bundle (must be present for E2EE)
+			// Backend returns: { status: 200, data: { userId, deviceId, bundle } }
+			try {
+				const resp = await fetch(
+					`${apiBase}/api/user/prekeys/${encodeURIComponent(payload.receiverId)}`,
+					{ credentials: 'include' }
+				);
+				if (resp.ok) {
+					const json = await resp.json();
+					// Extract the nested data object containing userId, deviceId, and bundle
+					prekeyBundleData = json?.data || json;
+					// Cache for this session
+					if (prekeyBundleData) {
+						prekeyBundleCache.set(payload.receiverId, prekeyBundleData);
+					}
+				}
+			} catch {
+				// treat as missing prekey
+				prekeyBundleData = null;
 			}
-		} catch {
-			// treat as missing prekey
-			prekeyBundleData = null;
 		}
 
 		if (!prekeyBundleData) {
