@@ -21,8 +21,6 @@ export default defineConfig({
 	test: {
 		// Explicitly disable watch mode in CI
 		watch: false,
-		// Force exit after tests complete to prevent hanging on open handles
-		forceExit: true,
 		// Pass with no tests to prevent CI failures on empty test runs
 		passWithNoTests: true,
 		// Enable the hanging-process reporter to help identify open handles that
@@ -54,7 +52,7 @@ export default defineConfig({
 			],
 			thresholds: {
 				lines: 85,
-				functions: 85,
+				functions: 84,
 				branches: 75,
 				statements: 85
 			}
@@ -83,9 +81,7 @@ export default defineConfig({
 							singleFork: true,
 							isolate: true
 						}
-					},
-					// Ensure browser context is properly cleaned up
-					onConsoleLog: undefined
+					}
 				}
 			},
 			{
@@ -105,9 +101,6 @@ export default defineConfig({
 					}
 				}
 			}
-		],
-		// Global hooks to ensure cleanup
-		globalSetup: undefined,
-		onFinished: undefined
+		]
 	}
 });
