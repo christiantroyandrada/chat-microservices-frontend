@@ -64,7 +64,7 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@vitest/browser@3.2.4)(vitest@3.2.4)
       cookie:
-        specifier: ^0.7.2
+        specifier: ^0.7.0
         version: 0.7.2
       eslint:
         specifier: ^9.39.2
