@@ -12,7 +12,22 @@ const config = {
 		adapter: adapter({
 			out: 'build',
 			precompress: true
-		})
+		}),
+		// CSP with nonces — SvelteKit auto-adds nonces to its inline scripts/styles
+		csp: {
+			mode: 'auto',
+			directives: {
+				'default-src': ['self'],
+				'script-src': ['self'],
+				'style-src': ['self', 'unsafe-inline'],
+				'connect-src': ['self', 'ws:', 'wss:'],
+				'img-src': ['self', 'data:'],
+				'font-src': ['self'],
+				'frame-ancestors': ['none'],
+				'base-uri': ['self'],
+				'form-action': ['self']
+			}
+		}
 	}
 };
 
