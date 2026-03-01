@@ -21,7 +21,7 @@ const config = {
 				'script-src': ['self'],
 				'style-src': ['self', 'unsafe-inline'],
 				'connect-src': ['self', 'ws:', 'wss:'],
-				'img-src': ['self', 'data:'],
+				'img-src': ['self', 'data:', 'https://res.cloudinary.com'],
 				'font-src': ['self'],
 				'frame-ancestors': ['none'],
 				'base-uri': ['self'],
