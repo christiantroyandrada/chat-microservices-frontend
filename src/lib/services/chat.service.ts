@@ -27,7 +27,10 @@ const PREKEY_CACHE_MAX = 100;
 const prekeyBundleCache = new Map<string, { userId: string; deviceId: string; bundle: unknown }>();
 const prekeyAccessOrder: string[] = []; // Simple LRU tracking
 
-function prekeyBundleCacheSet(key: string, value: { userId: string; deviceId: string; bundle: unknown }) {
+function prekeyBundleCacheSet(
+	key: string,
+	value: { userId: string; deviceId: string; bundle: unknown }
+) {
 	// Evict oldest entry if at capacity
 	if (prekeyBundleCache.size >= PREKEY_CACHE_MAX && !prekeyBundleCache.has(key)) {
 		const oldest = prekeyAccessOrder.shift();
@@ -150,124 +153,124 @@ export const chatService = {
 			const batch = normalized.slice(i, i + BATCH_SIZE);
 			const batchResults = await Promise.all(
 				batch.map(async (msg) => {
-				// Check if already in local storage
-				const existing = await messageStore.getMessage(msg._id);
-				if (existing) {
-					// If the cached message is a decryption error, try to decrypt again
-					// This allows recovery when keys are restored after a failed attempt
-					const existingWithMeta = existing as Message & {
-						_decryptionFailed?: boolean;
-						_encryptedContent?: string;
-					};
-					const isDecryptionError =
-						existing.content.startsWith('🔒') || existingWithMeta._decryptionFailed === true;
-
-					if (!isDecryptionError) {
-						return existing; // Already have successfully decrypted version
-					}
-
-					logger.info(
-						'[ChatService] Found cached decryption error, attempting to decrypt again:',
-						msg._id
-					);
-
-					// Use preserved encrypted content if available, otherwise use server response
-					if (existingWithMeta._encryptedContent) {
-						msg = { ...msg, content: existingWithMeta._encryptedContent };
-					}
-					// Fall through to try decryption again with current keys
-				}
-
-				try {
-					// Check if content is an encrypted envelope
-					let parsed: EncryptedEnvelope | null = null;
-					try {
-						parsed = JSON.parse(msg.content) as EncryptedEnvelope;
-					} catch {
-						// Not JSON, store as-is
-						await messageStore.saveMessage(msg);
-						return msg;
-					}
-
-					if (!parsed?.__encrypted) {
-						// Not encrypted, store as-is
-						await messageStore.saveMessage(msg);
-						return msg;
-					}
-
-					// Additional check: if body doesn't look like base64, skip it
-					if (!/^[A-Za-z0-9+/]+=*$/.test(parsed.body)) {
-						logger.warning('[ChatService] Message body is not valid base64, skipping decryption');
-						await messageStore.saveMessage(msg);
-						return msg;
-					}
-
-					// Check if this is a message sent BY the current user
-					if (msg.senderId === currentUserId) {
-						// Cannot decrypt our own sent messages (encrypted with recipient's key)
-						// This shouldn't happen if we're caching sent messages properly
-						logger.warning('[ChatService] Found own sent message from server - cannot decrypt');
-						const placeholderMsg = {
-							...msg,
-							content: '🔒 [Your encrypted message]'
+					// Check if already in local storage
+					const existing = await messageStore.getMessage(msg._id);
+					if (existing) {
+						// If the cached message is a decryption error, try to decrypt again
+						// This allows recovery when keys are restored after a failed attempt
+						const existingWithMeta = existing as Message & {
+							_decryptionFailed?: boolean;
+							_encryptedContent?: string;
 						};
-						await messageStore.saveMessage(placeholderMsg);
-						return placeholderMsg;
+						const isDecryptionError =
+							existing.content.startsWith('🔒') || existingWithMeta._decryptionFailed === true;
+
+						if (!isDecryptionError) {
+							return existing; // Already have successfully decrypted version
+						}
+
+						logger.info(
+							'[ChatService] Found cached decryption error, attempting to decrypt again:',
+							msg._id
+						);
+
+						// Use preserved encrypted content if available, otherwise use server response
+						if (existingWithMeta._encryptedContent) {
+							msg = { ...msg, content: existingWithMeta._encryptedContent };
+						}
+						// Fall through to try decryption again with current keys
 					}
 
-					logger.info('[ChatService] Decrypting message from sender:', {
-						sender_id: msg.senderId,
-						type: String(parsed.type)
-					});
+					try {
+						// Check if content is an encrypted envelope
+						let parsed: EncryptedEnvelope | null = null;
+						try {
+							parsed = JSON.parse(msg.content) as EncryptedEnvelope;
+						} catch {
+							// Not JSON, store as-is
+							await messageStore.saveMessage(msg);
+							return msg;
+						}
 
-					// Decrypt the message using the sender's ID
-					const ctObj = { type: parsed.type, body: parsed.body };
-					const plaintext = await decryptMessage(msg.senderId, ctObj, currentUserId);
+						if (!parsed?.__encrypted) {
+							// Not encrypted, store as-is
+							await messageStore.saveMessage(msg);
+							return msg;
+						}
 
-					logger.info('[ChatService] Successfully decrypted, storing in local DB');
+						// Additional check: if body doesn't look like base64, skip it
+						if (!/^[A-Za-z0-9+/]+=*$/.test(parsed.body)) {
+							logger.warning('[ChatService] Message body is not valid base64, skipping decryption');
+							await messageStore.saveMessage(msg);
+							return msg;
+						}
 
-					// Store decrypted message locally (plaintext)
-					const decryptedMsg = {
-						...msg,
-						content: plaintext
-					};
-					await messageStore.saveMessage(decryptedMsg);
+						// Check if this is a message sent BY the current user
+						if (msg.senderId === currentUserId) {
+							// Cannot decrypt our own sent messages (encrypted with recipient's key)
+							// This shouldn't happen if we're caching sent messages properly
+							logger.warning('[ChatService] Found own sent message from server - cannot decrypt');
+							const placeholderMsg = {
+								...msg,
+								content: '🔒 [Your encrypted message]'
+							};
+							await messageStore.saveMessage(placeholderMsg);
+							return placeholderMsg;
+						}
 
-					return decryptedMsg;
-				} catch (decryptError) {
-					// Provide detailed error information for Signal-specific errors
-					let errorContent: string;
-					if (decryptError instanceof SignalDecryptionError) {
-						logger.error('[ChatService] Signal decryption error:', {
-							message: decryptError.message,
-							hasIdentityKey: String(decryptError.hasIdentityKey),
-							hasSignedPreKey: String(decryptError.hasSignedPreKey),
-							hasSession: String(decryptError.hasSession),
-							messageId: msg._id
+						logger.info('[ChatService] Decrypting message from sender:', {
+							sender_id: msg.senderId,
+							type: String(parsed.type)
 						});
-						errorContent = `🔒 ${decryptError.message}`;
-					} else {
-						logger.error('[ChatService] Failed to decrypt message:', decryptError);
-						logger.error('[ChatService] Message details:', {
-							messageId: msg._id,
-							senderId: msg.senderId,
-							timestamp: msg.timestamp
-						});
-						errorContent = '🔒 [Message could not be decrypted - encryption keys may be missing]';
+
+						// Decrypt the message using the sender's ID
+						const ctObj = { type: parsed.type, body: parsed.body };
+						const plaintext = await decryptMessage(msg.senderId, ctObj, currentUserId);
+
+						logger.info('[ChatService] Successfully decrypted, storing in local DB');
+
+						// Store decrypted message locally (plaintext)
+						const decryptedMsg = {
+							...msg,
+							content: plaintext
+						};
+						await messageStore.saveMessage(decryptedMsg);
+
+						return decryptedMsg;
+					} catch (decryptError) {
+						// Provide detailed error information for Signal-specific errors
+						let errorContent: string;
+						if (decryptError instanceof SignalDecryptionError) {
+							logger.error('[ChatService] Signal decryption error:', {
+								message: decryptError.message,
+								hasIdentityKey: String(decryptError.hasIdentityKey),
+								hasSignedPreKey: String(decryptError.hasSignedPreKey),
+								hasSession: String(decryptError.hasSession),
+								messageId: msg._id
+							});
+							errorContent = `🔒 ${decryptError.message}`;
+						} else {
+							logger.error('[ChatService] Failed to decrypt message:', decryptError);
+							logger.error('[ChatService] Message details:', {
+								messageId: msg._id,
+								senderId: msg.senderId,
+								timestamp: msg.timestamp
+							});
+							errorContent = '🔒 [Message could not be decrypted - encryption keys may be missing]';
+						}
+
+						// Store with error message AND mark for retry
+						// Keep original encrypted content so we can retry decryption later
+						const errorMsg = {
+							...msg,
+							content: errorContent,
+							_decryptionFailed: true,
+							_encryptedContent: msg.content // Preserve original for retry
+						} as Message & { _decryptionFailed: boolean; _encryptedContent: string };
+						await messageStore.saveMessage(errorMsg);
+						return errorMsg;
 					}
-
-					// Store with error message AND mark for retry
-					// Keep original encrypted content so we can retry decryption later
-					const errorMsg = {
-						...msg,
-						content: errorContent,
-						_decryptionFailed: true,
-						_encryptedContent: msg.content // Preserve original for retry
-					} as Message & { _decryptionFailed: boolean; _encryptedContent: string };
-					await messageStore.saveMessage(errorMsg);
-					return errorMsg;
-				}
-			})
+				})
 			);
 			decrypted.push(...batchResults);
 		}
