@@ -73,7 +73,3 @@ jobs:
         run: |
           echo "Running default-branch post-action for ${{ github.event.repository.default_branch }}"
           pnpm run prepare && pnpm run build
-
-      - name: Test Build
-        run: |
-          pnpm run prepare && pnpm run build

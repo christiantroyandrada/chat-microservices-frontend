@@ -20,13 +20,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Install pnpm
-        run: npm install -g pnpm
+          # Cache the pnpm store — avoids re-downloading packages on every run.
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install
@@ -55,6 +59,15 @@ jobs:
         run: pnpm run coverage:unit
         timeout-minutes: 15
 
+      - name: Upload coverage artifact
+        # Share coverage/lcov.info with the sonar job to avoid re-running tests there.
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: coverage/lcov.info
+          retention-days: 1
+          if-no-files-found: warn
+
   sonar:
     name: SonarCloud Scan
     needs: build-and-test
@@ -63,20 +76,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Download coverage artifact
+        # Use the lcov.info produced by build-and-test — no need to reinstall
+        # deps, playwright, or re-run tests here. Saves ~6 min per main push.
+        uses: actions/download-artifact@v4
         with:
-          node-version: '22'
-
-      - name: Install pnpm
-        run: npm install -g pnpm
-
-      - name: Install and test
-        run: |
-          pnpm install
-          pnpm exec playwright install --with-deps chromium
-          mkdir -p coverage/.tmp
-          pnpm run coverage:unit || true
+          name: frontend-coverage
+          path: coverage/
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@master

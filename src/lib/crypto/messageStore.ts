@@ -110,6 +110,9 @@ class LocalMessageStore {
 	/**
 	 * Get messages for a conversation (between current user and another user)
 	 * Returns plaintext messages from local storage
+	 *
+	 * Uses the compound IDB index ['senderId','receiverId'] for O(k) reads
+	 * (k = messages in this conversation) instead of a full-table scan.
 	 */
 	async getMessages(otherUserId: string, currentUserId: string, limit = 50): Promise<Message[]> {
 		await this.init();
@@ -118,32 +121,38 @@ class LocalMessageStore {
 		return new Promise((resolve, reject) => {
 			const tx = this.db!.transaction('messages', 'readonly');
 			const store = tx.objectStore('messages');
+			const index = store.index('conversation');
 			const messages: Message[] = [];
 
-			const request = store.openCursor();
+			// Query sent messages: [currentUser → otherUser]
+			const sentRange = IDBKeyRange.only([currentUserId, otherUserId]);
+			const sentReq = index.openCursor(sentRange);
 
-			request.onerror = () => reject(toError(request.error));
-			request.onsuccess = (event: Event) => {
+			sentReq.onerror = () => reject(toError(sentReq.error));
+			sentReq.onsuccess = (event: Event) => {
 				const cursor = (event.target as IDBRequest).result;
 				if (cursor) {
-					const message = cursor.value as Message;
-					// Check if message is part of this conversation
-					const isOutgoing =
-						message.senderId === currentUserId && message.receiverId === otherUserId;
-					const isIncoming =
-						message.senderId === otherUserId && message.receiverId === currentUserId;
-
-					if (isOutgoing || isIncoming) {
-						messages.push(message);
-					}
-
+					messages.push(cursor.value as Message);
 					cursor.continue();
 				} else {
-					// Sort by timestamp and limit
-					messages.sort(
-						(a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-					);
-					resolve(messages.slice(-limit)); // Get last N messages
+					// Sent cursor exhausted → query received messages: [otherUser → currentUser]
+					const recvRange = IDBKeyRange.only([otherUserId, currentUserId]);
+					const recvReq = index.openCursor(recvRange);
+
+					recvReq.onerror = () => reject(toError(recvReq.error));
+					recvReq.onsuccess = (ev: Event) => {
+						const cur = (ev.target as IDBRequest).result;
+						if (cur) {
+							messages.push(cur.value as Message);
+							cur.continue();
+						} else {
+							// Both cursors done — sort chronologically and return last N
+							messages.sort(
+								(a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+							);
+							resolve(messages.slice(-limit));
+						}
+					};
 				}
 			};
 		});

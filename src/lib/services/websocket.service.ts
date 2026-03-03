@@ -155,6 +155,25 @@ class WebSocketService {
 					}
 				});
 			});
+
+			// Listen for bulk initial presence (single payload instead of O(n) individual emits)
+			this.socket.on('presenceBulk', (payload: unknown) => {
+				const d = payload as { onlineUserIds?: string[] };
+				const ids = Array.isArray(d.onlineUserIds) ? d.onlineUserIds : [];
+
+				logger.request('[WebSocket] Bulk presence received, online users:', String(ids.length));
+
+				for (const uid of ids) {
+					const userId = String(uid);
+					this.presenceCallbacks.forEach((callback) => {
+						try {
+							callback(userId, true, undefined);
+						} catch (error) {
+							logger.error('Error in bulk presence callback:', error);
+						}
+					});
+				}
+			});
 		} catch (error) {
 			logger.error('Failed to connect Socket.IO:', error);
 		}
