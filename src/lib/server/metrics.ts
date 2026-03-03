@@ -39,7 +39,8 @@ const registry = new client.Registry();
 registry.setDefaultLabels({ service: 'frontend' });
 
 // Default Node.js metrics (event loop lag, memory, GC, handles) — guarded
-if (!registry.getSingleMetric('nodejs_version_info')) {
+// Skip in Vitest to prevent the prom-client interval from blocking process exit
+if (!process.env.VITEST && !registry.getSingleMetric('nodejs_version_info')) {
 	client.collectDefaultMetrics({ register: registry });
 }
 
