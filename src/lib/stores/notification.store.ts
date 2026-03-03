@@ -23,8 +23,11 @@ function createNotificationStore() {
 			update((state) => ({ ...state, loading: true }));
 
 			try {
-				const notifications = await notificationService.getNotifications(limit, offset);
-				const unreadCount = await notificationService.getUnreadCount();
+				// Fetch notifications and unread count in parallel (was sequential)
+				const [notifications, unreadCount] = await Promise.all([
+					notificationService.getNotifications(limit, offset),
+					notificationService.getUnreadCount()
+				]);
 
 				update((state) => ({
 					...state,

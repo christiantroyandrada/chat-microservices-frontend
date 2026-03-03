@@ -17,12 +17,28 @@ import { logger } from './dev-logger';
  */
 
 /**
- * Session-scoped prekey bundle cache.
+ * Session-scoped prekey bundle cache with LRU eviction.
  * Once a Signal session is established with a recipient, we don't need to
  * re-fetch their prekey bundle for subsequent messages in the same browser session.
+ * Bounded to 100 entries to prevent unbounded memory growth in long-lived SPAs.
  * Key: recipientUserId, Value: prekey bundle data
  */
+const PREKEY_CACHE_MAX = 100;
 const prekeyBundleCache = new Map<string, { userId: string; deviceId: string; bundle: unknown }>();
+const prekeyAccessOrder: string[] = []; // Simple LRU tracking
+
+function prekeyBundleCacheSet(key: string, value: { userId: string; deviceId: string; bundle: unknown }) {
+	// Evict oldest entry if at capacity
+	if (prekeyBundleCache.size >= PREKEY_CACHE_MAX && !prekeyBundleCache.has(key)) {
+		const oldest = prekeyAccessOrder.shift();
+		if (oldest) prekeyBundleCache.delete(oldest);
+	}
+	// Update access order
+	const idx = prekeyAccessOrder.indexOf(key);
+	if (idx !== -1) prekeyAccessOrder.splice(idx, 1);
+	prekeyAccessOrder.push(key);
+	prekeyBundleCache.set(key, value);
+}
 
 /**
  * Helper to normalize server message shape -> frontend Message
@@ -125,8 +141,15 @@ export const chatService = {
 		// Decrypt and store messages locally
 		await initSignal(currentUserId);
 
-		const decrypted = await Promise.all(
-			normalized.map(async (msg) => {
+		// Process messages in batches to avoid spawning 200 concurrent IndexedDB
+		// reads + Signal Protocol decrypt operations simultaneously. This reduces
+		// main-thread blocking and UI jank when loading large conversations.
+		const BATCH_SIZE = 20;
+		const decrypted: Message[] = [];
+		for (let i = 0; i < normalized.length; i += BATCH_SIZE) {
+			const batch = normalized.slice(i, i + BATCH_SIZE);
+			const batchResults = await Promise.all(
+				batch.map(async (msg) => {
 				// Check if already in local storage
 				const existing = await messageStore.getMessage(msg._id);
 				if (existing) {
@@ -245,7 +268,9 @@ export const chatService = {
 					return errorMsg;
 				}
 			})
-		);
+			);
+			decrypted.push(...batchResults);
+		}
 
 		return decrypted;
 	},
@@ -282,9 +307,9 @@ export const chatService = {
 					const json = await resp.json();
 					// Extract the nested data object containing userId, deviceId, and bundle
 					prekeyBundleData = json?.data || json;
-					// Cache for this session
+					// Cache for this session (LRU-bounded)
 					if (prekeyBundleData) {
-						prekeyBundleCache.set(payload.receiverId, prekeyBundleData);
+						prekeyBundleCacheSet(payload.receiverId, prekeyBundleData);
 					}
 				}
 			} catch {
