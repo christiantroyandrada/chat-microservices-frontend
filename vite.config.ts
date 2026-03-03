@@ -48,7 +48,11 @@ export default defineConfig({
 				'src/**/*.spec.ts',
 				'src/**/*.test.ts',
 				'src/lib/types/**',
-				'src/**/index.{ts,js}'
+				'src/**/index.{ts,js}',
+				// Observability infrastructure — prom-client registry setup and /metrics
+				// endpoint. Covered by integration/e2e, not unit tests.
+				'src/lib/server/metrics.ts',
+				'src/routes/metrics/+server.ts'
 			],
 			thresholds: {
 				lines: 85,
