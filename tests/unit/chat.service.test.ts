@@ -51,6 +51,7 @@ vi.mock('$lib/crypto/signal', () => ({
 	createSessionWithPrekeyBundle: vi.fn().mockResolvedValue(undefined),
 	encryptMessage: vi.fn().mockResolvedValue({ type: 3, body: 'encrypted-content' }),
 	decryptMessage: vi.fn().mockResolvedValue('decrypted-content'),
+	hasSession: vi.fn().mockResolvedValue(false),
 	SignalDecryptionError: MockSignalDecryptionError
 }));
 
@@ -165,6 +166,83 @@ describe('chatService', () => {
 			expect(result[0]).toEqual(testMessages[0]);
 			// Should not save if already cached
 			expect(mockMessageStore.saveMessage).not.toHaveBeenCalled();
+		});
+
+		it('should NOT retry cached PreKeyWhisperMessage (type 3) decryption failure', async () => {
+			// A type-3 (PreKeyWhisperMessage) retry would consume the OPK from the local
+			// Signal store while the server still publishes that OPK ID — causing Bad MAC
+			// for the next peer who uses it.  The service must leave these as-is.
+			const type3Envelope = JSON.stringify({ __encrypted: true, type: 3, body: 'QUJDREVG' });
+			const cachedFailedMsg = {
+				...testMessages[0],
+				content: '🔒 Message could not be decrypted.',
+				_decryptionFailed: true,
+				_encryptedContent: type3Envelope
+			};
+
+			mockApiClient.get.mockResolvedValue(createSuccessResponse([testMessages[0]]));
+			mockMessageStore.getMessage.mockResolvedValue(cachedFailedMsg);
+
+			const signal = await import('$lib/crypto/signal');
+			vi.mocked(signal.decryptMessage).mockResolvedValue('decrypted content');
+
+			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
+
+			// decryptMessage must NOT be called — retrying would consume the OPK
+			expect(signal.decryptMessage).not.toHaveBeenCalled();
+			// The cached (failed) message is returned as-is
+			expect(result[0]).toEqual(cachedFailedMsg);
+		});
+
+		it('should NOT retry type-3 even when _encryptedContent is missing (fallback to server content)', async () => {
+			// Old cached messages from before the _encryptedContent fix won't have the
+			// metadata field.  The guard must fall back to parsing msg.content (the fresh
+			// server response) to detect type-3 envelopes.
+			const type3Envelope = JSON.stringify({ __encrypted: true, type: 3, body: 'QUJDREVG' });
+			const cachedFailedMsg = {
+				...testMessages[0],
+				content: '🔒 Message could not be decrypted.',
+				_decryptionFailed: true
+				// NOTE: no _encryptedContent — simulates old cached message
+			};
+
+			// Server still sends the original encrypted envelope
+			const serverMsg = { ...testMessages[0], content: type3Envelope };
+			mockApiClient.get.mockResolvedValue(createSuccessResponse([serverMsg]));
+			mockMessageStore.getMessage.mockResolvedValue(cachedFailedMsg);
+
+			const signal = await import('$lib/crypto/signal');
+			vi.mocked(signal.decryptMessage).mockResolvedValue('decrypted content');
+
+			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
+
+			// decryptMessage must NOT be called — server content is type-3
+			expect(signal.decryptMessage).not.toHaveBeenCalled();
+			expect(result[0]).toEqual(cachedFailedMsg);
+		});
+
+		it('should retry cached WhisperMessage (type 1) decryption failure', async () => {
+			// Type-1 (WhisperMessage) doesn't use an OPK so retry is safe when keys are
+			// restored after an earlier failed attempt.
+			const type1Envelope = JSON.stringify({ __encrypted: true, type: 1, body: 'QUJDREVG' });
+			const cachedFailedMsg = {
+				...testMessages[0],
+				content: '🔒 Message could not be decrypted.',
+				_decryptionFailed: true,
+				_encryptedContent: type1Envelope
+			};
+
+			mockApiClient.get.mockResolvedValue(createSuccessResponse([testMessages[0]]));
+			mockMessageStore.getMessage.mockResolvedValue(cachedFailedMsg);
+
+			const signal = await import('$lib/crypto/signal');
+			vi.mocked(signal.decryptMessage).mockResolvedValue('retried decrypted content');
+
+			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
+
+			// decryptMessage should be called for type-1 retries
+			expect(signal.decryptMessage).toHaveBeenCalled();
+			expect(result[0].content).toBe('retried decrypted content');
 		});
 
 		it('should handle unencrypted plaintext messages', async () => {
@@ -322,7 +400,7 @@ describe('chatService', () => {
 				message: 'encrypted-content'
 			};
 
-			// Mock the prekey bundle fetch (uses fetch, not apiClient)
+			// Mock the prekey bundle fetch (now uses apiClient.get)
 			const prekeyBundle = {
 				userId: recipientId,
 				deviceId: 'device-123',
@@ -340,17 +418,14 @@ describe('chatService', () => {
 				}
 			};
 
-			// Mock globalThis fetch for prekey bundle request
-			globalThis.fetch = vi.fn().mockResolvedValueOnce({
-				ok: true,
-				json: async () => ({ data: prekeyBundle })
-			} as Response);
+			// Mock apiClient.get for prekey bundle request
+			mockApiClient.get.mockResolvedValueOnce(createSuccessResponse(prekeyBundle));
 
 			mockApiClient.post.mockResolvedValueOnce(createSuccessResponse(serverResponse));
 
 			const result = await chatService.sendMessage(payload, currentUserId);
 
-			expect(globalThis.fetch).toHaveBeenCalled();
+			expect(mockApiClient.get).toHaveBeenCalled();
 			expect(mockApiClient.post).toHaveBeenCalled();
 			expect(result).toBeDefined();
 		});
@@ -362,19 +437,14 @@ describe('chatService', () => {
 				content: 'Hello!'
 			};
 
-			// Mock fetch to return prekey
-			globalThis.fetch = vi.fn().mockResolvedValueOnce({
-				ok: true,
-				json: async () => ({
-					data: {
-						userId: recipientId,
-						deviceId: 'device-123',
-						bundle: {}
-					}
-				})
-			} as Response);
+			// When no currentUserId is passed, initSignal receives undefined
+			// which should fail in production — simulate by making the mock throw
+			const signal = await import('$lib/crypto/signal');
+			vi.mocked(signal.initSignal).mockRejectedValueOnce(
+				new Error('currentUserId is required for Signal init')
+			);
 
-			// Should throw error (the actual error depends on initSignal implementation)
+			// Should throw error because initSignal rejects
 			await expect(chatService.sendMessage(payload)).rejects.toThrow();
 		});
 	});

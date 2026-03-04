@@ -1,0 +1,19 @@
+{
+	"name": "Chat App",
+	"short_name": "Chat",
+	"description": "End-to-end encrypted real-time chat",
+	"start_url": "/",
+	"display": "standalone",
+	"orientation": "any",
+	"background_color": "#0a0a0f",
+	"theme_color": "#6366f1",
+	"categories": ["social", "communication"],
+	"icons": [
+		{
+			"src": "/favicon.svg",
+			"type": "image/svg+xml",
+			"sizes": "any",
+			"purpose": "any maskable"
+		}
+	]
+}

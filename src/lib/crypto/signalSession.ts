@@ -16,7 +16,7 @@ import type { DeviceType } from '@privacyresearch/libsignal-protocol-typescript'
 import type { PrekeyBundleData, PrekeyBundlePayload, EncryptedMessage } from './types';
 import type { IndexedDBSignalProtocolStore } from './signalStore';
 import { base64ToArrayBuffer, arrayBufferToBase64 } from './signalUtils';
-import { DEFAULT_DEVICE_ID } from './signalConstants';
+import { DEFAULT_DEVICE_ID, DEFAULT_SIGNED_PREKEY_ID } from './signalConstants';
 import { logger } from '$lib/services/dev-logger';
 
 /**
@@ -151,8 +151,7 @@ export async function encryptMessage(
 	}
 
 	logger.debug('[SignalSession] Encrypted message', {
-		length: bodyBase64.length,
-		preview: bodyBase64.substring(0, 50)
+		length: bodyBase64.length
 	});
 
 	return {
@@ -210,7 +209,7 @@ export async function decryptMessage(
 ): Promise<string> {
 	// First, verify we have our own identity keys (required for decryption)
 	const identityKeyPair = await store.getIdentityKeyPair();
-	const signedPreKey = await store.loadSignedPreKey(1); // DEFAULT_SIGNED_PREKEY_ID = 1
+	const signedPreKey = await store.loadSignedPreKey(DEFAULT_SIGNED_PREKEY_ID);
 
 	const hasIdentityKey = !!identityKeyPair;
 	const hasSignedPreKey = !!signedPreKey;

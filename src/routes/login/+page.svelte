@@ -4,6 +4,7 @@
 	import { logger } from '$lib/services/dev-logger';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import { LOGO_URL } from '$lib/config';
 	import type { ApiError } from '$lib/types';
 
 	let email = $state('');
@@ -14,9 +15,11 @@
 	let fieldErrors: Record<string, string> = $state({});
 
 	onMount(() => {
-		// Redirect if already authenticated
+		// Redirect if already authenticated (e.g. user visits /login while logged in).
+		// Gated on !loading so the subscriber doesn't navigate mid-login before
+		// Signal Protocol init with the password completes — handleSubmit owns navigation.
 		const unsubscribe = authStore.subscribe(({ user }) => {
-			if (user) {
+			if (user && !loading) {
 				void goto('/chat');
 			}
 		});
@@ -44,19 +47,11 @@
 			try {
 				const { initSignalWithRestore } = await import('$lib/crypto/signal');
 				const { cacheEncryptionPassword } = await import('$lib/crypto/keyEncryption');
-				const { env } = await import('$env/dynamic/public');
+				const { API_BASE, getOrCreateDeviceId } = await import('$lib/config');
 
 				const userId = loggedInUser._id;
-				let deviceId = localStorage.getItem('deviceId') || '';
-				if (!deviceId) {
-					deviceId =
-						typeof crypto !== 'undefined' && 'randomUUID' in crypto
-							? crypto.randomUUID()
-							: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-					localStorage.setItem('deviceId', deviceId);
-				}
-
-				const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
+				const deviceId = getOrCreateDeviceId();
+				const apiBase = API_BASE;
 
 				// Initialize keys with password-based encryption for backup/restore
 				// The password is used to encrypt keys before storing on server
@@ -75,6 +70,8 @@
 			}
 
 			toastStore.success('Login successful!');
+			// Navigate AFTER Signal init so the chat page doesn't race with a keyless init
+			void goto('/chat');
 		} catch (err: unknown) {
 			const apiError = err as ApiError;
 
@@ -130,7 +127,7 @@
 				style="background: linear-gradient(135deg, #6366f1, #7c3aed); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);"
 			>
 				<img
-					src="https://res.cloudinary.com/dpqt9h7cn/image/upload/v1764081536/logo_blqxwc.png"
+					src={LOGO_URL}
 					alt="Chat logo"
 					style="width:100%;height:100%;object-fit:cover;display:block;"
 				/>

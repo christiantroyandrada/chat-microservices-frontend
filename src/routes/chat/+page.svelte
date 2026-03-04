@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { env } from '$env/dynamic/public';
 	import { authStore, user } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { notificationStore } from '$lib/stores/notification.store';
@@ -9,8 +8,9 @@
 	import { chatService } from '$lib/services/chat.service';
 	import { wsService } from '$lib/services/websocket.service';
 	import { sanitizeMessage } from '$lib/utils';
-	import { initSignalWithRestore } from '$lib/crypto/signal';
+	import { initSignalWithRestore, isSignalInitialized } from '$lib/crypto/signal';
 	import { logger } from '$lib/services/dev-logger';
+	import { API_BASE, LOGO_URL, getOrCreateDeviceId } from '$lib/config';
 	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
 
 	import ChatList from '$lib/components/ChatList.svelte';
@@ -54,20 +54,10 @@
 		}
 
 		// Initialize Signal Protocol keys (MUST complete before loading messages)
-		// This ensures encryption keys are ready before attempting to decrypt any messages
-		// NOTE: Keys should already be restored at login time with password-based backup
-		// Here we check for cached password (from sessionStorage) for page refresh scenarios
-		if (typeof window !== 'undefined' && $user) {
+		// Skip if already initialized at login time — avoids redundant PBKDF2 + 429
+		if (typeof window !== 'undefined' && $user && !isSignalInitialized()) {
 			const userId = $user._id as string;
-			let deviceId: string = localStorage.getItem('deviceId') ?? '';
-			if (!deviceId) {
-				deviceId =
-					typeof crypto !== 'undefined' && 'randomUUID' in crypto
-						? crypto.randomUUID()
-						: String(Date.now()) + '-' + Math.floor(Math.random() * 1e6);
-				localStorage.setItem('deviceId', deviceId);
-			}
-			const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
+			const deviceId = getOrCreateDeviceId();
 
 			// AWAIT initialization to prevent race conditions with message decryption
 			// Try to use cached password from sessionStorage for key restoration after page refresh
@@ -78,7 +68,7 @@
 				const success = await initSignalWithRestore(
 					userId,
 					deviceId,
-					apiBase,
+					API_BASE,
 					cachedPassword || undefined
 				);
 				if (success) {
@@ -91,6 +81,8 @@
 				logger.error('[Chat] Signal Protocol initialization error:', err);
 				toastStore.error('Failed to initialize encryption');
 			}
+		} else if ($user) {
+			logger.info('[Chat] Signal Protocol already initialized, skipping duplicate init');
 		}
 
 		// Connect WebSocket (auth handled via httpOnly cookie)
@@ -146,7 +138,8 @@
 				};
 			});
 
-			// Apply any pending presence updates that arrived before conversations loaded
+			// Apply any pending presence updates that arrived before conversations loaded,
+			// then clear the queue so subsequent loadConversations() calls don't re-apply them.
 			if (pendingPresenceUpdates.size > 0) {
 				logger.debug(
 					'[Chat] Applying pending presence updates',
@@ -159,6 +152,7 @@
 					}
 					return conv;
 				});
+				pendingPresenceUpdates.clear();
 			}
 
 			// Proactively fetch the latest message for each conversation to populate
@@ -286,40 +280,50 @@
 		// Decrypt message content if encrypted
 		let displayContent = message.content;
 		let _decryptionFailed = false;
-		try {
-			const parsed = JSON.parse(message.content);
-			if (parsed && parsed.__encrypted && $user) {
-				logger.info('[Chat] Message is encrypted, attempting decryption...');
-				const currentUserId = $user._id as string;
-				const { decryptMessage, SignalDecryptionError } = await import('$lib/crypto/signal');
-				const ctObj = { type: parsed.type, body: parsed.body };
-				try {
-					displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
-					// Update the message object with decrypted content
-					message.content = displayContent;
-					logger.success('[Chat] Message decrypted successfully');
-				} catch (decryptErr) {
-					// Handle Signal-specific decryption errors with better messaging
-					if (decryptErr instanceof SignalDecryptionError) {
-						logger.error('[Chat] Signal decryption error:', {
-							message: decryptErr.message,
-							hasIdentityKey: String(decryptErr.hasIdentityKey),
-							hasSignedPreKey: String(decryptErr.hasSignedPreKey),
-							hasSession: String(decryptErr.hasSession)
-						});
-						_decryptionFailed = true;
-						message.content = `🔒 ${decryptErr.message}`;
-					} else {
-						throw decryptErr;
+
+		// Skip decryption for own messages — they were encrypted with the
+		// *recipient's* key, so attempting to decrypt with our key always fails.
+		// The plaintext is already cached locally from sendMessage().
+		const isOwnMessage = message.senderId === $user?._id;
+		if (isOwnMessage) {
+			// Nothing to decrypt — displayContent stays as-is
+		} else {
+			try {
+				const parsed = JSON.parse(message.content);
+				if (parsed && parsed.__encrypted && $user) {
+					logger.info('[Chat] Message is encrypted, attempting decryption...');
+					const currentUserId = $user._id as string;
+					const { decryptMessage, SignalDecryptionError } = await import('$lib/crypto/signal');
+					const ctObj = { type: parsed.type, body: parsed.body };
+					try {
+						displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
+						// Update the message object with decrypted content
+						message.content = displayContent;
+						logger.success('[Chat] Message decrypted successfully');
+					} catch (decryptErr) {
+						// Handle Signal-specific decryption errors with better messaging
+						if (decryptErr instanceof SignalDecryptionError) {
+							logger.error('[Chat] Signal decryption error:', {
+								message: decryptErr.message,
+								hasIdentityKey: String(decryptErr.hasIdentityKey),
+								hasSignedPreKey: String(decryptErr.hasSignedPreKey),
+								hasSession: String(decryptErr.hasSession)
+							});
+							_decryptionFailed = true;
+							message.content = `🔒 ${decryptErr.message}`;
+						} else {
+							throw decryptErr;
+						}
 					}
 				}
+			} catch (decryptError) {
+				logger.error('[Chat] Decryption failed:', decryptError);
+				_decryptionFailed = true;
+				// Show user-friendly error message instead of encrypted JSON
+				message.content =
+					'🔒 [Message could not be decrypted - encryption keys may be out of sync]';
 			}
-		} catch (decryptError) {
-			logger.error('[Chat] Decryption failed:', decryptError);
-			_decryptionFailed = true;
-			// Show user-friendly error message instead of encrypted JSON
-			message.content = '🔒 [Message could not be decrypted - encryption keys may be out of sync]';
-		}
+		} // end !isOwnMessage
 
 		// Save decrypted message to local storage (Signal-style)
 		if ($user) {
@@ -495,7 +499,7 @@
 						class="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-purple-600"
 					>
 						<img
-							src="https://res.cloudinary.com/dpqt9h7cn/image/upload/v1764081536/logo_blqxwc.png"
+							src={LOGO_URL}
 							alt="Chat logo"
 							style="width:100%;height:100%;object-fit:cover;display:block;"
 						/>

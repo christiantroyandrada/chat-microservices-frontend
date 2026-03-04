@@ -7,6 +7,7 @@ import type { MockedFunction } from 'vitest';
 const fakeStoreInstances: Array<{
 	init: MockedFunction<() => Promise<void>>;
 	close: MockedFunction<() => void>;
+	clearAllData: MockedFunction<() => Promise<void>>;
 	asStorageType?: () => unknown;
 }> = [];
 
@@ -20,6 +21,7 @@ vi.mock('$lib/crypto/signalStore', () => {
 			}
 			init = vi.fn(async () => {});
 			close = vi.fn(() => {});
+			clearAllData = vi.fn(async () => {});
 			asStorageType = () => ({});
 		}
 	};
@@ -37,7 +39,8 @@ vi.mock('$lib/crypto/signalBackup', () => ({
 	hasLocalKeys: vi.fn(async () => false),
 	exportAndEncryptSignalKeys: vi.fn(async () => ({ encrypted: true })),
 	decryptAndImportSignalKeys: vi.fn(async () => ({})),
-	clearSignalState: vi.fn(async () => true)
+	clearSignalState: vi.fn(async () => true),
+	republishPrekeys: vi.fn(async () => undefined)
 }));
 
 vi.mock('$lib/crypto/signalSession', () => ({
@@ -54,6 +57,7 @@ import {
 	authService,
 	setFetchSignalKeys,
 	setFetchSignalKeysToThrow,
+	setStoreSignalKeysToThrow,
 	resetAuthMock
 } from '../utils/authMock';
 vi.mock('$lib/services/auth.service', () => ({ authService }));
@@ -63,6 +67,7 @@ import type * as SignalModule from '$lib/crypto/signal';
 let Signal: typeof SignalModule;
 
 beforeEach(async () => {
+	vi.clearAllMocks();
 	vi.resetModules();
 	fakeStoreInstances.length = 0;
 	// re-import module under test so it picks up fresh mocks
@@ -157,12 +162,60 @@ describe('signal module facade', () => {
 		setFetchSignalKeys({ encrypted: true });
 		const backup = (await import('$lib/crypto/signalBackup')) as unknown as {
 			decryptAndImportSignalKeys: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
+			republishPrekeys: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
 		};
 		backup.decryptAndImportSignalKeys.mockResolvedValue({});
+		backup.republishPrekeys.mockResolvedValue(undefined);
 
 		const res = await Signal.initSignalWithRestore('restore-user', 'dev1', 'api', 'pw');
 		expect(res).toBe(true);
+		// clearAllData should have been called on the store (instead of deleting the database)
+		const inst = fakeStoreInstances.find(
+			(s) => (s as unknown as { userId: string }).userId === 'restore-user'
+		);
+		expect(inst?.clearAllData).toHaveBeenCalled();
+		// republishPrekeys should have been called to sync the server
+		expect(backup.republishPrekeys).toHaveBeenCalled();
 		// reset mock
+		resetAuthMock();
+	});
+
+	it('initSignalWithRestore uses local keys without password (does NOT regenerate)', async () => {
+		// Backend returns no keys, local keys exist, but no password provided
+		// This simulates a page refresh after the tab was closed (sessionStorage lost)
+		const backup = (await import('$lib/crypto/signalBackup')) as unknown as {
+			hasLocalKeys: MockedFunction<(...args: unknown[]) => Promise<boolean>>;
+			generateAndPublishIdentity: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
+			republishPrekeys: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
+		};
+		backup.hasLocalKeys.mockResolvedValue(true);
+
+		const res = await Signal.initSignalWithRestore('local-keys-user', 'dev3', 'api');
+		expect(res).toBe(true);
+		// MUST NOT generate new keys when local keys already exist
+		expect(backup.generateAndPublishIdentity).not.toHaveBeenCalled();
+		// Path 2 always re-publishes prekeys to keep server in sync
+		expect(backup.republishPrekeys).toHaveBeenCalled();
+		resetAuthMock();
+	});
+
+	it('initSignalWithRestore uses local keys when backend has keys but no password', async () => {
+		// Backend has encrypted keys but we have no password to decrypt them.
+		// Local IndexedDB still has the keys → use them instead of regenerating.
+		setFetchSignalKeys({ encrypted: true });
+		const backup = (await import('$lib/crypto/signalBackup')) as unknown as {
+			hasLocalKeys: MockedFunction<(...args: unknown[]) => Promise<boolean>>;
+			generateAndPublishIdentity: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
+			republishPrekeys: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
+		};
+		backup.hasLocalKeys.mockResolvedValue(true);
+
+		const res = await Signal.initSignalWithRestore('no-pw-user', 'dev4', 'api');
+		expect(res).toBe(true);
+		// MUST NOT generate new keys — local keys are still good
+		expect(backup.generateAndPublishIdentity).not.toHaveBeenCalled();
+		// Path 2 always re-publishes prekeys to keep server in sync
+		expect(backup.republishPrekeys).toHaveBeenCalled();
 		resetAuthMock();
 	});
 
@@ -175,6 +228,29 @@ describe('signal module facade', () => {
 
 		const res = await Signal.initSignalWithRestore('restore-user-2', 'dev2', 'api', 'pw');
 		expect(res).toBe(true);
+		resetAuthMock();
+	});
+
+	it('initSignalWithRestore returns true even when backup is rate-limited (429)', async () => {
+		// Backend has no encrypted keys → Path 2 (has local keys + password)
+		// storeSignalKeys throws 429 → must be swallowed, init must still succeed
+		const rateLimitErr = Object.assign(new Error('Rate limit: Please wait'), { status: 429 });
+		setStoreSignalKeysToThrow(rateLimitErr);
+
+		const backup = (await import('$lib/crypto/signalBackup')) as unknown as {
+			hasLocalKeys: MockedFunction<(...args: unknown[]) => Promise<boolean>>;
+			generateAndPublishIdentity: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
+			republishPrekeys: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
+		};
+		backup.hasLocalKeys.mockResolvedValue(true);
+
+		const res = await Signal.initSignalWithRestore('rate-limit-user', 'dev5', 'api', 'pw');
+		// Must succeed — 429 on backup is non-fatal
+		expect(res).toBe(true);
+		// Must NOT regenerate keys when local keys exist
+		expect(backup.generateAndPublishIdentity).not.toHaveBeenCalled();
+		// Path 2 always re-publishes prekeys to keep server in sync
+		expect(backup.republishPrekeys).toHaveBeenCalled();
 		resetAuthMock();
 	});
 });

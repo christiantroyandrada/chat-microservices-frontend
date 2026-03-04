@@ -25,6 +25,7 @@ import * as Session from './signalSession';
 import * as KeyManager from './signalKeyManager';
 import * as Backup from './signalBackup';
 import { logger } from '$lib/services/dev-logger';
+import { shouldSkipBackup, markBackupDone } from '$lib/config';
 
 // Re-export types for convenience
 export type {
@@ -47,6 +48,14 @@ let initialized = false;
 let currentUserId: string | null = null;
 let initializationPromise: Promise<void> | null = null;
 let restorePromise: Promise<boolean> | null = null;
+
+/**
+ * Check whether Signal has been fully initialized for the current user.
+ * Used by the chat page to skip a redundant init when the login page already ran it.
+ */
+export function isSignalInitialized(): boolean {
+	return initialized && store !== null;
+}
 
 // ============================================================================
 // Core Initialization Functions
@@ -295,56 +304,99 @@ export async function initSignalWithRestore(
 				const { authService } = await import('$lib/services/auth.service');
 				const encryptedBundle = await authService.fetchSignalKeys(deviceId);
 
+				// ── Path 1: Backend has encrypted keys AND we have a password → restore
 				if (encryptedBundle && encryptionPassword) {
 					logger.info('[Signal] Found encrypted keys on backend, decrypting and restoring...');
 
-					await clearSignalState(userId);
-
-					store = new IndexedDBSignalProtocolStore(userId);
-					currentUserId = userId;
-					initialized = false;
-					initializationPromise = null;
-					await initSignal(userId);
+					// Clear data in-place via the existing connection instead of
+					// deleting the entire database.  deleteDatabase fires onblocked
+					// when the connection hasn't fully closed yet, creating a data
+					// race where the deferred delete could wipe newly-imported keys.
+					await getStore().clearAllData();
 
 					await Backup.decryptAndImportSignalKeys(getStore(), encryptedBundle, encryptionPassword);
 					logger.info('[Signal] Successfully decrypted and restored keys from backend');
 
-					store = null;
-					initialized = false;
-					initializationPromise = null;
-					await initSignal(userId);
-					logger.info('[Signal] Store reinitialized with restored keys');
+					// Re-publish the prekey bundle so the server's public keys
+					// match the private keys we just restored.  This prevents
+					// "Bad MAC" errors caused by a stale public bundle that was
+					// overwritten during a previous password-less initialisation.
+					try {
+						await Backup.republishPrekeys(getStore(), apiBase, userId, deviceId);
+					} catch (republishErr) {
+						logger.warning('[Signal] Failed to re-publish prekeys after restore:', republishErr);
+					}
 
 					return true;
 				}
 
-				logger.info('[Signal] No keys on backend, checking local storage...');
+				// Helper: attempt a best-effort backup — 429 and transient errors are non-fatal.
+				// Checks a client-side cooldown first to avoid running expensive PBKDF2
+				// (100k iterations) only to receive a predictable 429 from the server.
+				const tryBackup = async () => {
+					if (!encryptionPassword) return;
+					if (shouldSkipBackup()) {
+						logger.info('[Signal] Skipping backup — cooldown not elapsed');
+						return;
+					}
+					try {
+						const encrypted = await Backup.exportAndEncryptSignalKeys(
+							getStore(),
+							deviceId,
+							encryptionPassword
+						);
+						await authService.storeSignalKeys(deviceId, encrypted);
+						markBackupDone();
+						logger.info('[Signal] Successfully backed up encrypted keys to backend');
+					} catch (backupErr) {
+						const isRateLimited =
+							backupErr instanceof Error &&
+							((backupErr as { status?: number }).status === 429 ||
+								backupErr.message.toLowerCase().includes('rate limit'));
+						if (isRateLimited) {
+							logger.warning(
+								'[Signal] Key backup rate-limited — local keys are intact, backup will retry on next session'
+							);
+						} else {
+							logger.error('[Signal] Key backup failed (non-fatal):', backupErr);
+						}
+					}
+				};
+
+				// ── Path 2: We already have local keys in IndexedDB → use them
 				const hasKeys = await Backup.hasLocalKeys(getStore());
 
-				if (hasKeys && encryptionPassword) {
-					logger.info('[Signal] Found local keys, encrypting and backing them up to backend...');
-					const encryptedBundle = await Backup.exportAndEncryptSignalKeys(
-						getStore(),
-						deviceId,
-						encryptionPassword
-					);
-					await authService.storeSignalKeys(deviceId, encryptedBundle);
-					logger.info('[Signal] Successfully backed up encrypted keys to backend');
+				if (hasKeys) {
+					logger.info('[Signal] Found existing local keys');
+
+					// Always re-publish the public prekey bundle so the server
+					// is in sync with the private keys we hold locally.  Without
+					// this, a stale server bundle (left over from a previous key
+					// generation) causes "Bad MAC" for every incoming
+					// PreKeyWhisperMessage because the peer encrypts against
+					// public keys that no longer match our private keys.
+					try {
+						await Backup.republishPrekeys(getStore(), apiBase, userId, deviceId);
+					} catch (republishErr) {
+						logger.warning('[Signal] Failed to re-publish prekeys (non-fatal):', republishErr);
+					}
+
+					if (encryptionPassword) {
+						logger.info('[Signal] Encrypting and backing up local keys to backend...');
+						await tryBackup();
+					} else {
+						logger.warning('[Signal] No encryption password — using local keys without backup');
+					}
 					return true;
 				}
 
+				// ── Path 3: No keys anywhere → generate fresh keys
 				logger.info('[Signal] No keys found anywhere, generating new keys...');
 				await Backup.generateAndPublishIdentity(getStore(), apiBase, userId, deviceId);
 
 				if (encryptionPassword) {
 					logger.info('[Signal] Encrypting and backing up newly generated keys to backend...');
-					const encryptedBundle = await Backup.exportAndEncryptSignalKeys(
-						getStore(),
-						deviceId,
-						encryptionPassword
-					);
-					await authService.storeSignalKeys(deviceId, encryptedBundle);
-					logger.info('[Signal] Successfully backed up encrypted keys to backend');
+					await tryBackup();
 				} else {
 					logger.warning(
 						'[Signal] No encryption password provided - keys will NOT be backed up to backend'
@@ -353,11 +405,11 @@ export async function initSignalWithRestore(
 
 				return true;
 			} catch (error) {
-				logger.error('[Signal] Error during key initialization/restore:', error);
+				logger.error('[Signal] Key initialization error:', error);
 
 				const hasKeys = await Backup.hasLocalKeys(getStore());
 				if (hasKeys) {
-					logger.warning('[Signal] Backend fetch failed, using local keys as fallback');
+					logger.warning('[Signal] Falling back to local keys after initialization error');
 					return true;
 				}
 

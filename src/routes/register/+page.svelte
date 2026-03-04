@@ -31,9 +31,11 @@
 	);
 
 	onMount(() => {
-		// Redirect if already authenticated
+		// Redirect if already authenticated (e.g. user visits /register while logged in).
+		// Gated on !loading so the subscriber doesn't navigate mid-registration before
+		// Signal Protocol init with the password completes — handleSubmit owns navigation.
 		const unsubscribe = authStore.subscribe(({ user }) => {
-			if (user) {
+			if (user && !loading) {
 				void goto('/chat');
 			}
 		});
@@ -135,6 +137,8 @@
 			}
 
 			toastStore.success('Registration successful!');
+			// Navigate AFTER Signal init so the chat page doesn't race with a keyless init
+			void goto('/chat');
 		} catch (err: unknown) {
 			const apiError = err as ApiError;
 

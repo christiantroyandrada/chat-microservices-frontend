@@ -19,8 +19,9 @@ import { isStoredSignedPreKey } from './types';
 import type { SignalKeySet } from '$lib/types';
 import type { IndexedDBSignalProtocolStore } from './signalStore';
 import { arrayBufferToBase64, base64ToArrayBuffer } from './signalUtils';
-import { DEFAULT_SIGNED_PREKEY_ID, PREKEY_COUNT, MAX_PREKEY_SCAN } from './signalConstants';
+import { DEFAULT_SIGNED_PREKEY_ID, PREKEY_COUNT } from './signalConstants';
 import { logger } from '$lib/services/dev-logger';
+import { apiClient } from '$lib/services/api';
 
 /**
  * Generate a complete Signal Protocol identity with all necessary keys
@@ -93,31 +94,28 @@ export async function generateSignalIdentity(
 /**
  * Publish Signal Protocol prekey bundle to backend
  *
- * @param apiBase - API base URL
+ * Uses the centralized apiClient to ensure credentials, CSRF headers,
+ * timeout management, and error handling are consistent with the rest
+ * of the application.
+ *
+ * @param _apiBase - Unused (kept for backward compatibility; apiClient reads env)
  * @param userId - User ID
  * @param deviceId - Device ID for multi-device support
  * @param bundle - Prekey bundle containing public keys
  * @returns Server response
  */
 export async function publishSignalPrekey(
-	apiBase: string,
+	_apiBase: string,
 	userId: string,
 	deviceId: string,
 	bundle: PublicPreKeyBundle
 ): Promise<PublishPrekeyResponse> {
-	const url = `${apiBase}/api/user/prekeys`;
-	const response = await fetch(url, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ userId, deviceId, bundle }),
-		credentials: 'include'
+	const response = await apiClient.post<PublishPrekeyResponse>('/user/prekeys', {
+		userId,
+		deviceId,
+		bundle
 	});
-
-	if (!response.ok) {
-		throw new Error(`Failed to publish prekey: ${response.statusText}`);
-	}
-
-	return response.json() as Promise<PublishPrekeyResponse>;
+	return response.data as PublishPrekeyResponse;
 }
 
 /**
@@ -148,9 +146,9 @@ export async function exportSignalKeys(store: IndexedDBSignalProtocolStore): Pro
 		throw new Error('No signed prekey found or invalid format');
 	}
 
-	// Get all one-time prekeys (scan up to MAX_PREKEY_SCAN)
+	// Get all one-time prekeys (scan only up to PREKEY_COUNT — the number we generate)
 	const preKeys: SignalKeySet['preKeys'] = [];
-	for (let i = 1; i <= MAX_PREKEY_SCAN; i++) {
+	for (let i = 1; i <= PREKEY_COUNT; i++) {
 		const preKey = await store.loadPreKey(i);
 		if (preKey) {
 			preKeys.push({
