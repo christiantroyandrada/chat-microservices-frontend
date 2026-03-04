@@ -51,6 +51,27 @@ vi.mock('$lib/crypto/signalSession', () => ({
 	removeSessionWith: vi.fn(async () => undefined)
 }));
 
+// Mock $lib/config — signal.ts imports shouldSkipBackup / markBackupDone from
+// here, and config.ts imports $env/dynamic/public which doesn't exist in Vitest.
+vi.mock('$lib/config', () => ({
+	API_BASE: 'http://localhost',
+	LOGO_URL: 'https://example.com/logo.png',
+	getOrCreateDeviceId: vi.fn().mockReturnValue('test-device-id'),
+	shouldSkipBackup: vi.fn().mockReturnValue(false),
+	markBackupDone: vi.fn(),
+	BACKUP_COOLDOWN_MS: 300000
+}));
+
+vi.mock('$lib/services/dev-logger', () => ({
+	logger: {
+		info: vi.fn(),
+		warning: vi.fn(),
+		error: vi.fn(),
+		success: vi.fn(),
+		debug: vi.fn()
+	}
+}));
+
 // Mock auth.service dynamic import used in restore flow. Use shared mock from
 // tests/utils so multiple test files can reuse and modify it.
 import {

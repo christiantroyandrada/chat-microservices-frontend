@@ -49,6 +49,8 @@ export default defineConfig({
 				'src/**/*.test.ts',
 				'src/lib/types/**',
 				'src/**/index.{ts,js}',
+				// Service worker — browser-only runtime, not unit-testable
+				'src/service-worker.ts',
 				// Observability infrastructure — prom-client registry setup and /metrics
 				// endpoint. Covered by integration/e2e, not unit tests.
 				'src/lib/server/metrics.ts',
