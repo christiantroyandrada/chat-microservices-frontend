@@ -1,7 +1,7 @@
 import { apiClient } from './api';
-import { env } from '$env/dynamic/public';
 import {
 	initSignal,
+	hasSession as signalHasSession,
 	createSessionWithPrekeyBundle,
 	encryptMessage,
 	decryptMessage,
@@ -168,7 +168,35 @@ export const chatService = {
 						if (!isDecryptionError) {
 							return existing; // Already have successfully decrypted version
 						}
-
+						// Do NOT retry PreKeyWhisperMessage (type 3) failures.
+						//
+						// A PreKeyWhisperMessage uses a one-time prekey (OPK) for X3DH session
+						// establishment.  When decryption succeeds, the Signal library permanently
+						// removes that OPK from the local store.  But the server still publishes
+						// the same OPK in the prekey bundle — so the next peer who fetches the
+						// bundle can pick that already-consumed OPK and send a message that can
+						// never be decrypted (Bad MAC).  WhisperMessages (type 1) don't use OPKs
+						// and are safe to retry.
+						//
+						// Check both _encryptedContent (set by current code) and msg.content
+						// (fresh server response) — older cached errors won't have the metadata
+						// field, so the server payload acts as a fallback.
+						const envelopeSource = existingWithMeta._encryptedContent || msg.content;
+						if (envelopeSource) {
+							try {
+								const parsedEnv = JSON.parse(envelopeSource) as {
+									__encrypted?: boolean;
+									type?: number;
+								};
+								if (parsedEnv.__encrypted && parsedEnv.type === 3) {
+									// Leave as-is — retrying would consume the OPK and break
+									// incoming messages that use the same server-published OPK ID.
+									return existing;
+								}
+							} catch {
+								// Not valid JSON — fall through and let the normal path handle it
+							}
+						}
 						logger.info(
 							'[ChatService] Found cached decryption error, attempting to decrypt again:',
 							msg._id
@@ -292,28 +320,21 @@ export const chatService = {
 		}
 
 		// Require end-to-end encryption: initialize Signal and encrypt before sending.
-		const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
 		await initSignal(currentUserId);
 
 		// Check prekey bundle cache first (avoids redundant HTTP calls per message)
 		let prekeyBundleData = prekeyBundleCache.get(payload.receiverId) ?? null;
 
 		if (!prekeyBundleData) {
-			// Fetch recipient prekey bundle (must be present for E2EE)
-			// Backend returns: { status: 200, data: { userId, deviceId, bundle } }
+			// Fetch recipient prekey bundle via centralized apiClient (OWASP: credentials + CSRF)
 			try {
-				const resp = await fetch(
-					`${apiBase}/api/user/prekeys/${encodeURIComponent(payload.receiverId)}`,
-					{ credentials: 'include' }
+				const resp = await apiClient.get<{ userId: string; deviceId: string; bundle: unknown }>(
+					`/user/prekeys/${encodeURIComponent(payload.receiverId)}`
 				);
-				if (resp.ok) {
-					const json = await resp.json();
-					// Extract the nested data object containing userId, deviceId, and bundle
-					prekeyBundleData = json?.data || json;
-					// Cache for this session (LRU-bounded)
-					if (prekeyBundleData) {
-						prekeyBundleCacheSet(payload.receiverId, prekeyBundleData);
-					}
+				prekeyBundleData = resp.data ?? null;
+				// Cache for this session (LRU-bounded)
+				if (prekeyBundleData) {
+					prekeyBundleCacheSet(payload.receiverId, prekeyBundleData);
 				}
 			} catch {
 				// treat as missing prekey
@@ -327,16 +348,21 @@ export const chatService = {
 			);
 		}
 
-		// Bootstrap session and encrypt (will throw on failure)
-		// Pass the complete data object with userId, deviceId, and bundle, plus current user ID
-		await createSessionWithPrekeyBundle(prekeyBundleData, currentUserId);
+		// Only establish a new session if one doesn't already exist.
+		// createSessionWithPrekeyBundle has internal dedup, but skipping it entirely
+		// avoids object construction, base64 decoding, and IndexedDB reads per message.
+		const hasExisting = currentUserId
+			? await signalHasSession(String(payload.receiverId), currentUserId)
+			: false;
+		if (!hasExisting) {
+			await createSessionWithPrekeyBundle(prekeyBundleData, currentUserId);
+		}
 
 		// encryptMessage returns {type: number, body: string} where body is already base64-encoded
 		const ct = await encryptMessage(String(payload.receiverId), payload.content, currentUserId);
 
 		// Create encrypted envelope - body is already base64, no conversion needed
-		type EncryptedEnvelope = { __encrypted: true; type: number; body: string };
-		const payloadCipher: EncryptedEnvelope = {
+		const payloadCipher: EncryptedEnvelope & { __encrypted: true } = {
 			__encrypted: true,
 			type: ct.type,
 			body: ct.body // Already base64 from encryptMessage

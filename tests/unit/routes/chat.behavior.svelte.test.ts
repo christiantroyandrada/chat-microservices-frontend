@@ -5,6 +5,11 @@ import { render, fireEvent, waitFor } from '@testing-library/svelte';
 // Hoist-safe mocks
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_API_URL: 'http://localhost' } }));
+vi.mock('$lib/config', () => ({
+	API_BASE: 'http://localhost',
+	LOGO_URL: 'https://example.com/logo.png',
+	getOrCreateDeviceId: vi.fn().mockReturnValue('test-device-id')
+}));
 vi.mock('$lib/services/dev-logger', () => ({
 	logger: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn(), debug: vi.fn() }
 }));
@@ -55,7 +60,10 @@ vi.mock('$lib/services/chat.service', () => ({
 	}
 }));
 
-vi.mock('$lib/crypto/signal', () => ({ initSignalWithRestore: vi.fn().mockResolvedValue(true) }));
+vi.mock('$lib/crypto/signal', () => ({
+	initSignalWithRestore: vi.fn().mockResolvedValue(true),
+	isSignalInitialized: vi.fn().mockReturnValue(false)
+}));
 vi.mock('$lib/crypto/keyEncryption', () => ({
 	getCachedEncryptionPassword: vi.fn().mockReturnValue(null)
 }));

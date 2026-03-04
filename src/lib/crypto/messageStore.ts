@@ -262,14 +262,35 @@ export async function clearAllLocalMessages(userId: string): Promise<void> {
 export async function deleteMessageDatabase(userId: string): Promise<void> {
 	const dbName = `chat-messages-${userId}`;
 	return new Promise((resolve, reject) => {
+		let settled = false;
 		const request = indexedDB.deleteDatabase(dbName);
-		request.onerror = () => reject(toError(request.error));
-		request.onsuccess = () => {
-			logger.info(`[MessageStore] Deleted database ${dbName}`);
-			resolve();
+
+		request.onerror = () => {
+			if (!settled) {
+				settled = true;
+				reject(toError(request.error));
+			}
 		};
+
+		request.onsuccess = () => {
+			if (!settled) {
+				settled = true;
+				logger.info(`[MessageStore] Deleted database ${dbName}`);
+				resolve();
+			}
+		};
+
 		request.onblocked = () => {
-			logger.warning(`[MessageStore] Database ${dbName} deletion blocked - close all tabs`);
+			logger.warning(`[MessageStore] Database ${dbName} deletion blocked — waiting up to 3 s`);
+			setTimeout(() => {
+				if (!settled) {
+					settled = true;
+					logger.warning(
+						`[MessageStore] Database ${dbName} deletion timed out while blocked — proceeding anyway`
+					);
+					resolve();
+				}
+			}, 3000);
 		};
 	});
 }

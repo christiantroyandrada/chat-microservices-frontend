@@ -26,8 +26,8 @@ LABEL org.opencontainers.image.title="Chat Frontend" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.base.name="gcr.io/distroless/nodejs22-debian12:nonroot"
 
-# Install pnpm
-RUN npm install -g pnpm@latest
+# Install pnpm (pinned to match pnpm-lock.yaml lockfileVersion 9.0)
+RUN npm install -g pnpm@9.11.0
 
 WORKDIR /usr/src/app
 

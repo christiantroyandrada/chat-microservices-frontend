@@ -24,6 +24,12 @@ export function setFetchSignalKeysToThrow(err: unknown) {
 	});
 }
 
+export function setStoreSignalKeysToThrow(err: unknown) {
+	authService.storeSignalKeys = vi.fn(async () => {
+		throw err;
+	});
+}
+
 export function resetAuthMock() {
 	authService.fetchSignalKeys = vi.fn(async () => null);
 	authService.storeSignalKeys = vi.fn(async () => undefined);

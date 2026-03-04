@@ -110,7 +110,7 @@ describe('signalBackup', () => {
 		// stub indexedDB.deleteDatabase to call onsuccess
 		(globalThis as unknown as { indexedDB?: { deleteDatabase: () => unknown } }).indexedDB = {
 			deleteDatabase: () => {
-				const req: { onsuccess?: () => void } = {};
+				const req: { onsuccess?: () => void; onerror?: () => void; onblocked?: () => void } = {};
 				setTimeout(() => {
 					if (req.onsuccess) req.onsuccess();
 				}, 0);
@@ -119,6 +119,28 @@ describe('signalBackup', () => {
 		} as unknown as { deleteDatabase: () => unknown };
 
 		await expect(signalBackup.clearSignalState('user123')).resolves.toBeUndefined();
+	});
+
+	it('clearSignalState resolves after timeout when deletion is blocked', async () => {
+		vi.useFakeTimers();
+		// stub indexedDB.deleteDatabase to fire onblocked but never onsuccess
+		(globalThis as unknown as { indexedDB?: { deleteDatabase: () => unknown } }).indexedDB = {
+			deleteDatabase: () => {
+				const req: { onsuccess?: () => void; onerror?: () => void; onblocked?: () => void } = {};
+				// Fire onblocked async
+				setTimeout(() => {
+					if (req.onblocked) req.onblocked();
+				}, 0);
+				return req;
+			}
+		} as unknown as { deleteDatabase: () => unknown };
+
+		const promise = signalBackup.clearSignalState('blocked-user');
+		// Advance past the onblocked setTimeout(0) + the 3 s safety timeout
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(3000);
+		await expect(promise).resolves.toBeUndefined();
+		vi.useRealTimers();
 	});
 
 	it('generateAndPublishIdentity returns publish result when bundle exists', async () => {
@@ -154,5 +176,46 @@ describe('signalBackup', () => {
 				'd'
 			)
 		).rejects.toThrow('No generated prekey bundle available');
+	});
+
+	it('republishPrekeys exports keys and publishes the public bundle', async () => {
+		const fakeKeySet = {
+			identityKeyPair: { pubKey: 'idPub', privKey: 'idPriv' },
+			registrationId: 42,
+			signedPreKeyPair: {
+				keyId: 1,
+				keyPair: { pubKey: 'spkPub', privKey: 'spkPriv' },
+				signature: 'sig'
+			},
+			preKeys: [
+				{ keyId: 1, keyPair: { pubKey: 'pk1Pub', privKey: 'pk1Priv' } },
+				{ keyId: 2, keyPair: { pubKey: 'pk2Pub', privKey: 'pk2Priv' } }
+			]
+		} as unknown as SignalKeySet;
+
+		const exportMock = exportSignalKeys as MockedFunction<typeof exportSignalKeys>;
+		const pubMock = publishSignalPrekey as MockedFunction<typeof publishSignalPrekey>;
+		exportMock.mockResolvedValue(fakeKeySet);
+		pubMock.mockResolvedValue({ ok: true } as unknown as Awaited<
+			ReturnType<typeof publishSignalPrekey>
+		>);
+
+		await signalBackup.republishPrekeys(
+			{} as unknown as IndexedDBSignalProtocolStore,
+			'https://api',
+			'user1',
+			'dev1'
+		);
+
+		expect(exportSignalKeys).toHaveBeenCalled();
+		expect(publishSignalPrekey).toHaveBeenCalledWith('https://api', 'user1', 'dev1', {
+			identityKey: 'idPub',
+			registrationId: 42,
+			signedPreKey: { id: 1, publicKey: 'spkPub', signature: 'sig' },
+			preKeys: [
+				{ id: 1, publicKey: 'pk1Pub' },
+				{ id: 2, publicKey: 'pk2Pub' }
+			]
+		});
 	});
 });

@@ -2,6 +2,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$lib/config', () => ({
+	API_BASE: 'http://localhost',
+	LOGO_URL: 'https://example.com/logo.png',
+	getOrCreateDeviceId: vi.fn().mockReturnValue('test-device-id')
+}));
 vi.mock('$lib/services/dev-logger', () => ({ logger: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('$lib/stores/toast.store', () => ({ toastStore: { success: vi.fn(), error: vi.fn() } }));
 

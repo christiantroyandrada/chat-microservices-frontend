@@ -76,7 +76,7 @@ describe('authStore', () => {
 		expect(get(user)).toBeNull();
 	});
 
-	it('login success stores user and navigates to /chat', async () => {
+	it('login success stores user and marks initialized', async () => {
 		vi.doMock('$app/environment', () => ({ browser: true }));
 		const login = vi.fn(() => Promise.resolve());
 		const getCurrentUser = vi.fn(() => Promise.resolve({ id: 'x' }));
@@ -86,7 +86,8 @@ describe('authStore', () => {
 		vi.doMock('$lib/services/auth.service', () => ({ authService: authServiceMock }));
 		vi.doMock('$app/navigation', () => ({ goto }));
 
-		const { authStore, user, isAuthenticated } = await import('$lib/stores/auth.store');
+		const { authStore, user, isAuthenticated, authInitialized } =
+			await import('$lib/stores/auth.store');
 
 		const out = await authStore.login({
 			email: 'a@example.com',
@@ -95,7 +96,9 @@ describe('authStore', () => {
 		expect(out).toEqual({ id: 'x' });
 		expect(get(user)).toEqual({ id: 'x' });
 		expect(get(isAuthenticated)).toBe(true);
-		expect(goto).toHaveBeenCalledWith('/chat');
+		// Store no longer navigates — callers own goto('/chat') after Signal init
+		expect(goto).not.toHaveBeenCalled();
+		expect(get(authInitialized)).toBe(true);
 	});
 
 	it('login failure sets error and rethrows', async () => {
@@ -113,7 +116,7 @@ describe('authStore', () => {
 		expect(get(authError)).toBe(apiError.message);
 	});
 
-	it('register success stores user and navigates to /chat', async () => {
+	it('register success stores user and marks initialized', async () => {
 		vi.doMock('$app/environment', () => ({ browser: true }));
 		const register = vi.fn(() => Promise.resolve());
 		const getCurrentUser = vi.fn(() => Promise.resolve({ id: 'r' }));
@@ -123,7 +126,7 @@ describe('authStore', () => {
 		vi.doMock('$lib/services/auth.service', () => ({ authService: authServiceMock }));
 		vi.doMock('$app/navigation', () => ({ goto }));
 
-		const { authStore, user } = await import('$lib/stores/auth.store');
+		const { authStore, user, authInitialized } = await import('$lib/stores/auth.store');
 
 		const out = await authStore.register({
 			username: 'u',
@@ -132,7 +135,9 @@ describe('authStore', () => {
 		} as RegisterCredentials);
 		expect(out).toEqual({ id: 'r' });
 		expect(get(user)).toEqual({ id: 'r' });
-		expect(goto).toHaveBeenCalledWith('/chat');
+		// Store no longer navigates — callers own goto('/chat') after Signal init
+		expect(goto).not.toHaveBeenCalled();
+		expect(get(authInitialized)).toBe(true);
 	});
 
 	it('register failure sets error and rethrows', async () => {

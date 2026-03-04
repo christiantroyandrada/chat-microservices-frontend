@@ -14,6 +14,7 @@
 
 import type { SignalKeySet, EncryptedKeyBundle } from '$lib/types';
 import { logger } from '$lib/services/dev-logger';
+import { arrayBufferToBase64, base64ToArrayBuffer } from './signalUtils';
 
 const ENCRYPTION_VERSION = 1;
 const PBKDF2_ITERATIONS = 100000; // OWASP recommended minimum
@@ -110,30 +111,6 @@ export function clearCachedEncryptionPassword(): void {
 	} catch (error) {
 		logger.warning('[KeyEncryption] Failed to clear cached encryption key:', error);
 	}
-}
-
-/**
- * Convert ArrayBuffer to Base64 string
- */
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-	const bytes = new Uint8Array(buffer);
-	let binary = '';
-	for (let i = 0; i < bytes.byteLength; i++) {
-		binary += String.fromCodePoint(bytes[i]);
-	}
-	return btoa(binary);
-}
-
-/**
- * Convert Base64 string to ArrayBuffer
- */
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-	const binary = atob(base64);
-	const bytes = new Uint8Array(binary.length);
-	for (let i = 0; i < binary.length; i++) {
-		bytes[i] = binary.codePointAt(i)!;
-	}
-	return bytes.buffer;
 }
 
 /**

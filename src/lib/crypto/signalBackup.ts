@@ -8,6 +8,7 @@
 
 import type { EncryptedKeyBundle } from '$lib/types';
 import type { IndexedDBSignalProtocolStore } from './signalStore';
+import type { PublicPreKeyBundle } from './types';
 import {
 	exportSignalKeys,
 	importSignalKeys,
@@ -84,20 +85,39 @@ export async function clearSignalState(userId: string): Promise<void> {
 	const dbName = `${DB_NAME_PREFIX}${userId}`;
 
 	return new Promise((resolve, reject) => {
+		let settled = false;
 		const request = indexedDB.deleteDatabase(dbName);
 
-		request.onerror = () => reject(toError(request.error));
+		request.onerror = () => {
+			if (!settled) {
+				settled = true;
+				reject(toError(request.error));
+			}
+		};
 
 		request.onsuccess = () => {
-			logger.info(`[SignalBackup] Deleted database ${dbName}`);
-			resolve();
+			if (!settled) {
+				settled = true;
+				logger.info(`[SignalBackup] Deleted database ${dbName}`);
+				resolve();
+			}
 		};
 
 		request.onblocked = () => {
 			logger.warning(
-				`[SignalBackup] Database ${dbName} deletion blocked - this can happen if other tabs are open`
+				`[SignalBackup] Database ${dbName} deletion blocked — waiting up to 3 s for connections to close`
 			);
-			resolve();
+			// Don't resolve here — onsuccess will fire once all connections release.
+			// Safety timeout so we never hang forever (e.g. another tab holds the DB).
+			setTimeout(() => {
+				if (!settled) {
+					settled = true;
+					logger.warning(
+						`[SignalBackup] Database ${dbName} deletion timed out while blocked — proceeding anyway`
+					);
+					resolve();
+				}
+			}, 3000);
 		};
 	});
 }
@@ -123,4 +143,46 @@ export async function generateAndPublishIdentity(
 		throw new Error('No generated prekey bundle available');
 	}
 	return publishSignalPrekey(apiBase, userId, deviceId, bundle);
+}
+
+/**
+ * Re-publish the current local prekey bundle to the server.
+ *
+ * Call this after restoring keys from an encrypted backend backup so the
+ * server's public prekey bundle stays in sync with the private keys the
+ * user actually holds.  Without this, a previous key-regeneration (e.g.
+ * from a missing cached password) could leave stale public keys on the
+ * server, causing "Bad MAC" failures for anyone who fetches the bundle.
+ *
+ * @param store - IndexedDB store instance (must already contain keys)
+ * @param apiBase - API base URL
+ * @param userId - User ID
+ * @param deviceId - Device ID
+ */
+export async function republishPrekeys(
+	store: IndexedDBSignalProtocolStore,
+	apiBase: string,
+	userId: string,
+	deviceId: string
+): Promise<void> {
+	logger.info('[SignalBackup] Re-publishing prekey bundle to ensure server consistency');
+
+	const keySet = await exportSignalKeys(store);
+
+	const bundle: PublicPreKeyBundle = {
+		identityKey: keySet.identityKeyPair.pubKey,
+		registrationId: keySet.registrationId,
+		signedPreKey: {
+			id: keySet.signedPreKeyPair.keyId,
+			publicKey: keySet.signedPreKeyPair.keyPair.pubKey,
+			signature: keySet.signedPreKeyPair.signature
+		},
+		preKeys: keySet.preKeys.map((pk) => ({
+			id: pk.keyId,
+			publicKey: pk.keyPair.pubKey
+		}))
+	};
+
+	await publishSignalPrekey(apiBase, userId, deviceId, bundle);
+	logger.info('[SignalBackup] Prekey bundle re-published successfully');
 }

@@ -4,6 +4,11 @@ import { render, screen, waitFor } from '@testing-library/svelte';
 // Mocks for many services used by chat page
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_API_URL: 'http://localhost' } }));
+vi.mock('$lib/config', () => ({
+	API_BASE: 'http://localhost',
+	LOGO_URL: 'https://example.com/logo.png',
+	getOrCreateDeviceId: vi.fn().mockReturnValue('test-device-id')
+}));
 
 vi.mock('$lib/stores/auth.store', () => ({
 	authStore: {
@@ -46,7 +51,10 @@ vi.mock('$lib/stores/notification.store', () => ({
 		}
 	}
 }));
-vi.mock('$lib/crypto/signal', () => ({ initSignalWithRestore: vi.fn().mockResolvedValue(true) }));
+vi.mock('$lib/crypto/signal', () => ({
+	initSignalWithRestore: vi.fn().mockResolvedValue(true),
+	isSignalInitialized: vi.fn().mockReturnValue(false)
+}));
 vi.mock('$lib/crypto/keyEncryption', () => ({
 	getCachedEncryptionPassword: vi.fn().mockReturnValue(null)
 }));

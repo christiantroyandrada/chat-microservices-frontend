@@ -4,7 +4,9 @@
 	import { logger } from '$lib/services/dev-logger';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import type { ApiError } from '$lib/types';
+	import { parseApiError } from '$lib/utils/errorHandling';
+	import { validatePassword, validateUsername } from '$lib/utils/validation';
+	import { getOrCreateDeviceId, LOGO_URL, API_BASE } from '$lib/config';
 
 	// use Svelte 5 runes for reactive state
 	let username = $state('');
@@ -18,22 +20,22 @@
 	let fieldErrors = $state<Record<string, string>>({});
 
 	// Password validation state for live feedback (derived runes)
-	const passwordRequirements = $derived.by(() => ({
-		minLength: password.length >= 8,
-		hasUpperCase: /[A-Z]/.test(password),
-		hasLowerCase: /[a-z]/.test(password),
-		hasNumber: /\d/.test(password),
-		hasSpecialChar: /[@$!%*?&]/.test(password)
-	}));
+	const passwordRequirements = $derived.by(() => {
+		const { minLength, hasUpperCase, hasLowerCase, hasNumber, hasSpecialChar } =
+			validatePassword(password).requirements;
+		return { minLength, hasUpperCase, hasLowerCase, hasNumber, hasSpecialChar };
+	});
 
 	const passwordStrength = $derived.by(
 		() => Object.values(passwordRequirements).filter(Boolean).length
 	);
 
 	onMount(() => {
-		// Redirect if already authenticated
+		// Redirect if already authenticated (e.g. user visits /register while logged in).
+		// Gated on !loading so the subscriber doesn't navigate mid-registration before
+		// Signal Protocol init with the password completes — handleSubmit owns navigation.
 		const unsubscribe = authStore.subscribe(({ user }) => {
-			if (user) {
+			if (user && !loading) {
 				void goto('/chat');
 			}
 		});
@@ -57,36 +59,18 @@
 			return;
 		}
 
-		if (password.length < 8) {
-			error = 'Password must be at least 8 characters';
-			fieldErrors = { password: 'Password must be at least 8 characters' };
-			return;
-		}
-
-		// Validate username format: no spaces, 3-30 chars, letters, numbers, _ or -
-		const usernameClean = String(username || '')
-			.trim()
-			.toLowerCase();
-		if (/\s/.test(usernameClean)) {
-			error = 'Username cannot contain spaces';
-			fieldErrors = { username: error };
-			return;
-		}
-		if (!/^[a-z0-9_-]{3,30}$/.test(usernameClean)) {
-			error = 'Username invalid. Use 3-30 characters: letters, numbers, _ or -';
+		// Validate username format using shared utility (keeps in sync with backend)
+		const usernameValidation = validateUsername(username);
+		if (!usernameValidation.valid) {
+			error = usernameValidation.error!;
 			fieldErrors = { username: error };
 			return;
 		}
 
-		// Validate password complexity to match backend requirements
-		const hasUpperCase = /[A-Z]/.test(password);
-		const hasLowerCase = /[a-z]/.test(password);
-		const hasNumber = /\d/.test(password);
-		const hasSpecialChar = /[@$!%*?&]/.test(password);
-
-		if (!hasUpperCase || !hasLowerCase || !hasNumber || !hasSpecialChar) {
-			error =
-				'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)';
+		// Validate password complexity using shared utility (keeps in sync with backend)
+		const passwordValidation = validatePassword(password);
+		if (!passwordValidation.valid) {
+			error = passwordValidation.errors[0] ?? 'Password does not meet requirements';
 			fieldErrors = { password: error };
 			return;
 		}
@@ -104,19 +88,13 @@
 			try {
 				const { initSignalWithRestore } = await import('$lib/crypto/signal');
 				const { cacheEncryptionPassword } = await import('$lib/crypto/keyEncryption');
-				const { env } = await import('$env/dynamic/public');
 
 				const userId = createdUser._id;
-				let deviceId = localStorage.getItem('deviceId') || '';
-				if (!deviceId) {
-					deviceId =
-						typeof crypto !== 'undefined' && 'randomUUID' in crypto
-							? crypto.randomUUID()
-							: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-					localStorage.setItem('deviceId', deviceId);
-				}
+				// getOrCreateDeviceId() uses the namespaced 'chatapp_deviceId' key and
+				// migrates any legacy 'deviceId' values, ensuring consistency with login.
+				const deviceId = getOrCreateDeviceId();
 
-				const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
+				const apiBase = API_BASE;
 
 				// Initialize Signal with password-based backup
 				// This generates keys, publishes prekeys, AND backs up encrypted keys to server
@@ -135,38 +113,12 @@
 			}
 
 			toastStore.success('Registration successful!');
+			// Navigate AFTER Signal init so the chat page doesn't race with a keyless init
+			void goto('/chat');
 		} catch (err: unknown) {
-			const apiError = err as ApiError;
-
-			// Handle validation errors from backend
-			if (apiError.errors && Array.isArray(apiError.errors)) {
-				// Convert array of errors to field-specific errors
-				fieldErrors = apiError.errors.reduce((acc: Record<string, string>, errItem: unknown) => {
-					const e = errItem as Record<string, unknown>;
-					const field = typeof e.field === 'string' ? e.field : undefined;
-					const msg = typeof e.message === 'string' ? e.message : undefined;
-					if (field && msg) {
-						acc[field] = msg;
-					}
-					return acc;
-				}, {});
-				error = apiError.message || 'Please fix the errors below';
-			} else if (apiError.errors && typeof apiError.errors === 'object') {
-				// Handle if backend sends errors as object
-				fieldErrors = Object.entries(apiError.errors).reduce(
-					(acc: Record<string, string>, [field, messages]) => {
-						acc[field] = Array.isArray(messages) ? messages[0] : (messages as string);
-						return acc;
-					},
-					{}
-				);
-				error = apiError.message || 'Please fix the errors below';
-			} else {
-				// Generic error message
-				const message = apiError.message || 'Registration failed';
-				error = message;
-			}
-
+			const parsed = parseApiError(err, 'Registration failed');
+			error = parsed.message;
+			fieldErrors = parsed.fieldErrors;
 			toastStore.error(error);
 		} finally {
 			loading = false;
@@ -190,7 +142,7 @@
 				style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);"
 			>
 				<img
-					src="https://res.cloudinary.com/dpqt9h7cn/image/upload/v1764081536/logo_blqxwc.png"
+					src={LOGO_URL}
 					alt="Chat logo"
 					style="width:100%;height:100%;object-fit:cover;display:block;"
 				/>

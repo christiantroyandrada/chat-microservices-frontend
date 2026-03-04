@@ -1,5 +1,4 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import type { MockedFunction } from 'vitest';
 import type { IndexedDBSignalProtocolStore } from '$lib/crypto/signalStore';
 
 // module under test
@@ -11,6 +10,14 @@ import { DEFAULT_SIGNED_PREKEY_ID, PREKEY_COUNT } from '$lib/crypto/signalConsta
 // Mock the dev logger used inside the module
 vi.mock('$lib/services/dev-logger', () => ({
 	logger: { info: vi.fn(), warning: vi.fn() }
+}));
+
+// Mock apiClient used for HTTP calls
+const { mockPost } = vi.hoisted(() => ({
+	mockPost: vi.fn()
+}));
+vi.mock('$lib/services/api', () => ({
+	apiClient: { post: mockPost, get: vi.fn() }
 }));
 
 // Mock KeyHelper from libsignal so we can control generated keys
@@ -66,11 +73,8 @@ describe('signalKeyManager', () => {
 
 	it('publishSignalPrekey posts bundle and returns response on success', async () => {
 		const fakeResp = { success: true };
-		// mock fetch to be successful
-		const g = globalThis as unknown as {
-			fetch?: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
-		};
-		g.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => fakeResp });
+		// mock apiClient.post to return a wrapped response
+		mockPost.mockResolvedValue({ success: true, data: fakeResp });
 
 		const bundle = {
 			identityKey: 'a',
@@ -85,15 +89,17 @@ describe('signalKeyManager', () => {
 			bundle as unknown as Parameters<typeof keyManager.publishSignalPrekey>[3]
 		);
 
-		expect(g.fetch).toHaveBeenCalled();
+		expect(mockPost).toHaveBeenCalledWith('/user/prekeys', {
+			userId: 'u',
+			deviceId: 'd',
+			bundle
+		});
 		expect(res).toEqual(fakeResp);
 	});
 
 	it('publishSignalPrekey throws when server responds non-ok', async () => {
-		const g2 = globalThis as unknown as {
-			fetch?: MockedFunction<(...args: unknown[]) => Promise<unknown>>;
-		};
-		g2.fetch = vi.fn().mockResolvedValue({ ok: false, statusText: 'Bad' });
+		// apiClient throws on non-ok responses
+		mockPost.mockRejectedValue(new Error('Request failed'));
 
 		const bundle = {
 			identityKey: 'a',
@@ -108,7 +114,7 @@ describe('signalKeyManager', () => {
 				'd',
 				bundle as unknown as Parameters<typeof keyManager.publishSignalPrekey>[3]
 			)
-		).rejects.toThrow('Failed to publish prekey');
+		).rejects.toThrow('Request failed');
 	});
 
 	it('exportSignalKeys returns keys when present', async () => {

@@ -150,22 +150,24 @@ export class IndexedDBSignalProtocolStore {
 	// PreKey Methods
 	// ========================================================================
 
+	/** Coerce string | number key IDs to a consistent numeric form */
+	private normalizeId(id: number | string): number {
+		return typeof id === 'number' ? id : Number(id);
+	}
+
 	async loadPreKey(encodedAddress: string | number): Promise<KeyPairType<ArrayBuffer> | undefined> {
-		const id = typeof encodedAddress === 'number' ? encodedAddress : Number(encodedAddress);
-		const key = `prekey_${id}` as const;
+		const key = `prekey_${this.normalizeId(encodedAddress)}` as const;
 		return this.cache[key];
 	}
 
 	async storePreKey(keyId: number | string, keyPair: KeyPairType<ArrayBuffer>): Promise<void> {
-		const id = typeof keyId === 'number' ? keyId : Number(keyId);
-		const key = `prekey_${id}` as const;
+		const key = `prekey_${this.normalizeId(keyId)}` as const;
 		this.cache[key] = keyPair;
 		await this.persist(key, keyPair);
 	}
 
 	async removePreKey(keyId: number | string): Promise<void> {
-		const id = typeof keyId === 'number' ? keyId : Number(keyId);
-		const key = `prekey_${id}` as const;
+		const key = `prekey_${this.normalizeId(keyId)}` as const;
 		delete this.cache[key];
 		await this.remove(key);
 	}
@@ -175,8 +177,7 @@ export class IndexedDBSignalProtocolStore {
 	// ========================================================================
 
 	async loadSignedPreKey(keyId: number | string): Promise<StoredSignedPreKey | undefined> {
-		const id = typeof keyId === 'number' ? keyId : Number(keyId);
-		const key = `signed_prekey_${id}` as const;
+		const key = `signed_prekey_${this.normalizeId(keyId)}` as const;
 		const stored = this.cache[key];
 
 		if (!stored) return undefined;
@@ -188,15 +189,13 @@ export class IndexedDBSignalProtocolStore {
 	}
 
 	async storeSignedPreKey(keyId: number | string, keyData: StoredSignedPreKey): Promise<void> {
-		const id = typeof keyId === 'number' ? keyId : Number(keyId);
-		const key = `signed_prekey_${id}` as const;
+		const key = `signed_prekey_${this.normalizeId(keyId)}` as const;
 		this.cache[key] = keyData;
 		await this.persist(key, keyData);
 	}
 
 	async removeSignedPreKey(keyId: number | string): Promise<void> {
-		const id = typeof keyId === 'number' ? keyId : Number(keyId);
-		const key = `signed_prekey_${id}` as const;
+		const key = `signed_prekey_${this.normalizeId(keyId)}` as const;
 		delete this.cache[key];
 		await this.remove(key);
 	}
@@ -245,6 +244,29 @@ export class IndexedDBSignalProtocolStore {
 	async storeLocalRegistrationId(registrationId: number): Promise<void> {
 		this.cache['registrationId'] = registrationId;
 		await this.persist('registrationId', registrationId);
+	}
+
+	/**
+	 * Clear all data from the IndexedDB object store and reset the in-memory cache.
+	 *
+	 * Unlike deleting the entire database, this uses the **existing** connection
+	 * so it never triggers the `onblocked` event that `deleteDatabase` can produce
+	 * when other connections (or even slightly-delayed close events) are in flight.
+	 */
+	async clearAllData(): Promise<void> {
+		if (!this.db) await this.init();
+
+		return new Promise((resolve, reject) => {
+			const tx = this.db!.transaction(this.storeName, 'readwrite');
+			const objectStore = tx.objectStore(this.storeName);
+			const request = objectStore.clear();
+
+			request.onerror = () => reject(toError(request.error));
+			request.onsuccess = () => {
+				this.cache = {};
+				resolve();
+			};
+		});
 	}
 
 	close(): void {

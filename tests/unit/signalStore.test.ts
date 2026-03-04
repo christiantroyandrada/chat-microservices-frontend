@@ -138,6 +138,36 @@ describe('IndexedDBSignalProtocolStore', () => {
 		// after close cache should be empty and db null; subsequent get returns undefined
 		expect(await store.getLocalRegistrationId()).toBeUndefined();
 	});
+
+	it('clearAllData clears all records and resets cache while keeping connection open', async () => {
+		const store = new IndexedDBSignalProtocolStore('u7');
+		attachFakeStoreTo(store, vi);
+
+		// Seed some data
+		await store.storeLocalRegistrationId(99);
+		const kp = { pubKey: abFrom([1, 2]), privKey: abFrom([3, 4]) } as unknown as {
+			pubKey: ArrayBuffer;
+			privKey: ArrayBuffer;
+		};
+		await store.storeIdentityKeyPair(kp);
+		await store.storeSession('alice:1', 'session-rec');
+
+		// Verify data exists
+		expect(await store.getLocalRegistrationId()).toBe(99);
+		expect(await store.getIdentityKeyPair()).toEqual(kp);
+		expect(await store.loadSession('alice:1')).toBe('session-rec');
+
+		// Clear all data
+		await store.clearAllData();
+
+		// After clear, cache should be empty
+		expect(await store.getLocalRegistrationId()).toBeUndefined();
+		expect(await store.getIdentityKeyPair()).toBeUndefined();
+		expect(await store.loadSession('alice:1')).toBeUndefined();
+
+		// The connection should still be alive (getDbName still works, can still store)
+		expect(store.getDbName()).toContain('signal-protocol-store-');
+	});
 });
 
 /* Second suite: run against an instance with IDB methods stubbed out */

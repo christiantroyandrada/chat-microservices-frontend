@@ -16,7 +16,6 @@ export const DEFAULT_SIGNED_PREKEY_ID = 1;
 export const PREKEY_COUNT = 5;
 
 /** Maximum prekey ID to scan when exporting keys */
-export const MAX_PREKEY_SCAN = 100;
 
 /** IndexedDB store name for Signal Protocol state */
 export const STORE_NAME = 'state';

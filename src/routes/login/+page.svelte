@@ -4,7 +4,8 @@
 	import { logger } from '$lib/services/dev-logger';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import type { ApiError } from '$lib/types';
+	import { LOGO_URL } from '$lib/config';
+	import { parseApiError } from '$lib/utils/errorHandling';
 
 	let email = $state('');
 	let password = $state('');
@@ -14,9 +15,11 @@
 	let fieldErrors: Record<string, string> = $state({});
 
 	onMount(() => {
-		// Redirect if already authenticated
+		// Redirect if already authenticated (e.g. user visits /login while logged in).
+		// Gated on !loading so the subscriber doesn't navigate mid-login before
+		// Signal Protocol init with the password completes — handleSubmit owns navigation.
 		const unsubscribe = authStore.subscribe(({ user }) => {
-			if (user) {
+			if (user && !loading) {
 				void goto('/chat');
 			}
 		});
@@ -44,19 +47,11 @@
 			try {
 				const { initSignalWithRestore } = await import('$lib/crypto/signal');
 				const { cacheEncryptionPassword } = await import('$lib/crypto/keyEncryption');
-				const { env } = await import('$env/dynamic/public');
+				const { API_BASE, getOrCreateDeviceId } = await import('$lib/config');
 
 				const userId = loggedInUser._id;
-				let deviceId = localStorage.getItem('deviceId') || '';
-				if (!deviceId) {
-					deviceId =
-						typeof crypto !== 'undefined' && 'randomUUID' in crypto
-							? crypto.randomUUID()
-							: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-					localStorage.setItem('deviceId', deviceId);
-				}
-
-				const apiBase = env.PUBLIC_API_URL || 'http://localhost:80';
+				const deviceId = getOrCreateDeviceId();
+				const apiBase = API_BASE;
 
 				// Initialize keys with password-based encryption for backup/restore
 				// The password is used to encrypt keys before storing on server
@@ -75,38 +70,12 @@
 			}
 
 			toastStore.success('Login successful!');
+			// Navigate AFTER Signal init so the chat page doesn't race with a keyless init
+			void goto('/chat');
 		} catch (err: unknown) {
-			const apiError = err as ApiError;
-
-			// Handle validation errors from backend
-			if (apiError.errors && Array.isArray(apiError.errors)) {
-				// Convert array of errors to field-specific errors
-				fieldErrors = apiError.errors.reduce((acc: Record<string, string>, errItem: unknown) => {
-					const e = errItem as Record<string, unknown>;
-					const field = typeof e.field === 'string' ? e.field : undefined;
-					const msg = typeof e.message === 'string' ? e.message : undefined;
-					if (field && msg) {
-						acc[field] = msg;
-					}
-					return acc;
-				}, {});
-				error = apiError.message || 'Please fix the errors below';
-			} else if (apiError.errors && typeof apiError.errors === 'object') {
-				// Handle if backend sends errors as object
-				fieldErrors = Object.entries(apiError.errors).reduce(
-					(acc: Record<string, string>, [field, messages]) => {
-						acc[field] = Array.isArray(messages) ? messages[0] : (messages as string);
-						return acc;
-					},
-					{}
-				);
-				error = apiError.message || 'Please fix the errors below';
-			} else {
-				// Generic error message
-				const message = apiError.message || 'Login failed';
-				error = message;
-			}
-
+			const parsed = parseApiError(err, 'Login failed');
+			error = parsed.message;
+			fieldErrors = parsed.fieldErrors;
 			toastStore.error(error);
 		} finally {
 			loading = false;
@@ -127,10 +96,10 @@
 		<div class="mb-10 text-center">
 			<div
 				class="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl"
-				style="background: linear-gradient(135deg, #6366f1, #7c3aed); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);"
+				style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);"
 			>
 				<img
-					src="https://res.cloudinary.com/dpqt9h7cn/image/upload/v1764081536/logo_blqxwc.png"
+					src={LOGO_URL}
 					alt="Chat logo"
 					style="width:100%;height:100%;object-fit:cover;display:block;"
 				/>

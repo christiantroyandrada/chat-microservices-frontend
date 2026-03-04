@@ -82,9 +82,13 @@ function createAuthStore() {
 				await authService.login(credentials);
 				const user = await authService.getCurrentUser();
 
-				update((state) => ({ ...state, user, loading: false, error: null }));
+				// Mark initialized: true so the layout's showLoading gate clears immediately
+				// on client-side navigation to /chat without waiting for authStore.init().
+				// NOTE: Callers (login/register pages) own navigation — they must complete
+				// Signal Protocol init before calling goto('/chat') to prevent the race
+				// condition where the chat page starts keyless Signal init concurrently.
+				update((state) => ({ ...state, user, loading: false, error: null, initialized: true }));
 
-				void goto('/chat');
 				return user;
 			} catch (error) {
 				const apiError = error as ApiError;
@@ -95,9 +99,10 @@ function createAuthStore() {
 				}));
 				throw error;
 			}
-		} /**
+		},
+		/**
 		 * Register new user
-		 */,
+		 */
 		async register(credentials: RegisterCredentials) {
 			update((state) => ({ ...state, loading: true, error: null }));
 
@@ -106,9 +111,9 @@ function createAuthStore() {
 				await authService.register(credentials);
 				const user = await authService.getCurrentUser();
 
-				update((state) => ({ ...state, user, loading: false, error: null }));
+				// Same as login() — mark initialized so the layout gate clears on navigation
+				update((state) => ({ ...state, user, loading: false, error: null, initialized: true }));
 
-				void goto('/chat');
 				return user;
 			} catch (error) {
 				const apiError = error as ApiError;
