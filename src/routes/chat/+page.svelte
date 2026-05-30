@@ -36,6 +36,7 @@
 	let unsubscribeWsTyping: (() => void) | null = null;
 	let unsubscribeWsStatus: (() => void) | null = null;
 	let unsubscribeWsPresence: (() => void) | null = null;
+	let unsubscribeWsReceipt: (() => void) | null = null;
 
 	// Track if we've done the initial message prefetch to avoid recursion
 	let hasPreloadedMessages = false;
@@ -93,6 +94,7 @@
 		unsubscribeWsTyping = wsService.onTyping(handleTypingIndicator);
 		unsubscribeWsStatus = wsService.onStatusChange(handleConnectionStatus);
 		unsubscribeWsPresence = wsService.onPresence(handlePresenceUpdate);
+		unsubscribeWsReceipt = wsService.onReceipt(handleReceipt);
 
 		// Load initial data (Signal Protocol is now ready for decryption)
 		await loadConversations();
@@ -105,9 +107,28 @@
 		if (unsubscribeWsTyping) unsubscribeWsTyping();
 		if (unsubscribeWsStatus) unsubscribeWsStatus();
 		if (unsubscribeWsPresence) unsubscribeWsPresence();
+		if (unsubscribeWsReceipt) unsubscribeWsReceipt();
 
 		wsService.disconnect();
 	});
+
+	// Update receipt state on our own sent messages when the recipient's device
+	// confirms delivery or reads the conversation.
+	function handleReceipt(event: { type: 'delivered' | 'read'; messageId?: string; by: string }) {
+		const me = $user?._id as string | undefined;
+		if (event.type === 'delivered' && event.messageId) {
+			messages = messages.map((m) =>
+				m._id === event.messageId && m.status !== 'read' ? { ...m, status: 'delivered' } : m
+			);
+		} else if (event.type === 'read') {
+			// `by` is the reader; mark our messages addressed to them as read.
+			messages = messages.map((m) =>
+				m.senderId === me && m.receiverId === event.by
+					? { ...m, status: 'read', read: true }
+					: m
+			);
+		}
+	}
 
 	async function loadConversations() {
 		loading.conversations = true;
@@ -202,6 +223,8 @@
 		try {
 			messages = await chatService.getMessages(userId, 50, 0, currentUserId);
 			await chatService.markAsRead(userId);
+			// Notify the sender in real time that we've read their messages.
+			wsService.sendMarkRead(userId);
 
 			// After loading and decrypting messages, refresh conversation list
 			// to update the preview with the latest decrypted message from local storage
@@ -337,6 +360,9 @@
 			}
 		}
 
+		// Acknowledge delivery to the sender — the message reached our device.
+		if (message._id) wsService.sendDelivered(message._id);
+
 		// Add message to the list if it's for current conversation
 		if (
 			selectedConversation &&
@@ -348,6 +374,8 @@
 			// Mark as read if conversation is active
 			if (message.senderId === selectedConversation.userId) {
 				void chatService.markAsRead(message.senderId);
+				// Notify the sender in real time that we've read it.
+				wsService.sendMarkRead(message.senderId);
 			}
 		}
 

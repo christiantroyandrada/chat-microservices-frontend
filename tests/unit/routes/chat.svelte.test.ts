@@ -39,7 +39,10 @@ vi.mock('$lib/services/websocket.service', () => ({
 		onMessage: vi.fn().mockReturnValue(() => {}),
 		onTyping: vi.fn().mockReturnValue(() => {}),
 		onStatusChange: vi.fn().mockReturnValue(() => {}),
-		onPresence: vi.fn().mockReturnValue(() => {})
+		onPresence: vi.fn().mockReturnValue(() => {}),
+		onReceipt: vi.fn().mockReturnValue(() => {}),
+		sendDelivered: vi.fn(),
+		sendMarkRead: vi.fn()
 	}
 }));
 vi.mock('$lib/stores/notification.store', () => ({

@@ -44,10 +44,13 @@ vi.mock('$lib/services/websocket.service', () => ({
 		isConnected: vi.fn().mockReturnValue(true),
 		sendMessage: vi.fn(),
 		sendTyping: vi.fn(),
+		sendDelivered: vi.fn(),
+		sendMarkRead: vi.fn(),
 		onMessage: vi.fn().mockReturnValue(() => {}),
 		onTyping: vi.fn().mockReturnValue(() => {}),
 		onStatusChange: vi.fn().mockReturnValue(() => {}),
-		onPresence: vi.fn().mockReturnValue(() => {})
+		onPresence: vi.fn().mockReturnValue(() => {}),
+		onReceipt: vi.fn().mockReturnValue(() => {})
 	}
 }));
 

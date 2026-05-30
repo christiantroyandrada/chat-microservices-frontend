@@ -7,6 +7,7 @@ import type {
 	StatusCallback,
 	TypingCallback,
 	PresenceCallback,
+	ReceiptCallback,
 	ReceiveMessagePayload,
 	TypingPayload
 } from '$lib/types';
@@ -19,6 +20,7 @@ class WebSocketService {
 	private readonly statusCallbacks: Set<StatusCallback> = new Set();
 	private readonly typingCallbacks: Set<TypingCallback> = new Set();
 	private readonly presenceCallbacks: Set<PresenceCallback> = new Set();
+	private readonly receiptCallbacks: Set<ReceiptCallback> = new Set();
 	private readonly wsUrl: string;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	private readonly safeToString: typeof safeToString;
@@ -133,6 +135,20 @@ class WebSocketService {
 				});
 			});
 
+			// Listen for delivery/read receipts on our own sent messages
+			this.socket.on('messageDelivered', (payload: unknown) => {
+				const d = payload as { messageId?: string; by?: string };
+				this.notifyReceipt({
+					type: 'delivered',
+					messageId: this.safeToString(d.messageId),
+					by: this.safeToString(d.by)
+				});
+			});
+			this.socket.on('messageRead', (payload: unknown) => {
+				const d = payload as { by?: string };
+				this.notifyReceipt({ type: 'read', by: this.safeToString(d.by) });
+			});
+
 			// Listen for presence updates (online/offline)
 			this.socket.on('presence', (payload: unknown) => {
 				const d = payload as { userId?: string; online?: boolean; lastSeen?: string };
@@ -200,6 +216,7 @@ class WebSocketService {
 		this.statusCallbacks.clear();
 		this.typingCallbacks.clear();
 		this.presenceCallbacks.clear();
+		this.receiptCallbacks.clear();
 	}
 
 	/**
@@ -251,6 +268,36 @@ class WebSocketService {
 		if (this.socket?.connected) {
 			this.socket.emit('typing', { receiverId, isTyping });
 		}
+	}
+
+	/**
+	 * Tell the server we received a message (marks it Delivered and notifies
+	 * the original sender). Called by the recipient on incoming messages.
+	 */
+	sendDelivered(messageId: string): void {
+		if (this.socket?.connected && messageId) {
+			this.socket.emit('messageDelivered', { messageId });
+		}
+	}
+
+	/**
+	 * Mark all messages from `senderId` to us as read and notify that sender.
+	 * Called when the recipient opens/views the conversation.
+	 */
+	sendMarkRead(senderId: string): void {
+		if (this.socket?.connected && senderId) {
+			this.socket.emit('markRead', { senderId });
+		}
+	}
+
+	private notifyReceipt(event: import('$lib/types').ReceiptEvent): void {
+		this.receiptCallbacks.forEach((callback) => {
+			try {
+				callback(event);
+			} catch (error) {
+				logger.error('Error in receipt callback:', error);
+			}
+		});
 	}
 
 	/**
@@ -307,6 +354,17 @@ class WebSocketService {
 		this.presenceCallbacks.add(callback);
 		return () => {
 			this.presenceCallbacks.delete(callback);
+		};
+	}
+
+	/**
+	 * Subscribe to delivery/read receipts for our own sent messages.
+	 * Returns unsubscribe function that MUST be called to prevent memory leaks.
+	 */
+	onReceipt(callback: ReceiptCallback): () => void {
+		this.receiptCallbacks.add(callback);
+		return () => {
+			this.receiptCallbacks.delete(callback);
 		};
 	}
 

@@ -36,6 +36,9 @@ export interface Message {
 	content: string;
 	timestamp: string;
 	read?: boolean;
+	// Delivery/read state for receipts on the sender's own messages.
+	// 'sent' (reached server) → 'delivered' (reached recipient device) → 'read'.
+	status?: 'sent' | 'delivered' | 'read';
 	createdAt?: string;
 	updatedAt?: string;
 }
@@ -193,6 +196,8 @@ export type MessageCallback = (message: Message) => void;
 export type StatusCallback = (status: 'connected' | 'disconnected' | 'reconnecting') => void;
 export type TypingCallback = (userId: string, isTyping: boolean) => void;
 export type PresenceCallback = (userId: string, online: boolean, lastSeen?: string) => void;
+export type ReceiptEvent = { type: 'delivered' | 'read'; messageId?: string; by: string };
+export type ReceiptCallback = (event: ReceiptEvent) => void;
 
 // Signal Protocol Types
 // Used by: auth.service.ts, signal.ts for key backup/restore

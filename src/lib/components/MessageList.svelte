@@ -247,6 +247,27 @@
 						class:time-received={message.senderId !== currentUserId}
 					>
 						{formatTime(message.timestamp)}
+						{#if message.senderId === currentUserId}
+							{@const receiptState = message.status ?? (message.read ? 'read' : 'sent')}
+							<span
+								class="message-receipt ml-1"
+								class:receipt-read={receiptState === 'read'}
+								data-testid="message-receipt"
+								data-state={receiptState}
+								aria-label={receiptState === 'read'
+									? 'Read'
+									: receiptState === 'delivered'
+										? 'Delivered'
+										: 'Sent'}
+								title={receiptState === 'read'
+									? 'Read'
+									: receiptState === 'delivered'
+										? 'Delivered'
+										: 'Sent'}
+							>
+								{receiptState === 'sent' ? '✓' : '✓✓'}
+							</span>
+						{/if}
 					</div>
 				</div>
 			</div>
