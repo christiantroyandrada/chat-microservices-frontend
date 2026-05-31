@@ -19,7 +19,6 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './signalUtils';
 const ENCRYPTION_VERSION = 1;
 const PBKDF2_ITERATIONS = 100000; // OWASP recommended minimum
 const KEY_LENGTH = 256; // AES-256
-const SESSION_KEY_NAME = '_ek'; // Encryption key cache in sessionStorage
 
 /**
  * Derive encryption key from user password using PBKDF2
@@ -53,65 +52,17 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 }
 
 /**
- * Cache password in sessionStorage for key restoration after page refresh
+ * NOTE: The login password is intentionally NOT cached anywhere.
  *
- * Security considerations:
- * - sessionStorage is cleared when browser tab is closed
- * - Only accessible from same origin
- * - Still vulnerable to XSS attacks, but mitigated by CSP
- * - Better security than localStorage (no persistence across sessions)
- * - Enables seamless E2E key restoration on page refresh within same session
- *
- * @param password - User password to cache
+ * A previous version stored the password (base64-obfuscated) in sessionStorage
+ * under `_ek` so keys could be restored after a refresh. That made the password
+ * — the PBKDF2 input for every Signal key and the user's login credential —
+ * recoverable by any XSS. Refresh/tab-reopen continuity is already provided by
+ * the persistent IndexedDB key store (see initSignalWithRestore "Path 2": when
+ * local keys exist no password is needed). The password is only required when
+ * local keys are absent (new device / cleared storage), where re-authentication
+ * is the correct behaviour.
  */
-export function cacheEncryptionPassword(password: string): void {
-	try {
-		if (typeof sessionStorage !== 'undefined') {
-			// Store password obfuscated (not secure encryption, just obfuscation)
-			// Real security comes from sessionStorage isolation and tab-close clearing
-			const obfuscated = btoa(encodeURIComponent(password));
-			sessionStorage.setItem(SESSION_KEY_NAME, obfuscated);
-			logger.info('[KeyEncryption] Encryption key cached in session storage');
-		}
-	} catch (error) {
-		logger.warning('[KeyEncryption] Failed to cache encryption key:', error);
-	}
-}
-
-/**
- * Retrieve cached password from sessionStorage
- *
- * @returns Cached password or null if not available
- */
-export function getCachedEncryptionPassword(): string | null {
-	try {
-		if (typeof sessionStorage !== 'undefined') {
-			const obfuscated = sessionStorage.getItem(SESSION_KEY_NAME);
-			if (obfuscated) {
-				const password = decodeURIComponent(atob(obfuscated));
-				logger.info('[KeyEncryption] Retrieved cached encryption key from session storage');
-				return password;
-			}
-		}
-	} catch (error) {
-		logger.warning('[KeyEncryption] Failed to retrieve cached encryption key:', error);
-	}
-	return null;
-}
-
-/**
- * Clear cached password from sessionStorage
- */
-export function clearCachedEncryptionPassword(): void {
-	try {
-		if (typeof sessionStorage !== 'undefined') {
-			sessionStorage.removeItem(SESSION_KEY_NAME);
-			logger.info('[KeyEncryption] Cleared cached encryption key');
-		}
-	} catch (error) {
-		logger.warning('[KeyEncryption] Failed to clear cached encryption key:', error);
-	}
-}
 
 /**
  * Encrypt Signal key set with user password

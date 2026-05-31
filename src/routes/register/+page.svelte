@@ -87,7 +87,6 @@
 			// 3. Keys can be restored on future logins/devices
 			try {
 				const { initSignalWithRestore } = await import('$lib/crypto/signal');
-				const { cacheEncryptionPassword } = await import('$lib/crypto/keyEncryption');
 
 				const userId = createdUser._id;
 				// getOrCreateDeviceId() uses the namespaced 'chatapp_deviceId' key and
@@ -100,9 +99,7 @@
 				// This generates keys, publishes prekeys, AND backs up encrypted keys to server
 				const success = await initSignalWithRestore(userId, deviceId, apiBase, password);
 				if (success) {
-					// Cache the password in sessionStorage for key restoration after page refresh
-					// This is cleared when the browser tab is closed
-					cacheEncryptionPassword(password);
+					// Keys are now in the persistent IndexedDB store; no password is cached.
 					logger.success('[Registration] Signal Protocol keys generated and backed up');
 				} else {
 					logger.warning('[Registration] Signal Protocol keys generated without backup');

@@ -60,18 +60,13 @@
 			const userId = $user._id as string;
 			const deviceId = getOrCreateDeviceId();
 
-			// AWAIT initialization to prevent race conditions with message decryption
-			// Try to use cached password from sessionStorage for key restoration after page refresh
+			// AWAIT initialization to prevent race conditions with message decryption.
+			// No password is cached anywhere; rely on the persistent IndexedDB key
+			// store (initSignalWithRestore "Path 2" reuses existing local keys). If
+			// local keys are absent (new device / cleared storage), success is false
+			// and the user is prompted to log in again (handled below).
 			try {
-				const { getCachedEncryptionPassword } = await import('$lib/crypto/keyEncryption');
-				const cachedPassword = getCachedEncryptionPassword();
-
-				const success = await initSignalWithRestore(
-					userId,
-					deviceId,
-					API_BASE,
-					cachedPassword || undefined
-				);
+				const success = await initSignalWithRestore(userId, deviceId, API_BASE, undefined);
 				if (success) {
 					logger.success('[Chat] Signal Protocol initialized successfully');
 				} else {
