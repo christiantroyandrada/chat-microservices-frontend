@@ -230,6 +230,13 @@ jobs:
             fi
             echo "✅ New image pulled and verified"
 
+            # Point :latest at the freshly pulled image. The compose frontend
+            # service references :latest (and the backend regenerates the compose
+            # with :latest on every deploy), so retagging here makes the recreate
+            # deterministically land on the new build regardless of the tag-rewrite
+            # sed above or which pipeline deployed last.
+            docker tag "ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}" "ghcr.io/${REPO_OWNER}/chat-frontend:latest"
+
             # Recreate the frontend container with the new image. A real
             # blue-green swap isn't possible for a single named compose service,
             # and the previous --no-recreate step left the OLD container running
