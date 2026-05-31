@@ -8,6 +8,7 @@ import type {
 	TypingCallback,
 	PresenceCallback,
 	ReceiptCallback,
+	ReceiptEvent,
 	ReceiveMessagePayload,
 	TypingPayload
 } from '$lib/types';
@@ -290,7 +291,7 @@ class WebSocketService {
 		}
 	}
 
-	private notifyReceipt(event: import('$lib/types').ReceiptEvent): void {
+	private notifyReceipt(event: ReceiptEvent): void {
 		this.receiptCallbacks.forEach((callback) => {
 			try {
 				callback(event);

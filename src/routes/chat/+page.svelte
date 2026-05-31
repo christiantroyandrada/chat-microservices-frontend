@@ -123,9 +123,7 @@
 		} else if (event.type === 'read') {
 			// `by` is the reader; mark our messages addressed to them as read.
 			messages = messages.map((m) =>
-				m.senderId === me && m.receiverId === event.by
-					? { ...m, status: 'read', read: true }
-					: m
+				m.senderId === me && m.receiverId === event.by ? { ...m, status: 'read', read: true } : m
 			);
 		}
 	}
