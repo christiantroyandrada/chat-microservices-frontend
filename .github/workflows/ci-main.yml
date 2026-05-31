@@ -230,14 +230,14 @@ jobs:
             fi
             echo "✅ New image pulled and verified"
 
-            # Blue-Green: Start new container without stopping old one
-            echo "🔵 Starting new frontend container (Blue-Green)..."
-
-            # Scale up: add new container alongside existing
-            docker compose up -d --no-deps --scale frontend=1 --no-recreate frontend 2>/dev/null || true
-
-            # Actually update with the new image
-            docker compose up -d --no-deps frontend
+            # Recreate the frontend container with the new image. A real
+            # blue-green swap isn't possible for a single named compose service,
+            # and the previous --no-recreate step left the OLD container running
+            # (compose reported "Running" and never applied the new tag). Force
+            # the recreate so the freshly pulled image is actually deployed; the
+            # container's own healthcheck + restart policy keep downtime to seconds.
+            echo "🔵 Recreating frontend container with new image..."
+            docker compose up -d --no-deps --force-recreate frontend
 
             echo "⏳ Waiting for new container to be healthy (max 60s)..."
             HEALTH_TIMEOUT=60
