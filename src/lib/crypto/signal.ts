@@ -390,7 +390,20 @@ export async function initSignalWithRestore(
 					return true;
 				}
 
-				// ── Path 3: No keys anywhere → generate fresh keys
+				// A server-side encrypted backup exists but we have no password to
+				// decrypt it (e.g. the auth cookie is still valid but local keys were
+				// evicted, or this is a new device without re-login). Generating fresh
+				// keys here would ORPHAN that backup (losing access to all prior
+				// messages) and overwrite the server's prekey bundle. Bail out so the
+				// UI prompts re-authentication instead of silently clobbering keys.
+				if (encryptedBundle) {
+					logger.warning(
+						'[Signal] Encrypted backup exists but no password to restore it — requesting re-auth instead of generating new keys'
+					);
+					return false;
+				}
+
+				// ── Path 3: No backup and no local keys → genuinely new identity
 				logger.info('[Signal] No keys found anywhere, generating new keys...');
 				await Backup.generateAndPublishIdentity(getStore(), apiBase, userId, deviceId);
 
