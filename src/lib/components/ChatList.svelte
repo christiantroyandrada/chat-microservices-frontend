@@ -104,7 +104,7 @@
 	<!-- Messages Header -->
 	<div class="messages-header p-4">
 		<div class="flex items-center justify-between">
-			<h2 class="messages-title text-xl font-semibold">Messages</h2>
+			<h2 class="messages-title">Correspondence</h2>
 			<button
 				onclick={openCreate}
 				class="new-chat-button ml-2 inline-flex items-center justify-center rounded-md p-2"
@@ -125,11 +125,11 @@
 	{#if showCreate}
 		<!-- Create conversation modal / panel -->
 		<div class="create-modal-overlay absolute top-16 right-0 left-0 z-50 flex justify-center p-4">
-			<div class="create-modal-panel w-full max-w-md rounded-lg p-4 shadow-lg">
+			<div class="create-modal-panel w-full max-w-md rounded-lg p-4">
 				<div class="flex items-center gap-2">
 					<input
 						class="create-modal-input flex-1 rounded px-3 py-2"
-						placeholder="Search users by name or email"
+						placeholder="Search people by name or email"
 						bind:value={searchQuery}
 						oninput={() => performSearch(searchQuery)}
 					/>
@@ -137,9 +137,9 @@
 				</div>
 				<div class="mt-3 max-h-64 overflow-y-auto">
 					{#if isSearching}
-						<div class="search-status text-sm">Searching...</div>
+						<div class="search-status text-sm">Searching…</div>
 					{:else if searchResults.length === 0}
-						<div class="search-status text-sm">No users found</div>
+						<div class="search-status text-sm">No people found</div>
 					{:else}
 						<ul class="search-results divide-y">
 							{#each searchResults as user (user.userId)}
@@ -150,7 +150,7 @@
 									>
 										<div class="flex items-center gap-3">
 											<div
-												class="avatar-circle flex h-8 w-8 items-center justify-center rounded-full font-semibold text-white"
+												class="avatar-circle flex h-8 w-8 items-center justify-center rounded-full"
 											>
 												{(user.username?.[0] ?? '').toUpperCase()}
 											</div>
@@ -173,10 +173,10 @@
 					<button onclick={closeCreate} class="cancel-button rounded px-3 py-1">Cancel</button>
 					<button
 						onclick={confirmCreate}
-						class="start-chat-button rounded px-3 py-1 text-white disabled:opacity-50"
+						class="start-chat-button rounded px-3 py-1 disabled:opacity-50"
 						disabled={!selectedUser}
 					>
-						Start Chat
+						Start chat
 					</button>
 				</div>
 			</div>
@@ -186,11 +186,11 @@
 	<!-- Conversations List -->
 	<div class="flex-1 overflow-y-auto">
 		{#if loading}
-			<div class="loading-state p-4 text-center">Loading conversations...</div>
+			<div class="loading-state p-4 text-center">Gathering your correspondence…</div>
 		{:else if conversations.length === 0}
 			<div class="empty-state p-4 text-center">
 				<p class="text-sm">No conversations yet</p>
-				<p class="empty-state-hint mt-1 text-xs">Start a new chat to begin messaging</p>
+				<p class="empty-state-hint mt-1 text-xs">Start a new one to begin writing</p>
 			</div>
 		{:else}
 			<ul class="conversations-list divide-y" role="list" aria-label="Conversations">
@@ -206,18 +206,18 @@
 							<div class="flex items-start gap-3">
 								<!-- Avatar -->
 								<div
-									class="avatar-circle flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-semibold text-white"
+									class="avatar-circle flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
 								>
 									{(conversation.username?.[0] ?? '').toUpperCase()}
 								</div>
 
 								<!-- Content -->
 								<div class="min-w-0 flex-1">
-									<div class="mb-1 flex items-center justify-between">
-										<h3 class="conversation-name truncate text-sm font-semibold">
+									<div class="mb-1 flex items-center justify-between gap-2">
+										<h3 class="conversation-name truncate">
 											{conversation.username}
 										</h3>
-										<span class="conversation-time text-xs">
+										<span class="conversation-time">
 											{formatTime(conversation.lastMessageTime)}
 										</span>
 									</div>
@@ -228,9 +228,7 @@
 
 								<!-- Unread Badge -->
 								{#if conversation.unreadCount && Number(conversation.unreadCount) > 0}
-									<div
-										class="unread-badge flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold text-white"
-									>
+									<div class="unread-badge flex h-5 w-5 items-center justify-center rounded-full">
 										{Number(conversation.unreadCount) > 9 ? '9+' : Number(conversation.unreadCount)}
 									</div>
 								{/if}
@@ -244,13 +242,15 @@
 </div>
 
 <style>
-	/* ChatList component scoped styles (converted to nesting) */
 	.chat-list-container {
 		background: var(--bg-primary);
-		border-right: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+		border-right: 1px solid var(--border-subtle);
 
 		.avatar-circle {
-			background: var(--gradient-accent);
+			background: var(--accent-primary);
+			color: var(--accent-contrast);
+			font-family: var(--font-serif);
+			font-weight: 600;
 		}
 
 		.user-name {
@@ -258,19 +258,24 @@
 		}
 
 		.messages-header {
-			border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+			border-bottom: 1px solid var(--border-subtle);
 		}
 		.messages-title {
+			font-family: var(--font-serif);
+			font-size: var(--text-xl);
+			font-weight: 600;
+			letter-spacing: -0.01em;
 			color: var(--text-primary);
 		}
 
 		.new-chat-button {
 			color: var(--text-secondary);
-			transition: all 150ms;
+			transition: all var(--dur-fast) ease;
 			background: transparent;
 		}
 		.new-chat-button:hover {
-			background: var(--accent-hover, rgba(99, 102, 241, 0.1));
+			background: var(--accent-soft);
+			color: var(--accent-primary);
 		}
 
 		.create-modal-overlay {
@@ -278,25 +283,27 @@
 		}
 
 		.create-modal-panel {
-			background: var(--modal-bg);
-			backdrop-filter: blur(12px);
-			border: 1px solid var(--modal-border);
+			background: var(--surface-raised);
+			border: 1px solid var(--border-subtle);
+			box-shadow: var(--shadow-strong);
 			color: var(--text-primary);
 		}
 
 		.create-modal-input {
-			background: var(--bg-tertiary);
-			border: 1px solid var(--modal-border);
+			background: var(--input-bg);
+			border: 1px solid var(--input-border);
 			color: var(--text-primary);
-			transition: all 150ms;
+			transition: all var(--dur-fast) ease;
 		}
 		.create-modal-input:focus {
+			outline: none;
 			border-color: var(--accent-primary);
+			box-shadow: 0 0 0 3px var(--accent-soft);
 		}
 
 		.create-modal-close {
 			color: var(--text-secondary);
-			transition: all 150ms;
+			transition: all var(--dur-fast) ease;
 			background: transparent;
 		}
 		.create-modal-close:hover {
@@ -308,11 +315,11 @@
 		}
 
 		.search-results {
-			border-color: var(--modal-border);
+			border-color: var(--border-subtle);
 		}
 
 		.search-result-item {
-			transition: all 150ms;
+			transition: all var(--dur-fast) ease;
 			background: transparent;
 			color: var(--text-primary);
 		}
@@ -322,29 +329,35 @@
 
 		.selected-indicator {
 			color: var(--accent-primary);
+			font-weight: 600;
 		}
 
 		.cancel-button {
-			background: var(--bg-tertiary);
-			border: 1px solid var(--modal-border);
-			color: var(--text-primary);
-			transition: all 150ms;
+			background: transparent;
+			border: 1px solid var(--border-strong);
+			color: var(--text-secondary);
+			transition: all var(--dur-fast) ease;
 		}
 		.cancel-button:hover {
 			background: var(--bg-hover);
+			color: var(--text-primary);
 		}
 
 		.start-chat-button {
-			background: var(--gradient-accent);
-			transition: all 150ms;
+			background: var(--accent-primary);
+			color: var(--accent-contrast);
+			transition: all var(--dur-fast) ease;
 			box-shadow: var(--shadow-cta);
 		}
 		.start-chat-button:not(:disabled):hover {
+			background: var(--accent-secondary);
 			transform: translateY(-1px);
 		}
 
 		.loading-state {
 			color: var(--text-secondary);
+			font-family: var(--font-serif);
+			font-style: italic;
 		}
 
 		.empty-state {
@@ -356,7 +369,7 @@
 		}
 
 		.conversations-list {
-			border-color: var(--border-subtle, rgba(255, 255, 255, 0.06));
+			border-color: var(--border-subtle);
 		}
 
 		.conversation-item {
@@ -365,28 +378,37 @@
 		}
 
 		.conversation-button {
-			transition: all 150ms;
+			transition: background var(--dur-fast) ease;
 			background: transparent;
 		}
 		.conversation-button.selected {
-			background: var(--accent-selected, rgba(99, 102, 241, 0.1));
+			background: var(--accent-soft);
 		}
 		.conversation-button:not(.selected):hover {
-			background: var(--bg-hover, rgba(255, 255, 255, 0.03));
+			background: var(--bg-hover);
 		}
 
 		.conversation-name {
+			font-family: var(--font-serif);
+			font-size: var(--text-md);
+			font-weight: 600;
 			color: var(--text-primary);
 		}
 		.conversation-time {
+			font-family: var(--font-mono);
+			font-size: var(--text-2xs);
 			color: var(--text-tertiary);
+			flex: none;
 		}
 		.conversation-message {
 			color: var(--text-secondary);
 		}
 
 		.unread-badge {
-			background: var(--gradient-accent);
+			background: var(--accent-primary);
+			color: var(--accent-contrast);
+			font-size: var(--text-2xs);
+			font-weight: 700;
 			animation: scaleIn 0.2s ease-out;
 		}
 	}

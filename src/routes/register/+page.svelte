@@ -6,7 +6,8 @@
 	import { onMount } from 'svelte';
 	import { parseApiError } from '$lib/utils/errorHandling';
 	import { validatePassword, validateUsername } from '$lib/utils/validation';
-	import { getOrCreateDeviceId, LOGO_URL, API_BASE } from '$lib/config';
+	import { getOrCreateDeviceId, API_BASE } from '$lib/config';
+	import Seal from '$lib/components/Seal.svelte';
 
 	// use Svelte 5 runes for reactive state
 	let username = $state('');
@@ -29,6 +30,17 @@
 	const passwordStrength = $derived.by(
 		() => Object.values(passwordRequirements).filter(Boolean).length
 	);
+	const strengthLevel = $derived(
+		passwordStrength === 5 ? 'strong' : passwordStrength >= 3 ? 'medium' : 'weak'
+	);
+
+	const requirementList = $derived([
+		{ met: passwordRequirements.minLength, label: 'At least 8 characters' },
+		{ met: passwordRequirements.hasUpperCase, label: 'One uppercase letter (A–Z)' },
+		{ met: passwordRequirements.hasLowerCase, label: 'One lowercase letter (a–z)' },
+		{ met: passwordRequirements.hasNumber, label: 'One number (0–9)' },
+		{ met: passwordRequirements.hasSpecialChar, label: 'One special character (@$!%*?&)' }
+	]);
 
 	onMount(() => {
 		// Redirect if already authenticated (e.g. user visits /register while logged in).
@@ -124,388 +136,396 @@
 </script>
 
 <svelte:head>
-	<title>Register - Chat App</title>
+	<title>Open your account · Secret</title>
 </svelte:head>
 
-<div
-	class="animate-fade-in flex min-h-screen items-center justify-center px-4 py-12"
-	style="background: var(--bg-primary);"
->
-	<div class="w-full max-w-md">
-		<!-- Logo/Brand -->
-		<div class="mb-10 text-center">
-			<div
-				class="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl"
-				style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);"
-			>
-				<img
-					src={LOGO_URL}
-					alt="Chat logo"
-					style="width:100%;height:100%;object-fit:cover;display:block;"
-				/>
-			</div>
-			<h2 class="mb-2 text-3xl font-bold" style="color: var(--text-primary);">Create account</h2>
-			<p class="text-sm" style="color: var(--text-secondary);">
-				Start chatting with your team today
-			</p>
-		</div>
+<div class="auth">
+	<div class="auth__sheet animate-settle">
+		<span class="auth__seal"><Seal size={60} /></span>
 
-		<!-- Register Form -->
-		<form
-			class="glass-strong space-y-6 rounded-2xl p-8"
-			style="box-shadow: var(--shadow-medium);"
-			onsubmit={handleSubmit}
-		>
+		<header class="auth__head">
+			<p class="eyebrow">Private correspondence</p>
+			<h1>Open your account</h1>
+			<p class="auth__sub">A sealed line for your conversations — yours alone.</p>
+		</header>
+
+		<form class="auth__form" onsubmit={handleSubmit} novalidate>
 			{#if error}
-				<div
-					class="animate-slide-in rounded-xl px-4 py-3"
-					style="background: var(--color-error-bg); border: 1px solid var(--color-error-border); color: var(--color-error);"
-				>
-					<div class="flex items-start gap-2">
-						<svg
-							class="mt-0.5 h-5 w-5 shrink-0"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-							/>
-						</svg>
-						<span class="text-sm">{error}</span>
-					</div>
+				<div class="error-box auth__error" role="alert">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+						/>
+					</svg>
+					<span>{error}</span>
 				</div>
 			{/if}
 
-			<div class="space-y-5">
-				<div>
-					<label
-						for="username"
-						class="mb-2 block text-sm font-medium"
-						style="color: var(--text-secondary);"
-					>
-						Username
-					</label>
-					<input
-						id="username"
-						name="username"
-						type="text"
-						autocomplete="username"
-						required
-						bind:value={username}
-						class="w-full rounded-xl px-4 py-3 transition-all duration-200"
-						style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.username ||
-						fieldErrors.name
-							? 'var(--color-error)'
-							: 'var(--border-subtle)'}; color: var(--text-primary);"
-						placeholder="johndoe"
-					/>
-					<p class="mt-2 text-xs" style="color: var(--text-secondary);">
-						Choose a unique username (3–30 characters). Allowed: lowercase letters, numbers,
-						underscores (_) and hyphens (-). No spaces allowed.
-					</p>
-					{#if fieldErrors.username}
-						<p class="mt-2 text-sm" style="color: var(--color-error);">
-							{fieldErrors.username}
-						</p>
-					{/if}
-				</div>
-
-				<div>
-					<label
-						for="email"
-						class="mb-2 block text-sm font-medium"
-						style="color: var(--text-secondary);"
-					>
-						Email address
-					</label>
-					<input
-						id="email"
-						name="email"
-						type="email"
-						autocomplete="email"
-						required
-						bind:value={email}
-						class="w-full rounded-xl px-4 py-3 transition-all duration-200"
-						style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.email
-							? 'var(--color-error)'
-							: 'var(--border-subtle)'}; color: var(--text-primary);"
-						placeholder="you@example.com"
-					/>
-					{#if fieldErrors.email}
-						<p class="mt-2 text-sm" style="color: var(--color-error);">{fieldErrors.email}</p>
-					{/if}
-				</div>
-
-				<div>
-					<label
-						for="password"
-						class="mb-2 block text-sm font-medium"
-						style="color: var(--text-secondary);"
-					>
-						Password
-					</label>
-					<div class="relative">
-						<input
-							id="password"
-							name="password"
-							type={showPassword ? 'text' : 'password'}
-							autocomplete="new-password"
-							required
-							bind:value={password}
-							class="w-full rounded-xl px-4 py-3 pr-12 transition-all duration-200"
-							style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.password
-								? 'var(--color-error)'
-								: 'var(--border-subtle)'}; color: var(--text-primary);"
-							placeholder="••••••••"
-						/>
-						<button
-							type="button"
-							onclick={() => (showPassword = !showPassword)}
-							class="absolute inset-y-0 right-0 flex items-center pr-4 transition-colors duration-200"
-							style="color: var(--text-tertiary);"
-							aria-label={showPassword ? 'Hide password' : 'Show password'}
-						>
-							<span class="text-sm font-medium">{showPassword ? 'Hide' : 'Show'}</span>
-						</button>
-					</div>
-
-					<!-- Password Requirements Helper -->
-					{#if password.length > 0}
-						<div class="mt-3 space-y-2">
-							<div class="flex items-center justify-between">
-								<span class="text-xs font-medium" style="color: var(--text-secondary);">
-									Password strength
-								</span>
-								<span
-									class="text-xs font-medium"
-									style="color: {passwordStrength === 5
-										? 'var(--color-success)'
-										: passwordStrength >= 3
-											? '#f59e0b'
-											: 'var(--color-error)'};"
-								>
-									{passwordStrength === 5 ? 'Strong' : passwordStrength >= 3 ? 'Medium' : 'Weak'}
-								</span>
-							</div>
-							<div class="flex gap-1">
-								{#each Array(5) as _, i (i)}
-									<div
-										class="h-1 flex-1 rounded-full transition-colors duration-200"
-										style="background: {i < passwordStrength
-											? passwordStrength === 5
-												? 'var(--color-success)'
-												: passwordStrength >= 3
-													? '#f59e0b'
-													: 'var(--color-error)'
-											: 'var(--border-subtle)'};"
-									></div>
-								{/each}
-							</div>
-							<ul class="space-y-1.5 text-xs">
-								<li class="flex items-center gap-2">
-									<svg
-										class="h-4 w-4 shrink-0"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										style="color: {passwordRequirements.minLength
-											? 'var(--color-success)'
-											: 'var(--text-tertiary)'};"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d={passwordRequirements.minLength ? 'M5 13l4 4L19 7' : 'M6 18L18 6M6 6l12 12'}
-										/>
-									</svg>
-									<span
-										style="color: {passwordRequirements.minLength
-											? 'var(--text-primary)'
-											: 'var(--text-secondary)'};"
-									>
-										At least 8 characters
-									</span>
-								</li>
-								<li class="flex items-center gap-2">
-									<svg
-										class="h-4 w-4 shrink-0"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										style="color: {passwordRequirements.hasUpperCase
-											? 'var(--color-success)'
-											: 'var(--text-tertiary)'};"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d={passwordRequirements.hasUpperCase
-												? 'M5 13l4 4L19 7'
-												: 'M6 18L18 6M6 6l12 12'}
-										/>
-									</svg>
-									<span
-										style="color: {passwordRequirements.hasUpperCase
-											? 'var(--text-primary)'
-											: 'var(--text-secondary)'};"
-									>
-										One uppercase letter (A-Z)
-									</span>
-								</li>
-								<li class="flex items-center gap-2">
-									<svg
-										class="h-4 w-4 shrink-0"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										style="color: {passwordRequirements.hasLowerCase
-											? 'var(--color-success)'
-											: 'var(--text-tertiary)'};"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d={passwordRequirements.hasLowerCase
-												? 'M5 13l4 4L19 7'
-												: 'M6 18L18 6M6 6l12 12'}
-										/>
-									</svg>
-									<span
-										style="color: {passwordRequirements.hasLowerCase
-											? 'var(--text-primary)'
-											: 'var(--text-secondary)'};"
-									>
-										One lowercase letter (a-z)
-									</span>
-								</li>
-								<li class="flex items-center gap-2">
-									<svg
-										class="h-4 w-4 shrink-0"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										style="color: {passwordRequirements.hasNumber
-											? 'var(--color-success)'
-											: 'var(--text-tertiary)'};"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d={passwordRequirements.hasNumber ? 'M5 13l4 4L19 7' : 'M6 18L18 6M6 6l12 12'}
-										/>
-									</svg>
-									<span
-										style="color: {passwordRequirements.hasNumber
-											? 'var(--text-primary)'
-											: 'var(--text-secondary)'};"
-									>
-										One number (0-9)
-									</span>
-								</li>
-								<li class="flex items-center gap-2">
-									<svg
-										class="h-4 w-4 shrink-0"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										style="color: {passwordRequirements.hasSpecialChar
-											? 'var(--color-success)'
-											: 'var(--text-tertiary)'};"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d={passwordRequirements.hasSpecialChar
-												? 'M5 13l4 4L19 7'
-												: 'M6 18L18 6M6 6l12 12'}
-										/>
-									</svg>
-									<span
-										style="color: {passwordRequirements.hasSpecialChar
-											? 'var(--text-primary)'
-											: 'var(--text-secondary)'};"
-									>
-										One special character (@$!%*?&)
-									</span>
-								</li>
-							</ul>
-						</div>
-					{/if}
-
-					{#if fieldErrors.password}
-						<p class="mt-2 text-sm" style="color: var(--color-error);">{fieldErrors.password}</p>
-					{/if}
-				</div>
-
-				<div>
-					<label
-						for="confirmPassword"
-						class="mb-2 block text-sm font-medium"
-						style="color: var(--text-secondary);"
-					>
-						Confirm Password
-					</label>
-					<div class="relative">
-						<input
-							id="confirmPassword"
-							name="confirmPassword"
-							type={showConfirmPassword ? 'text' : 'password'}
-							autocomplete="new-password"
-							required
-							bind:value={confirmPassword}
-							class="w-full rounded-xl px-4 py-3 pr-12 transition-all duration-200"
-							style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.confirmPassword
-								? 'var(--color-error)'
-								: 'var(--border-subtle)'}; color: var(--text-primary);"
-							placeholder="••••••••"
-						/>
-						<button
-							type="button"
-							onclick={() => (showConfirmPassword = !showConfirmPassword)}
-							class="absolute inset-y-0 right-0 flex items-center pr-4 transition-colors duration-200"
-							style="color: var(--text-tertiary);"
-							aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
-						>
-							<span class="text-sm font-medium">{showConfirmPassword ? 'Hide' : 'Show'}</span>
-						</button>
-					</div>
-					{#if fieldErrors.confirmPassword}
-						<p class="mt-2 text-sm" style="color: var(--color-error);">
-							{fieldErrors.confirmPassword}
-						</p>
-					{/if}
-				</div>
-			</div>
-
-			<button
-				type="submit"
-				disabled={loading}
-				class="btn-primary hover-lift w-full rounded-xl py-3.5 font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50"
-			>
-				{loading ? 'Creating account...' : 'Create account'}
-			</button>
-
-			<div class="pt-4 text-center" style="border-top: 1px solid var(--border-subtle);">
-				<p class="text-sm" style="color: var(--text-secondary);">
-					Already have an account?
-					<a
-						href="/login"
-						class="font-medium transition-colors duration-200"
-						style="color: var(--accent-secondary);"
-					>
-						Sign in
-					</a>
+			<div class="field">
+				<label for="username">Username</label>
+				<input
+					id="username"
+					name="username"
+					type="text"
+					autocomplete="username"
+					required
+					bind:value={username}
+					class="input"
+					class:input--error={fieldErrors.username || fieldErrors.name}
+					placeholder="johndoe"
+				/>
+				<p class="field__hint">
+					3–30 characters · lowercase letters, numbers, underscore (_) and hyphen (-). No spaces.
 				</p>
+				{#if fieldErrors.username}<p class="field__error">{fieldErrors.username}</p>{/if}
 			</div>
+
+			<div class="field">
+				<label for="email">Email address</label>
+				<input
+					id="email"
+					name="email"
+					type="email"
+					autocomplete="email"
+					required
+					bind:value={email}
+					class="input"
+					class:input--error={fieldErrors.email}
+					placeholder="you@example.com"
+				/>
+				{#if fieldErrors.email}<p class="field__error">{fieldErrors.email}</p>{/if}
+			</div>
+
+			<div class="field">
+				<label for="password">Password</label>
+				<div class="field__wrap">
+					<input
+						id="password"
+						name="password"
+						type={showPassword ? 'text' : 'password'}
+						autocomplete="new-password"
+						required
+						bind:value={password}
+						class="input input--withbtn"
+						class:input--error={fieldErrors.password}
+						placeholder="Choose a strong password"
+					/>
+					<button
+						type="button"
+						class="reveal"
+						onclick={() => (showPassword = !showPassword)}
+						aria-label={showPassword ? 'Hide password' : 'Show password'}
+					>
+						{showPassword ? 'Hide' : 'Show'}
+					</button>
+				</div>
+
+				{#if password.length > 0}
+					<div class="pw" data-level={strengthLevel}>
+						<div class="pw__head">
+							<span class="eyebrow">Strength</span>
+							<span class="pw__verdict">
+								{strengthLevel === 'strong'
+									? 'Strong'
+									: strengthLevel === 'medium'
+										? 'Fair'
+										: 'Weak'}
+							</span>
+						</div>
+						<div class="pw__bars" aria-hidden="true">
+							{#each Array(5) as _, i (i)}
+								<span class="pw__bar" class:on={i < passwordStrength}></span>
+							{/each}
+						</div>
+						<ul class="req">
+							{#each requirementList as r (r.label)}
+								<li class:met={r.met}>{r.label}</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+
+				{#if fieldErrors.password}<p class="field__error">{fieldErrors.password}</p>{/if}
+			</div>
+
+			<div class="field">
+				<label for="confirmPassword">Confirm password</label>
+				<div class="field__wrap">
+					<input
+						id="confirmPassword"
+						name="confirmPassword"
+						type={showConfirmPassword ? 'text' : 'password'}
+						autocomplete="new-password"
+						required
+						bind:value={confirmPassword}
+						class="input input--withbtn"
+						class:input--error={fieldErrors.confirmPassword}
+						placeholder="Re-enter your password"
+					/>
+					<button
+						type="button"
+						class="reveal"
+						onclick={() => (showConfirmPassword = !showConfirmPassword)}
+						aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+					>
+						{showConfirmPassword ? 'Hide' : 'Show'}
+					</button>
+				</div>
+				{#if fieldErrors.confirmPassword}<p class="field__error">
+						{fieldErrors.confirmPassword}
+					</p>{/if}
+			</div>
+
+			<button type="submit" class="btn btn-primary auth__submit" disabled={loading}>
+				{loading ? 'Sealing your account…' : 'Create account'}
+			</button>
 		</form>
+
+		<footer class="auth__foot">
+			<p class="auth__alt">Already have an account? <a href="/login">Sign in</a></p>
+			<p class="auth__note metadata">Every message sealed end-to-end</p>
+		</footer>
 	</div>
 </div>
+
+<style>
+	.auth {
+		display: flex;
+		min-height: 100vh;
+		align-items: center;
+		justify-content: center;
+		padding: var(--space-2xl) var(--space-md);
+		background: var(--bg-primary);
+	}
+	.auth__sheet {
+		position: relative;
+		width: 100%;
+		max-width: 27rem;
+		padding: var(--space-2xl) clamp(var(--space-lg), 5vw, var(--space-2xl)) var(--space-xl);
+		background: var(--surface-raised);
+		border: 1px solid var(--border-subtle);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-strong);
+	}
+	.auth__seal {
+		position: absolute;
+		top: 0;
+		left: 50%;
+		transform: translate(-50%, -55%);
+		animation: sealStamp 460ms var(--ease-out-quint) both;
+	}
+	/* stampIn variant carrying the centering translate: keyframe transforms
+	   REPLACE the static one (they don't merge), so it must ride every frame */
+	@keyframes sealStamp {
+		0% {
+			opacity: 0;
+			transform: translate(-50%, -55%) scale(1.35) rotate(-8deg);
+		}
+		60% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 1;
+			transform: translate(-50%, -55%) scale(1) rotate(0deg);
+		}
+	}
+	.auth__head {
+		margin-top: var(--space-md);
+		margin-bottom: var(--space-xl);
+		text-align: center;
+	}
+	.auth__head h1 {
+		font-size: var(--text-2xl);
+		margin: var(--space-2xs) 0;
+	}
+	.auth__sub {
+		margin: 0 auto;
+		color: var(--text-secondary);
+		font-size: var(--text-sm);
+	}
+	.auth__form {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-lg);
+	}
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-xs);
+	}
+	.field label {
+		font-size: var(--text-sm);
+		font-weight: 560;
+		color: var(--text-secondary);
+	}
+	.field__wrap {
+		position: relative;
+	}
+	.field__hint {
+		font-size: var(--text-xs);
+		color: var(--text-tertiary);
+		line-height: var(--leading-snug);
+	}
+	.field__error {
+		font-size: var(--text-xs);
+		color: var(--color-error);
+	}
+	.input {
+		width: 100%;
+		padding: 0.7rem var(--space-md);
+		font-size: var(--text-md);
+		color: var(--text-primary);
+		background: var(--input-bg);
+		border: 1px solid var(--input-border);
+		border-radius: var(--radius-sm);
+		transition:
+			border-color var(--dur-fast) ease,
+			box-shadow var(--dur-fast) ease;
+	}
+	.input::placeholder {
+		color: var(--text-tertiary);
+	}
+	.input:focus {
+		outline: none;
+		border-color: var(--accent-primary);
+		box-shadow: 0 0 0 3px var(--accent-soft);
+	}
+	.input--withbtn {
+		padding-right: 4rem;
+	}
+	.input--error {
+		border-color: var(--color-error);
+	}
+	.reveal {
+		position: absolute;
+		inset-inline-end: var(--space-xs);
+		top: 50%;
+		transform: translateY(-50%);
+		padding: 0.35rem var(--space-xs);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--text-tertiary);
+		background: transparent;
+		border: 0;
+		border-radius: var(--radius-xs);
+		cursor: pointer;
+	}
+	.reveal:hover {
+		color: var(--accent-primary);
+	}
+	.auth__error {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-xs);
+		padding: var(--space-sm) var(--space-md);
+		font-size: var(--text-sm);
+	}
+	.auth__error svg {
+		width: 1.1rem;
+		height: 1.1rem;
+		flex: none;
+		margin-top: 1px;
+	}
+	.auth__submit {
+		width: 100%;
+		padding: 0.8rem;
+		font-size: var(--text-md);
+	}
+	.auth__foot {
+		margin-top: var(--space-lg);
+		padding-top: var(--space-lg);
+		border-top: 1px solid var(--border-subtle);
+		text-align: center;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-sm);
+	}
+	.auth__alt {
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+	.auth__alt a {
+		font-weight: 600;
+	}
+	.auth__note {
+		font-size: var(--text-2xs);
+		letter-spacing: 0.04em;
+		color: var(--text-tertiary);
+	}
+
+	/* password strength */
+	.pw {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-xs);
+		margin-top: var(--space-2xs);
+	}
+	.pw__head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+	}
+	.pw__verdict {
+		font-size: var(--text-xs);
+		font-weight: 600;
+	}
+	.pw[data-level='weak'] .pw__verdict {
+		color: var(--color-error);
+	}
+	.pw[data-level='medium'] .pw__verdict {
+		color: var(--color-warning);
+	}
+	.pw[data-level='strong'] .pw__verdict {
+		color: var(--color-success);
+	}
+	.pw__bars {
+		display: flex;
+		gap: 4px;
+	}
+	.pw__bar {
+		height: 3px;
+		flex: 1;
+		border-radius: 99px;
+		background: var(--border-subtle);
+		transition: background var(--dur-fast) ease;
+	}
+	.pw[data-level='weak'] .pw__bar.on {
+		background: var(--color-error);
+	}
+	.pw[data-level='medium'] .pw__bar.on {
+		background: var(--color-warning);
+	}
+	.pw[data-level='strong'] .pw__bar.on {
+		background: var(--color-success);
+	}
+	.req {
+		list-style: none;
+		margin: var(--space-2xs) 0 0;
+		padding: 0;
+		display: grid;
+		gap: 0.3rem;
+		font-size: var(--text-xs);
+	}
+	.req li {
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
+		color: var(--text-tertiary);
+	}
+	.req li::before {
+		content: '○';
+		font-size: 0.7em;
+		color: var(--text-tertiary);
+	}
+	.req li.met {
+		color: var(--text-secondary);
+	}
+	.req li.met::before {
+		content: '✓';
+		color: var(--color-success);
+		font-size: 0.85em;
+	}
+</style>

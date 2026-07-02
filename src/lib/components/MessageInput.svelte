@@ -6,7 +6,7 @@
 	// Props in runes mode (accept callback props for events in Svelte 5)
 	let {
 		disabled = false,
-		placeholder = 'Type a message...',
+		placeholder = 'Write a message…',
 		maxLength = 5000,
 		send = null as ((msg: string) => void) | null,
 		typing = null as ((isTyping: boolean) => void) | null
@@ -139,12 +139,12 @@
 				{placeholder}
 				maxlength={maxLength}
 				rows="1"
-				class="message-input-textarea w-full resize-none rounded-lg px-4 py-2 leading-normal focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+				class="message-input-textarea w-full resize-none px-4 py-2 leading-normal focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				aria-label="Message input"
 				class:error={isOverLimit}
 			></textarea>
 			{#if isNearLimit}
-				<p class="message-input-hint mt-1 text-xs" class:error={isOverLimit}>
+				<p class="message-input-hint mt-1 text-xs" class:error={isOverLimit} aria-live="polite">
 					{characterCount}/{maxLength} characters
 				</p>
 			{/if}
@@ -152,10 +152,9 @@
 		<button
 			onclick={handleSend}
 			disabled={!message.trim() || disabled || isOverLimit}
-			class="send-button flex items-center justify-center rounded-lg px-4 py-2 text-white transition-all disabled:cursor-not-allowed disabled:opacity-50 md:px-6"
-			aria-label="Send message"
+			class="send-button flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-50"
+			aria-label="Seal and send message"
 		>
-			<span class="sr-only">Send</span>
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
 				class="h-4 w-4"
@@ -169,26 +168,36 @@
 			</svg>
 		</button>
 	</div>
-	<p class="message-input-note mt-2 text-xs">Press Enter to send, Shift+Enter for new line</p>
+	<p class="message-input-note mt-2 text-xs">Enter to send · Shift + Enter for a new line</p>
 </div>
 
 <style>
 	.message-input-wrapper {
-		background: var(--bg-primary);
-		border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+		background: var(--bg-secondary);
+		border-top: 1px solid var(--border-subtle);
 
 		.message-input-textarea {
 			background: var(--input-bg);
 			border: 1px solid var(--input-border);
 			color: var(--input-text);
-			transition: all 150ms;
+			border-radius: var(--radius-md);
+			font-family: var(--font-sans);
+			font-size: var(--text-md);
+			transition:
+				border-color var(--dur-fast) ease,
+				box-shadow var(--dur-fast) ease;
 
 			/* Ensure consistent single-line height with the send button */
 			min-height: 100%;
-			line-height: 1.2;
+			line-height: 1.35;
+
+			&::placeholder {
+				color: var(--text-tertiary);
+			}
 
 			&:focus {
 				border-color: var(--accent-primary);
+				box-shadow: 0 0 0 3px var(--accent-soft);
 			}
 
 			&.error {
@@ -204,22 +213,28 @@
 		}
 
 		.send-button {
-			background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+			background: var(--accent-primary);
+			color: var(--accent-contrast);
+			border-radius: var(--radius-md);
+			box-shadow: var(--shadow-cta);
 			transition:
-				transform 120ms ease,
-				box-shadow 120ms ease;
-			box-shadow: var(--shadow-cta, 0 4px 12px rgba(0, 0, 0, 0.08));
+				transform 120ms var(--ease-out-quart),
+				background 120ms ease;
 
 			/* Stretch to match textarea height when it grows */
 			height: auto;
 			align-self: stretch;
 			min-height: 44px;
 			min-width: 44px;
-			padding-left: 12px;
-			padding-right: 12px;
+			padding-left: 14px;
+			padding-right: 14px;
 		}
 		.send-button:not(:disabled):hover {
 			transform: translateY(-2px);
+			background: var(--accent-secondary);
+		}
+		.send-button:not(:disabled):active {
+			transform: translateY(0);
 		}
 
 		.message-input-note {

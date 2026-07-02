@@ -59,7 +59,7 @@ describe('Extended component tests', () => {
 				back
 			});
 
-			expect(screen.getByText('typing')).toBeTruthy();
+			expect(screen.getByText('writing')).toBeTruthy();
 			// click back button
 			const btn = screen.getByRole('button', { name: /Back to conversations/i });
 			await fireEvent.click(btn);
@@ -84,8 +84,8 @@ describe('Extended component tests', () => {
 		it('opens create modal, searches, selects user and calls onCreate', async () => {
 			const { chatService } = await import('$lib/services/chat.service');
 			const users = [
-				{ _id: 'u1', username: 'Doug' },
-				{ _id: 'u2', username: 'Eve' }
+				{ userId: 'u1', username: 'Doug' },
+				{ userId: 'u2', username: 'Eve' }
 			];
 			(chatService.searchUsers as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(users);
 
@@ -99,7 +99,7 @@ describe('Extended component tests', () => {
 			await fireEvent.click(newChatBtn);
 
 			const input = container.querySelector(
-				'input[placeholder="Search users by name or email"]'
+				'input[placeholder="Search people by name or email"]'
 			) as HTMLInputElement;
 			await fireEvent.input(input, { target: { value: 'Do' } });
 
@@ -115,7 +115,7 @@ describe('Extended component tests', () => {
 			await fireEvent.click(resultBtn);
 
 			// Start Chat should call onCreate
-			const startBtn = screen.getByText('Start Chat');
+			const startBtn = screen.getByText('Start chat');
 			await fireEvent.click(startBtn);
 			expect(onCreate).toHaveBeenCalled();
 		});
@@ -148,7 +148,7 @@ describe('Extended component tests', () => {
 
 			const textarea = screen.getByLabelText('Message input');
 			await fireEvent.input(textarea, { target: { value: long } });
-			const sendBtn = screen.getByLabelText('Send message');
+			const sendBtn = screen.getByLabelText('Seal and send message');
 			await fireEvent.click(sendBtn);
 
 			expect(send).not.toHaveBeenCalled();

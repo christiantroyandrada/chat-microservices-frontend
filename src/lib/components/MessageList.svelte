@@ -194,28 +194,34 @@
 	}
 </script>
 
+<!-- role="log" announces new letters to screen readers; tabindex makes the
+     scroller keyboard-operable in browsers that don't focus scrollable regions -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
 	bind:this={messagesContainer}
 	onscroll={handleScroll}
+	role="log"
+	aria-label="Messages"
+	tabindex="0"
 	class="messages-container flex-1 space-y-4 overflow-y-auto p-4"
 	style="padding-bottom: calc(var(--chat-input-height, 96px) + 1rem);"
 >
 	{#if loading}
 		<div class="flex h-full items-center justify-center">
-			<div class="loading-text">Loading messages...</div>
+			<div class="loading-text">Unsealing messages…</div>
 		</div>
 	{:else if messages.length === 0}
 		<div class="flex h-full items-center justify-center">
 			<div class="empty-state text-center">
-				<p class="mb-2 text-lg">No messages yet</p>
-				<p class="empty-subtitle text-sm">Start the conversation!</p>
+				<p class="empty-title mb-2">No letters here yet</p>
+				<p class="empty-subtitle text-sm">Write the first one — it’ll be sealed end-to-end.</p>
 			</div>
 		</div>
 	{:else}
 		{#each messages as message, index (message._id)}
 			{#if shouldShowDateSeparator(index)}
 				<div class="date-separator my-4 flex items-center justify-center">
-					<div class="date-badge rounded-full px-3 py-1 text-xs">
+					<div class="date-badge px-3 py-1 text-xs">
 						{formatDate(message.timestamp)}
 					</div>
 				</div>
@@ -229,20 +235,20 @@
 				class:message-received={message.senderId !== currentUserId}
 			>
 				<div
-					class="message-bubble max-w-[85%] rounded-lg px-4 py-2 md:max-w-[70%]"
+					class="message-bubble max-w-[85%] px-4 py-2 md:max-w-[70%]"
 					class:bubble-sent={message.senderId === currentUserId}
 					class:bubble-received={message.senderId !== currentUserId}
 				>
 					{#if message.senderId !== currentUserId && message.senderUsername}
-						<div class="sender-name mb-1 text-xs font-semibold opacity-70">
+						<div class="sender-name mb-1">
 							{message.senderUsername}
 						</div>
 					{/if}
-					<p class="message-content text-sm wrap-break-word whitespace-pre-wrap">
+					<p class="message-content wrap-break-word whitespace-pre-wrap">
 						{message.content}
 					</p>
 					<div
-						class="message-time mt-1 text-xs"
+						class="message-time mt-1"
 						class:time-sent={message.senderId === currentUserId}
 						class:time-received={message.senderId !== currentUserId}
 					>
@@ -250,6 +256,7 @@
 						{#if message.senderId === currentUserId}
 							{@const receiptState = message.status ?? (message.read ? 'read' : 'sent')}
 							<span
+								role="img"
 								class="message-receipt ml-1"
 								class:receipt-read={receiptState === 'read'}
 								data-testid="message-receipt"
@@ -274,13 +281,11 @@
 		{/each}
 
 		{#if typingUsers && conversationId && typingUsers.has(conversationId)}
-			<!-- Typing bubble (receiver POV) - appears as the bottom-most bubble to indicate sender is typing -->
-			<div class="message-row flex justify-start" aria-hidden="false">
-				<div
-					class="message-bubble typing-bubble rounded-lg px-4 py-2 md:max-w-[70%]"
-					role="status"
-					aria-live="polite"
-				>
+			<!-- Typing bubble (receiver POV) — purely visual; the sr-only status line
+			     below is the single screen-reader announcement, so this stays hidden
+			     from AT (and from the role="log" container) to avoid double-speak -->
+			<div class="message-row flex justify-start" aria-hidden="true">
+				<div class="message-bubble typing-bubble px-4 py-2 md:max-w-[70%]">
 					<span class="typing-dots-compact" aria-hidden="true">
 						<span class="dot dot-1"></span>
 						<span class="dot dot-2"></span>
@@ -311,12 +316,19 @@
 
 		.loading-text {
 			color: var(--text-secondary);
+			font-style: italic;
+			font-family: var(--font-serif);
 			animation: fadeIn 0.3s ease-out;
 		}
 
 		.empty-state {
 			color: var(--text-secondary);
 			animation: fadeIn 0.4s ease-out;
+			.empty-title {
+				font-family: var(--font-serif);
+				font-size: var(--text-xl);
+				color: var(--text-primary);
+			}
 			.empty-subtitle {
 				color: var(--text-tertiary);
 			}
@@ -326,37 +338,86 @@
 			animation: fadeIn 0.3s ease-out;
 		}
 
+		/* postmark-style date stamp */
 		.date-badge {
-			background: rgba(255, 255, 255, 0.05);
+			background: var(--bg-tertiary);
 			color: var(--text-tertiary);
+			border: 1px solid var(--border-subtle);
+			border-radius: 99px;
+			font-family: var(--font-mono);
+			letter-spacing: 0.03em;
+		}
+
+		/* Long threads: let the browser skip layout/paint for far-offscreen rows.
+		   The 3rem estimate keeps scrollbar geometry stable before rows render. */
+		.message-row {
+			content-visibility: auto;
+			contain-intrinsic-block-size: auto 3rem;
 		}
 
 		.message-sent {
-			animation: slideInRight 0.3s ease-out;
+			animation: settle 0.32s var(--ease-out-quint);
 		}
 
 		.message-received {
-			animation: slideInLeft 0.3s ease-out;
+			animation: settle 0.32s var(--ease-out-quint);
 		}
 
+		/* a message is a little letter laid on the desk */
+		.message-bubble {
+			border-radius: var(--radius-md);
+			box-shadow: 0 1px 2px oklch(0 0 0 / 0.05);
+		}
+
+		/* yours: a wax-tinted note */
 		.bubble-sent {
-			background: var(--gradient-accent);
-			color: white;
+			background: var(--bubble-out-bg);
+			border: 1px solid var(--bubble-out-border);
+			color: var(--text-primary);
+			border-bottom-right-radius: var(--radius-xs);
 		}
 
+		/* theirs: fresh paper */
 		.bubble-received {
-			background: var(--bubble-bg);
+			background: var(--bubble-in-bg);
+			border: 1px solid var(--bubble-in-border);
 			color: var(--text-primary);
-			backdrop-filter: blur(8px);
-			border: 1px solid var(--bubble-border);
+			border-bottom-left-radius: var(--radius-xs);
+		}
+
+		.sender-name {
+			font-family: var(--font-serif);
+			font-style: italic;
+			font-weight: 600;
+			font-size: var(--text-sm);
+			color: var(--accent-primary);
+		}
+
+		.message-content {
+			font-size: var(--text-md);
+			line-height: var(--leading-snug);
+		}
+
+		.message-time {
+			font-family: var(--font-mono);
+			font-size: var(--text-2xs);
+			letter-spacing: -0.02em;
 		}
 
 		.time-sent {
-			color: rgba(255, 255, 255, 0.7);
+			color: var(--text-tertiary);
 		}
 
 		.time-received {
 			color: var(--text-tertiary);
+		}
+
+		.message-receipt {
+			opacity: 0.8;
+		}
+		.message-receipt.receipt-read {
+			color: var(--accent-primary);
+			opacity: 1;
 		}
 
 		.typing-indicator {
@@ -406,11 +467,12 @@
 
 		/* Styling for the compact typing bubble */
 		.typing-bubble {
-			background: var(--bubble-bg);
-			border: 1px solid var(--bubble-border);
+			background: var(--bubble-in-bg);
+			border: 1px solid var(--bubble-in-border);
 			color: var(--text-primary);
 			opacity: 0.95;
 			max-width: 40%;
+			border-bottom-left-radius: var(--radius-xs);
 		}
 
 		.dot-1 {
@@ -452,25 +514,14 @@
 		}
 	}
 
-	@keyframes slideInRight {
+	@keyframes settle {
 		from {
-			transform: translateX(20px);
 			opacity: 0;
+			transform: translateY(6px);
 		}
 		to {
-			transform: translateX(0);
 			opacity: 1;
-		}
-	}
-
-	@keyframes slideInLeft {
-		from {
-			transform: translateX(-20px);
-			opacity: 0;
-		}
-		to {
-			transform: translateX(0);
-			opacity: 1;
+			transform: translateY(0);
 		}
 	}
 </style>

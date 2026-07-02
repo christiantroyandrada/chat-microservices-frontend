@@ -1,46 +1,515 @@
 @import 'tailwindcss';
 
+/* ════════════════════════════════════════════════════════════════════════
+   SEALED LETTER — design system
+   Encrypted messaging as private correspondence.
+   Light = warm "paper". Dark = "midnight correspondence" (candlelight).
+   One accent: sealing-wax oxblood. Type does the work. No glass, no neon,
+   no gradient text, no gradient buttons.
+   ════════════════════════════════════════════════════════════════════════ */
+
 :root {
-	/* Modern Color Palette */
-	--bg-primary: #0a0a0f;
-	--bg-secondary: #13131a;
-	--bg-tertiary: #1a1a24;
-	--text-primary: #ffffff;
-	--text-secondary: #cbd5e1; /* brighter for contrast */
-	--text-tertiary: #9aa0b2;
+	/* ── Type families ─────────────────────────────────────────── */
+	--font-serif: 'Spectral', Georgia, 'Times New Roman', serif;
+	--font-sans: 'Hanken Grotesk Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+	--font-mono: 'Spline Sans Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
 
-	/* UI tokens */
-	--bg-hover: rgba(255, 255, 255, 0.02);
-	--border-subtle: rgba(255, 255, 255, 0.06);
-	--shadow-strong: 0 8px 30px rgba(2, 6, 23, 0.6);
+	/* ── Type scale (fixed rem for app UI; ~1.25 ratio) ────────── */
+	--text-2xs: 0.6875rem;
+	--text-xs: 0.78rem;
+	--text-sm: 0.875rem;
+	--text-base: 1rem;
+	--text-md: 1.0625rem;
+	--text-lg: 1.25rem;
+	--text-xl: 1.625rem;
+	--text-2xl: 2.125rem;
+	--text-hero: clamp(2.5rem, 1.7rem + 3.4vw, 3.6rem);
 
-	/* Accents & modal */
-	--accent-primary: #6366f1;
-	--accent-secondary: #818cf8;
-	--gradient-accent: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
-	--modal-backdrop: rgba(0, 0, 0, 0.6);
-	--modal-bg: rgba(10, 10, 15, 0.72);
-	--modal-border: rgba(255, 255, 255, 0.06);
-	--scrollbar-thumb: rgba(255, 255, 255, 0.12);
-	--scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+	--leading-tight: 1.15;
+	--leading-snug: 1.34;
+	--leading-normal: 1.55;
+	--leading-relaxed: 1.7;
+	--tracking-label: 0.12em;
 
-	/* Input & bubble tokens */
-	--input-bg: rgba(255, 255, 255, 0.05);
-	--input-border: rgba(255, 255, 255, 0.1);
+	/* ── Spacing (4pt, semantic) ───────────────────────────────── */
+	--space-2xs: 0.25rem;
+	--space-xs: 0.5rem;
+	--space-sm: 0.75rem;
+	--space-md: 1rem;
+	--space-lg: 1.5rem;
+	--space-xl: 2rem;
+	--space-2xl: 3rem;
+	--space-3xl: 4rem;
+
+	/* ── Radii (paper edges: crisp, never pill) ────────────────── */
+	--radius-xs: 3px;
+	--radius-sm: 7px;
+	--radius-md: 11px;
+	--radius-lg: 16px;
+
+	/* ── Motion ────────────────────────────────────────────────── */
+	--ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+	--ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+	--dur-fast: 140ms;
+	--dur: 220ms;
+	--dur-slow: 420ms;
+
+	/* ════ LIGHT — "paper" (default) ═══════════════════════════ */
+	--paper: oklch(0.967 0.012 83);
+	--bg-primary: oklch(0.967 0.012 83);
+	--bg-secondary: oklch(0.945 0.015 82);
+	--bg-tertiary: oklch(0.915 0.017 80);
+	--surface-raised: oklch(0.992 0.008 86);
+
+	--text-primary: oklch(0.26 0.022 52);
+	--text-secondary: oklch(0.44 0.02 50);
+	--text-tertiary: oklch(0.575 0.018 54);
+	--ink: oklch(0.26 0.022 52);
+
+	--accent-primary: oklch(0.475 0.15 25);
+	--accent-secondary: oklch(0.4 0.135 24);
+	--accent-contrast: oklch(0.985 0.01 86);
+	--accent-soft: oklch(0.475 0.15 25 / 0.1);
+	--gradient-accent: var(--accent-primary); /* legacy name → solid wax (kills AI gradient) */
+
+	--border-subtle: oklch(0.26 0.02 52 / 0.13);
+	--border-strong: oklch(0.26 0.02 52 / 0.24);
+	--bg-hover: oklch(0.26 0.02 52 / 0.045);
+
+	--shadow-page: 0 1px 0 oklch(0.26 0.02 52 / 0.05);
+	--shadow-medium: 0 8px 22px -14px oklch(0.3 0.05 52 / 0.32);
+	--shadow-strong: 0 22px 48px -24px oklch(0.3 0.06 52 / 0.4);
+	--shadow-cta: 0 12px 26px -12px oklch(0.475 0.15 25 / 0.42);
+
+	--modal-backdrop: oklch(0.26 0.03 52 / 0.32);
+	--modal-bg: var(--surface-raised);
+	--modal-border: var(--border-subtle);
+	--scrollbar-thumb: oklch(0.26 0.02 52 / 0.18);
+	--scrollbar-thumb-hover: oklch(0.26 0.02 52 / 0.3);
+
+	--input-bg: oklch(0.935 0.015 80);
+	--input-border: var(--border-subtle);
 	--input-text: var(--text-primary);
-	--bubble-bg: rgba(255, 255, 255, 0.05);
-	--bubble-border: rgba(255, 255, 255, 0.06);
 
-	/* Status colors */
-	--color-success: #10b981;
-	--color-error: #ef4444;
-	--color-warning: #f59e0b;
-	--color-info: #3b82f6;
-	--color-error-bg: rgba(239, 68, 68, 0.1);
-	--color-error-border: rgba(239, 68, 68, 0.2);
+	--bubble-in-bg: oklch(0.992 0.008 86);
+	--bubble-in-border: var(--border-subtle);
+	--bubble-out-bg: oklch(0.475 0.15 25 / 0.09);
+	--bubble-out-border: oklch(0.475 0.15 25 / 0.2);
+	--bubble-bg: var(--bubble-in-bg); /* legacy */
+	--bubble-border: var(--bubble-in-border); /* legacy */
+
+	--color-success: oklch(0.55 0.1 150);
+	--color-error: oklch(0.52 0.17 27);
+	--color-warning: oklch(0.64 0.12 70);
+	--color-info: oklch(0.52 0.09 240);
+	--color-error-bg: oklch(0.52 0.17 27 / 0.1);
+	--color-error-border: oklch(0.52 0.17 27 / 0.22);
+
+	/* wax seal */
+	--seal: oklch(0.475 0.15 25);
+	--seal-deep: oklch(0.37 0.14 24);
+	--seal-highlight: oklch(0.57 0.15 30);
+
+	color-scheme: light;
 }
 
-/* Utility: visually hidden (screen-reader only) */
+/* First-paint (pre-hydration, no class yet) honours system dark preference
+   so dark-mode users don't get a flash of paper. Full palette lives in .dark. */
+@media (prefers-color-scheme: dark) {
+	:root:not(.light):not(.dark) {
+		--paper: oklch(0.205 0.014 50);
+		--bg-primary: oklch(0.205 0.014 50);
+		--bg-secondary: oklch(0.235 0.015 50);
+		--bg-tertiary: oklch(0.275 0.016 52);
+		--surface-raised: oklch(0.255 0.016 52);
+		--text-primary: oklch(0.93 0.013 84);
+		--text-secondary: oklch(0.78 0.014 80);
+		--text-tertiary: oklch(0.64 0.014 72);
+		--accent-primary: oklch(0.64 0.15 33);
+		--border-subtle: oklch(0.92 0.02 84 / 0.1);
+		color-scheme: dark;
+	}
+}
+
+/* ════ DARK — "midnight correspondence" (candlelight) ════════ */
+:root.dark {
+	--paper: oklch(0.205 0.014 50);
+	--bg-primary: oklch(0.205 0.014 50); /* warm espresso ink, never blue-black */
+	--bg-secondary: oklch(0.235 0.015 50);
+	--bg-tertiary: oklch(0.278 0.016 52);
+	--surface-raised: oklch(0.255 0.016 52);
+
+	--text-primary: oklch(0.93 0.013 84); /* warm parchment, never pure white */
+	--text-secondary: oklch(0.78 0.014 80);
+	--text-tertiary: oklch(0.64 0.014 72);
+	--ink: oklch(0.93 0.013 84);
+
+	--accent-primary: oklch(0.64 0.15 33); /* candlelit wax — warm, glowing */
+	--accent-secondary: oklch(0.56 0.15 30);
+	--accent-contrast: oklch(0.16 0.02 48);
+	--accent-soft: oklch(0.64 0.15 33 / 0.15);
+	--gradient-accent: var(--accent-primary);
+
+	--border-subtle: oklch(0.92 0.02 84 / 0.1);
+	--border-strong: oklch(0.92 0.02 84 / 0.2);
+	--bg-hover: oklch(0.92 0.02 84 / 0.05);
+
+	--shadow-page: 0 1px 0 oklch(0.92 0.02 84 / 0.05);
+	--shadow-medium: 0 10px 26px -16px oklch(0 0 0 / 0.5);
+	--shadow-strong: 0 24px 52px -26px oklch(0 0 0 / 0.62);
+	--shadow-cta: 0 12px 28px -14px oklch(0.64 0.15 33 / 0.5);
+
+	--modal-backdrop: oklch(0.12 0.02 48 / 0.62);
+	--modal-bg: var(--surface-raised);
+	--modal-border: var(--border-subtle);
+	--scrollbar-thumb: oklch(0.92 0.02 84 / 0.14);
+	--scrollbar-thumb-hover: oklch(0.92 0.02 84 / 0.26);
+
+	--input-bg: oklch(0.92 0.02 84 / 0.05);
+	--input-border: var(--border-subtle);
+
+	--bubble-in-bg: oklch(0.258 0.016 52);
+	--bubble-in-border: var(--border-subtle);
+	--bubble-out-bg: oklch(0.64 0.15 33 / 0.17);
+	--bubble-out-border: oklch(0.64 0.15 33 / 0.32);
+	--bubble-bg: var(--bubble-in-bg);
+	--bubble-border: var(--bubble-in-border);
+
+	--color-success: oklch(0.72 0.12 150);
+	--color-error: oklch(0.67 0.16 28);
+	--color-warning: oklch(0.78 0.12 78);
+	--color-info: oklch(0.7 0.09 235);
+	--color-error-bg: oklch(0.67 0.16 28 / 0.14);
+	--color-error-border: oklch(0.67 0.16 28 / 0.3);
+
+	--seal: oklch(0.64 0.15 33);
+	--seal-deep: oklch(0.5 0.15 30);
+	--seal-highlight: oklch(0.73 0.14 38);
+
+	color-scheme: dark;
+}
+
+:root.light {
+	color-scheme: light;
+}
+
+/* ── Reset / base ──────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	min-width: 0;
+}
+
+html,
+body,
+#svelte {
+	width: 100%;
+	min-height: 100vh;
+	max-width: 100vw;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-base);
+	line-height: var(--leading-normal);
+	background: var(--bg-primary);
+	color: var(--text-primary);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+	font-feature-settings: 'kern' 1;
+	overflow-x: hidden;
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior-x: none;
+	transition:
+		background var(--dur) var(--ease-out-quart),
+		color var(--dur) var(--ease-out-quart);
+}
+
+h1,
+h2,
+h3,
+h4 {
+	font-family: var(--font-serif);
+	font-weight: 600;
+	line-height: var(--leading-tight);
+	letter-spacing: -0.01em;
+	color: var(--text-primary);
+	margin: 0;
+}
+
+p {
+	margin: 0;
+	max-width: 70ch;
+}
+
+a {
+	color: var(--accent-primary);
+	text-decoration-color: oklch(from var(--accent-primary) l c h / 0.4);
+	text-underline-offset: 0.18em;
+	transition: color var(--dur-fast) ease;
+}
+a:hover {
+	color: var(--accent-secondary);
+}
+
+::selection {
+	background: var(--accent-soft);
+	color: var(--accent-primary);
+}
+
+/* Cryptographic metadata: fingerprints, safety numbers, timestamps */
+.font-mono,
+.metadata {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.01em;
+}
+.font-serif {
+	font-family: var(--font-serif);
+}
+
+/* Small tracked label (postal/letterhead voice) */
+.eyebrow {
+	font-family: var(--font-sans);
+	font-size: var(--text-2xs);
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: var(--tracking-label);
+	color: var(--text-tertiary);
+}
+
+/* ── Buttons (solid wax, no gradient) ──────────────────────── */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-xs);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	font-weight: 560;
+	letter-spacing: 0.005em;
+	border-radius: var(--radius-sm);
+	padding: var(--space-xs) var(--space-md);
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition:
+		background var(--dur-fast) ease,
+		color var(--dur-fast) ease,
+		border-color var(--dur-fast) ease,
+		transform var(--dur-fast) var(--ease-out-quart),
+		box-shadow var(--dur-fast) ease;
+}
+.btn:active {
+	transform: translateY(1px);
+}
+.btn-primary {
+	background: var(--accent-primary);
+	color: var(--accent-contrast);
+	box-shadow: var(--shadow-cta);
+}
+.btn-primary:hover {
+	background: var(--accent-secondary);
+}
+.btn-secondary {
+	background: transparent;
+	color: var(--text-secondary);
+	border-color: var(--border-strong);
+}
+.btn-secondary:hover {
+	background: var(--bg-hover);
+	color: var(--text-primary);
+}
+
+/* Was glassmorphism — now an opaque "letter card" surface */
+.glass-strong {
+	background: var(--modal-bg);
+	border: 1px solid var(--modal-border);
+	box-shadow: var(--shadow-strong);
+}
+
+/* Was a gradient avatar — now a soft wax disc with the monogram */
+.avatar-gradient {
+	background: var(--accent-soft);
+	color: var(--accent-primary);
+	font-family: var(--font-serif);
+}
+
+.error-box {
+	background: var(--color-error-bg);
+	border: 1px solid var(--color-error-border);
+	color: var(--color-error);
+	border-radius: var(--radius-sm);
+}
+
+/* ── Wax seal — the signature E2EE motif ───────────────────── */
+/* Representational object (domed, lit wax), not a decorative flat gradient. */
+.wax-seal {
+	--seal-size: 2.6rem;
+	position: relative;
+	display: inline-grid;
+	place-items: center;
+	width: var(--seal-size);
+	height: var(--seal-size);
+	border-radius: 50%;
+	background: radial-gradient(
+		circle at 36% 30%,
+		var(--seal-highlight),
+		var(--seal) 46%,
+		var(--seal-deep) 100%
+	);
+	color: var(--accent-contrast);
+	font-family: var(--font-serif);
+	font-weight: 600;
+	box-shadow:
+		inset 0 1px 1.5px oklch(1 0 0 / 0.3),
+		inset 0 -3px 5px oklch(0 0 0 / 0.28),
+		var(--shadow-cta);
+}
+.wax-seal::after {
+	/* embossed inner ring, like a pressed stamp */
+	content: '';
+	position: absolute;
+	inset: 14%;
+	border-radius: 50%;
+	border: 1px solid oklch(0 0 0 / 0.22);
+	box-shadow: inset 0 1px 1px oklch(1 0 0 / 0.18);
+	pointer-events: none;
+}
+.wax-seal--sm {
+	--seal-size: 1.5rem;
+	font-size: var(--text-xs);
+}
+
+/* ── Hover affordances ─────────────────────────────────────── */
+.hover-lift {
+	transition:
+		transform var(--dur) var(--ease-out-quint),
+		box-shadow var(--dur) ease;
+}
+.hover-lift:hover,
+.hover-lift:focus-visible {
+	transform: translateY(-2px);
+	box-shadow: var(--shadow-medium);
+}
+.hover-bg-accent {
+	transition: all var(--dur-fast) ease;
+}
+.hover-bg-accent:hover {
+	background: var(--accent-soft);
+	color: var(--accent-primary);
+}
+.hover-bg-subtle {
+	transition: all var(--dur-fast) ease;
+}
+.hover-bg-subtle:hover {
+	background: var(--bg-hover);
+}
+.hover-translate {
+	transition: transform var(--dur-fast) ease;
+}
+.hover-translate:hover {
+	transform: translateY(-2px);
+}
+@media (hover: none) {
+	.hover-lift:hover,
+	.hover-lift:focus-visible,
+	.hover-translate:hover {
+		transform: none !important;
+		box-shadow: none !important;
+	}
+}
+
+/* ── Focus (wax ring, not indigo) ──────────────────────────── */
+*:focus-visible {
+	outline: 2px solid var(--accent-primary);
+	outline-offset: 2px;
+}
+button:focus-visible,
+.btn:focus-visible,
+a:focus-visible {
+	outline: 2px solid var(--accent-primary);
+	outline-offset: 3px;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar {
+	width: 9px;
+	height: 9px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background: var(--scrollbar-thumb);
+	border-radius: 99px;
+	border: 2px solid transparent;
+	background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: var(--scrollbar-thumb-hover);
+	background-clip: padding-box;
+}
+
+/* ── Motion keyframes ──────────────────────────────────────── */
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+@keyframes settle {
+	from {
+		opacity: 0;
+		transform: translateY(10px) scale(0.99);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+@keyframes stampIn {
+	0% {
+		opacity: 0;
+		transform: scale(1.35) rotate(-8deg);
+	}
+	60% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1) rotate(0deg);
+	}
+}
+@keyframes scaleIn {
+	from {
+		opacity: 0;
+		transform: scale(0.96);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+.animate-settle {
+	animation: settle var(--dur) var(--ease-out-quint) both;
+}
+.animate-scale-in {
+	animation: scaleIn var(--dur) var(--ease-out-quint) both;
+}
+.animate-stamp {
+	animation: stampIn 360ms var(--ease-out-quint) both;
+}
+.animate-fade-in {
+	animation: fadeIn var(--dur) var(--ease-out-quart) both;
+}
+
+/* ── Utilities ─────────────────────────────────────────────── */
 .sr-only {
 	position: absolute !important;
 	height: 1px;
@@ -50,305 +519,6 @@
 	white-space: nowrap;
 }
 
-/* Interactive affordances */
-.hover-lift {
-	transition:
-		transform 180ms ease,
-		box-shadow 180ms ease;
-}
-.hover-lift:hover,
-.hover-lift:active,
-.hover-lift:focus-visible {
-	transform: translateY(-3px);
-	box-shadow: 0 6px 20px rgba(2, 6, 23, 0.45);
-}
-
-/* On touch devices (no hover), disable the hover-lift visual effect to avoid it
-	 sticking after taps (many mobile browsers keep :hover until next interaction). */
-@media (hover: none) {
-	.hover-lift:hover,
-	.hover-lift:active,
-	.hover-lift:focus-visible {
-		transform: none !important;
-		box-shadow: none !important;
-	}
-}
-
-.btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 8px;
-	border-radius: 10px;
-	padding: 8px 12px;
-	cursor: pointer;
-	transition:
-		background 150ms ease,
-		color 150ms ease,
-		transform 150ms ease;
-	border: 1px solid transparent;
-}
-
-.btn-primary {
-	background: var(--gradient-accent);
-	color: white;
-	box-shadow: 0 6px 18px rgba(99, 102, 241, 0.18);
-}
-
-.btn-secondary {
-	background: var(--bg-tertiary);
-	color: var(--text-secondary);
-	border: 1px solid var(--border-subtle);
-}
-
-/* Glass morphism effect */
-.glass-strong {
-	background: var(--modal-bg);
-	backdrop-filter: blur(12px);
-	border: 1px solid var(--modal-border);
-}
-
-/* Avatar gradient */
-.avatar-gradient {
-	background: var(--gradient-accent);
-}
-
-/* Error styles */
-.error-box {
-	background: var(--color-error-bg);
-	border: 1px solid var(--color-error-border);
-	color: var(--color-error);
-}
-
-/* Interactive hover effects */
-.hover-bg-accent {
-	transition: all 150ms ease;
-}
-.hover-bg-accent:hover {
-	background: rgba(99, 102, 241, 0.1);
-	color: var(--accent-primary);
-}
-
-.hover-bg-subtle {
-	transition: all 150ms ease;
-}
-.hover-bg-subtle:hover {
-	background: var(--bg-hover);
-}
-
-.hover-translate {
-	transition: transform 150ms ease;
-}
-.hover-translate:hover {
-	transform: translateY(-2px);
-}
-
-/* High-visibility focus for keyboard users */
-button:focus-visible,
-.btn:focus-visible,
-a:focus-visible {
-	outline: 3px solid rgba(99, 102, 241, 0.9);
-	outline-offset: 3px;
-}
-
-/* Small entrance for badges */
-.animate-scale-in {
-	animation: scaleIn 220ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
-}
-
-/* Respect reduced motion preference */
-@media (prefers-reduced-motion: reduce) {
-	* {
-		animation-duration: 0.01ms !important;
-		animation-iteration-count: 1 !important;
-		transition-duration: 0.01ms !important;
-		scroll-behavior: auto !important;
-	}
-}
-
-/* Stronger contrast when user requests more contrast */
-@media (prefers-contrast: more) {
-	:root {
-		--text-primary: #ffffff;
-		--text-secondary: #e6eefc;
-		--bg-hover: rgba(255, 255, 255, 0.06);
-		--border-subtle: rgba(255, 255, 255, 0.12);
-	}
-}
-
-/* Global box-sizing and layout helpers */
-*,
-*::before,
-*::after {
-	box-sizing: border-box;
-	/* Help flex children shrink properly to avoid overflow in flex layouts */
-	min-width: 0;
-}
-
-body {
-	font-family:
-		-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',
-		'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-	-webkit-font-smoothing: antialiased;
-	-moz-osx-font-smoothing: grayscale;
-	background: var(--bg-primary);
-	color: var(--text-primary);
-	margin: 0;
-	padding: 0;
-	transition:
-		background 220ms ease,
-		color 220ms ease;
-
-	/* Prevent horizontal overflow globally while allowing vertical scrolling */
-	overflow-x: hidden;
-	-webkit-overflow-scrolling: touch;
-	overscroll-behavior-x: none;
-	overscroll-behavior-y: auto;
-}
-
-/* Smooth Scrollbar */
-::-webkit-scrollbar {
-	width: 8px;
-	height: 8px;
-}
-
-::-webkit-scrollbar-track {
-	background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-	background: rgba(255, 255, 255, 0.1);
-	border-radius: 4px;
-	transition: background 150ms;
-}
-
-::-webkit-scrollbar-thumb:hover {
-	background: rgba(255, 255, 255, 0.2);
-}
-
-/* Animations */
-@keyframes fadeIn {
-	from {
-		opacity: 0;
-		transform: translateY(10px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
-
-@keyframes slideInLeft {
-	from {
-		opacity: 0;
-		transform: translateX(-20px);
-	}
-	to {
-		opacity: 1;
-		transform: translateX(0);
-	}
-}
-
-@keyframes slideInRight {
-	from {
-		opacity: 0;
-		transform: translateX(20px);
-	}
-	to {
-		opacity: 1;
-		transform: translateX(0);
-	}
-}
-
-@keyframes scaleIn {
-	from {
-		opacity: 0;
-		transform: scale(0.95);
-	}
-	to {
-		opacity: 1;
-		transform: scale(1);
-	}
-}
-
-@keyframes shimmer {
-	0% {
-		background-position: -1000px 0;
-	}
-	100% {
-		background-position: 1000px 0;
-	}
-}
-
-/* Focus Visible */
-*:focus-visible {
-	outline: 2px solid #6366f1;
-	outline-offset: 2px;
-}
-
-/* Light theme overrides - applied when <html> has class="light" */
-html.light {
-	--bg-primary: #ffffff;
-	--bg-secondary: #f7f7fb;
-	--bg-tertiary: #eef2f6;
-	--text-primary: #0b0b0d;
-	--text-secondary: #4b5563;
-	--text-tertiary: #6b7280;
-	/* Light UI tokens */
-	--bg-hover: rgba(11, 11, 13, 0.04);
-	--border-subtle: rgba(11, 11, 13, 0.06);
-	--shadow-strong: 0 8px 30px rgba(2, 6, 23, 0.08);
-	/* Light-mode accents & modal */
-	--accent-primary: #4f46e5;
-	--accent-secondary: #7c83ff;
-	--modal-backdrop: rgba(11, 11, 13, 0.12);
-	--modal-bg: #ffffff;
-	--modal-border: rgba(11, 11, 13, 0.06);
-	--scrollbar-thumb: rgba(11, 11, 13, 0.12);
-	--scrollbar-thumb-hover: rgba(11, 11, 13, 0.18);
-
-	/* Light-theme input & bubble tokens */
-	--input-bg: #ffffff;
-	--input-border: rgba(11, 11, 13, 0.08);
-	--input-text: var(--text-primary);
-	--bubble-bg: rgba(11, 11, 13, 0.04);
-	--bubble-border: rgba(11, 11, 13, 0.06);
-
-	/* Status colors (same in light mode for consistency) */
-	--color-success: #10b981;
-	--color-error: #ef4444;
-	--color-warning: #f59e0b;
-	--color-info: #3b82f6;
-	--color-error-bg: rgba(239, 68, 68, 0.1);
-	--color-error-border: rgba(239, 68, 68, 0.2);
-
-	/* Gradient overrides for light mode */
-	--gradient-accent: linear-gradient(135deg, #4f46e5 0%, #7c83ff 100%);
-
-	color-scheme: light;
-}
-
-/* Ensure system color-scheme is set for form controls and native widgets */
-html.dark {
-	color-scheme: dark;
-}
-
-/* Global responsiveness & overflow fixes
-	 - Prevent accidental horizontal scroll from overflowing children
-	 - Make media responsive and contain overscroll on mobile
-	 - Keep full-height layout consistent across browsers
-*/
-html,
-body,
-#svelte {
-	width: 100%;
-	min-height: 100vh;
-	max-width: 100vw; /* guard against wide children */
-}
-
-/* Prevent horizontal overflow globally while allowing vertical scrolling */
-
-/* Make images, videos and iframes scale down on small viewports */
 img,
 svg,
 video,
@@ -358,14 +528,32 @@ iframe {
 	height: auto;
 	display: block;
 }
-
-/* Ensure form controls don't cause overflow when long text is entered */
 input,
 textarea,
 select,
 button {
 	max-width: 100%;
+	font-family: inherit;
 }
 
-/* Help flex children shrink properly to avoid overflow in flex layouts
-   (applies globally via the rule above) */
+/* ── Accessibility preferences ─────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
+@media (prefers-contrast: more) {
+	:root {
+		--text-secondary: oklch(0.36 0.02 50);
+		--border-subtle: oklch(0.26 0.02 52 / 0.22);
+	}
+	:root.dark {
+		--text-secondary: oklch(0.86 0.014 82);
+		--border-subtle: oklch(0.92 0.02 84 / 0.2);
+	}
+}

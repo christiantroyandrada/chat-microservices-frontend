@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Seal from '$lib/components/Seal.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { authStore, user } from '$lib/stores/auth.store';
@@ -10,7 +11,7 @@
 	import { sanitizeMessage } from '$lib/utils';
 	import { initSignalWithRestore, isSignalInitialized } from '$lib/crypto/signal';
 	import { logger } from '$lib/services/dev-logger';
-	import { API_BASE, LOGO_URL, getOrCreateDeviceId } from '$lib/config';
+	import { API_BASE, getOrCreateDeviceId } from '$lib/config';
 	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
 
 	import ChatList from '$lib/components/ChatList.svelte';
@@ -506,7 +507,7 @@
 </script>
 
 <svelte:head>
-	<title>Chat - {$user?.username || 'User'}</title>
+	<title>Secret · {$user?.username || 'User'}</title>
 </svelte:head>
 
 <div class="flex h-screen flex-col" style="background: var(--bg-primary);">
@@ -516,18 +517,15 @@
 			<div class="flex items-center gap-4">
 				<!-- Mobile: conversations are shown as the default initial view (no sidebar toggle) -->
 				<div class="flex items-center gap-3">
-					<div
-						class="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-purple-600"
-					>
-						<img
-							src={LOGO_URL}
-							alt="Chat logo"
-							style="width:100%;height:100%;object-fit:cover;display:block;"
-						/>
-					</div>
+					<Seal size={40} />
 					<div>
-						<h1 class="text-lg font-semibold" style="color: var(--text-primary);">Chat</h1>
-						<p class="text-xs" style="color: var(--text-tertiary);">Stay connected</p>
+						<h1
+							class="text-lg font-semibold"
+							style="color: var(--text-primary); font-family: var(--font-serif);"
+						>
+							Secret
+						</h1>
+						<p class="text-xs" style="color: var(--text-tertiary);">Sealed end-to-end</p>
 					</div>
 				</div>
 			</div>
@@ -551,8 +549,8 @@
 					</svg>
 					{#if $notificationStore.unreadCount > 0}
 						<span
-							class="animate-scale-in absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold text-white"
-							style="background: linear-gradient(135deg, #ec4899, #ef4444); box-shadow: 0 2px 8px rgba(236, 72, 153, 0.4);"
+							class="animate-scale-in absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold"
+							style="background: var(--accent-primary); color: var(--accent-contrast); box-shadow: var(--shadow-cta);"
 						>
 							{$notificationStore.unreadCount > 9 ? '9+' : $notificationStore.unreadCount}
 						</span>

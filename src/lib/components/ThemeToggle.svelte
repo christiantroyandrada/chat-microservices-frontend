@@ -68,17 +68,21 @@
 		width: 2.75rem;
 		height: 2.75rem;
 		border-radius: 50%;
-		background: var(--bg-secondary);
-		color: var(--text-primary);
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: var(--surface-raised);
+		color: var(--text-secondary);
+		border: 1px solid var(--border-subtle);
 		cursor: pointer;
-		transition: all 0.2s ease;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+		transition:
+			transform var(--dur-fast) var(--ease-out-quart),
+			color var(--dur-fast) ease,
+			background var(--dur-fast) ease,
+			box-shadow var(--dur-fast) ease;
+		box-shadow: var(--shadow-medium);
 
 		&:hover {
-			transform: scale(1.05);
-			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-			background: var(--bg-tertiary);
+			transform: translateY(-1px);
+			color: var(--accent-primary);
+			background: var(--bg-secondary);
 		}
 
 		&:active {

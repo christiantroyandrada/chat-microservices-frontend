@@ -4,8 +4,8 @@
 	import { logger } from '$lib/services/dev-logger';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { LOGO_URL } from '$lib/config';
 	import { parseApiError } from '$lib/utils/errorHandling';
+	import Seal from '$lib/components/Seal.svelte';
 
 	let email = $state('');
 	let password = $state('');
@@ -82,146 +82,258 @@
 </script>
 
 <svelte:head>
-	<title>Login - Chat App</title>
+	<title>Sign in · Secret</title>
 </svelte:head>
 
-<div
-	class="animate-fade-in flex min-h-screen items-center justify-center px-4 py-12"
-	style="background: var(--bg-primary);"
->
-	<div class="w-full max-w-md">
-		<!-- Logo/Brand -->
-		<div class="mb-10 text-center">
-			<div
-				class="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl"
-				style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);"
-			>
-				<img
-					src={LOGO_URL}
-					alt="Chat logo"
-					style="width:100%;height:100%;object-fit:cover;display:block;"
-				/>
-			</div>
-			<h2 class="mb-2 text-3xl font-bold" style="color: var(--text-primary);">Welcome back</h2>
-			<p class="text-sm" style="color: var(--text-secondary);">
-				Sign in to continue to your conversations
-			</p>
-		</div>
+<div class="auth">
+	<div class="auth__sheet animate-settle">
+		<span class="auth__seal"><Seal size={60} /></span>
 
-		<form
-			class="glass-strong space-y-6 rounded-2xl p-8"
-			style="box-shadow: var(--shadow-medium);"
-			onsubmit={handleSubmit}
-		>
+		<header class="auth__head">
+			<p class="eyebrow">Private correspondence</p>
+			<h1>Welcome back</h1>
+			<p class="auth__sub">Sign in to pick up where your conversations left off.</p>
+		</header>
+
+		<form class="auth__form" onsubmit={handleSubmit} novalidate>
 			{#if error}
-				<div
-					class="animate-slide-in rounded-xl px-4 py-3"
-					style="background: var(--color-error-bg); border: 1px solid var(--color-error-border); color: var(--color-error);"
-				>
-					<div class="flex items-start gap-2">
-						<svg
-							class="mt-0.5 h-5 w-5 shrink-0"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-							/>
-						</svg>
-						<span class="text-sm">{error}</span>
-					</div>
+				<div class="error-box auth__error" role="alert">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+						/>
+					</svg>
+					<span>{error}</span>
 				</div>
 			{/if}
 
-			<div class="space-y-5">
-				<div>
-					<label
-						for="email"
-						class="mb-2 block text-sm font-medium"
-						style="color: var(--text-secondary);"
-					>
-						Email address
-					</label>
+			<div class="field">
+				<label for="email">Email address</label>
+				<input
+					id="email"
+					name="email"
+					type="email"
+					autocomplete="email"
+					required
+					bind:value={email}
+					class="input"
+					class:input--error={fieldErrors.email}
+					placeholder="you@example.com"
+				/>
+				{#if fieldErrors.email}<p class="field__error">{fieldErrors.email}</p>{/if}
+			</div>
+
+			<div class="field">
+				<label for="password">Password</label>
+				<div class="field__wrap">
 					<input
-						id="email"
-						name="email"
-						type="email"
-						autocomplete="email"
+						id="password"
+						name="password"
+						type={showPassword ? 'text' : 'password'}
+						autocomplete="current-password"
 						required
-						bind:value={email}
-						class="w-full rounded-xl px-4 py-3 transition-all duration-200"
-						style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.email
-							? 'var(--color-error)'
-							: 'var(--border-subtle)'}; color: var(--text-primary);"
-						placeholder="you@example.com"
+						bind:value={password}
+						class="input input--withbtn"
+						class:input--error={fieldErrors.password}
+						placeholder="Your password"
 					/>
-					{#if fieldErrors.email}
-						<p class="mt-2 text-sm" style="color: var(--color-error);">{fieldErrors.email}</p>
-					{/if}
-				</div>
-
-				<div>
-					<label
-						for="password"
-						class="mb-2 block text-sm font-medium"
-						style="color: var(--text-secondary);"
+					<button
+						type="button"
+						class="reveal"
+						onclick={() => (showPassword = !showPassword)}
+						aria-label={showPassword ? 'Hide password' : 'Show password'}
 					>
-						Password
-					</label>
-					<div class="relative">
-						<input
-							id="password"
-							name="password"
-							type={showPassword ? 'text' : 'password'}
-							autocomplete="current-password"
-							required
-							bind:value={password}
-							class="w-full rounded-xl px-4 py-3 pr-12 transition-all duration-200"
-							style="background: var(--bg-tertiary); border: 1px solid {fieldErrors.password
-								? 'var(--color-error)'
-								: 'var(--border-subtle)'}; color: var(--text-primary);"
-							placeholder="••••••••"
-						/>
-						<button
-							type="button"
-							onclick={() => (showPassword = !showPassword)}
-							class="absolute inset-y-0 right-0 flex items-center pr-4 transition-colors duration-200"
-							style="color: var(--text-tertiary);"
-							aria-label={showPassword ? 'Hide password' : 'Show password'}
-						>
-							<span class="text-sm font-medium">{showPassword ? 'Hide' : 'Show'}</span>
-						</button>
-					</div>
-					{#if fieldErrors.password}
-						<p class="mt-2 text-sm" style="color: var(--color-error);">{fieldErrors.password}</p>
-					{/if}
+						{showPassword ? 'Hide' : 'Show'}
+					</button>
 				</div>
+				{#if fieldErrors.password}<p class="field__error">{fieldErrors.password}</p>{/if}
 			</div>
 
-			<button
-				type="submit"
-				disabled={loading}
-				class="btn-primary hover-lift w-full rounded-xl py-3.5 font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50"
-			>
-				{loading ? 'Signing in...' : 'Sign in'}
+			<button type="submit" class="btn btn-primary auth__submit" disabled={loading}>
+				{loading ? 'Unsealing…' : 'Sign in'}
 			</button>
-
-			<div class="pt-4 text-center" style="border-top: 1px solid var(--border-subtle);">
-				<p class="text-sm" style="color: var(--text-secondary);">
-					Don't have an account?
-					<a
-						href="/register"
-						class="font-medium transition-colors duration-200"
-						style="color: var(--accent-secondary);"
-					>
-						Create one
-					</a>
-				</p>
-			</div>
 		</form>
+
+		<footer class="auth__foot">
+			<p class="auth__alt">
+				No account yet? <a href="/register">Request one</a>
+			</p>
+			<p class="auth__note metadata">Every message sealed end-to-end</p>
+		</footer>
 	</div>
 </div>
+
+<style>
+	.auth {
+		display: flex;
+		min-height: 100vh;
+		align-items: center;
+		justify-content: center;
+		padding: var(--space-2xl) var(--space-md);
+		background: var(--bg-primary);
+	}
+
+	.auth__sheet {
+		position: relative;
+		width: 100%;
+		max-width: 27rem;
+		padding: var(--space-2xl) clamp(var(--space-lg), 5vw, var(--space-2xl)) var(--space-xl);
+		background: var(--surface-raised);
+		border: 1px solid var(--border-subtle);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-strong);
+	}
+
+	/* the seal sits on the top edge — as if sealing the letter shut */
+	.auth__seal {
+		position: absolute;
+		top: 0;
+		left: 50%;
+		transform: translate(-50%, -55%);
+		animation: sealStamp 460ms var(--ease-out-quint) both;
+	}
+	/* stampIn variant carrying the centering translate: keyframe transforms
+	   REPLACE the static one (they don't merge), so it must ride every frame */
+	@keyframes sealStamp {
+		0% {
+			opacity: 0;
+			transform: translate(-50%, -55%) scale(1.35) rotate(-8deg);
+		}
+		60% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 1;
+			transform: translate(-50%, -55%) scale(1) rotate(0deg);
+		}
+	}
+
+	.auth__head {
+		margin-top: var(--space-md);
+		margin-bottom: var(--space-xl);
+		text-align: center;
+	}
+	.auth__head h1 {
+		font-size: var(--text-2xl);
+		margin: var(--space-2xs) 0;
+	}
+	.auth__sub {
+		margin: 0 auto;
+		color: var(--text-secondary);
+		font-size: var(--text-sm);
+	}
+
+	.auth__form {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-lg);
+	}
+
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-xs);
+	}
+	.field label {
+		font-size: var(--text-sm);
+		font-weight: 560;
+		color: var(--text-secondary);
+	}
+	.field__wrap {
+		position: relative;
+	}
+	.field__error {
+		font-size: var(--text-xs);
+		color: var(--color-error);
+	}
+
+	.input {
+		width: 100%;
+		padding: 0.7rem var(--space-md);
+		font-size: var(--text-md);
+		color: var(--text-primary);
+		background: var(--input-bg);
+		border: 1px solid var(--input-border);
+		border-radius: var(--radius-sm);
+		transition:
+			border-color var(--dur-fast) ease,
+			box-shadow var(--dur-fast) ease;
+	}
+	.input::placeholder {
+		color: var(--text-tertiary);
+	}
+	.input:focus {
+		outline: none;
+		border-color: var(--accent-primary);
+		box-shadow: 0 0 0 3px var(--accent-soft);
+	}
+	.input--withbtn {
+		padding-right: 4rem;
+	}
+	.input--error {
+		border-color: var(--color-error);
+	}
+
+	.reveal {
+		position: absolute;
+		inset-inline-end: var(--space-xs);
+		top: 50%;
+		transform: translateY(-50%);
+		padding: 0.35rem var(--space-xs);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--text-tertiary);
+		background: transparent;
+		border: 0;
+		border-radius: var(--radius-xs);
+		cursor: pointer;
+	}
+	.reveal:hover {
+		color: var(--accent-primary);
+	}
+
+	.auth__error {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-xs);
+		padding: var(--space-sm) var(--space-md);
+		font-size: var(--text-sm);
+	}
+	.auth__error svg {
+		width: 1.1rem;
+		height: 1.1rem;
+		flex: none;
+		margin-top: 1px;
+	}
+
+	.auth__submit {
+		width: 100%;
+		padding: 0.8rem;
+		font-size: var(--text-md);
+	}
+
+	.auth__foot {
+		margin-top: var(--space-lg);
+		padding-top: var(--space-lg);
+		border-top: 1px solid var(--border-subtle);
+		text-align: center;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-sm);
+	}
+	.auth__alt {
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+	.auth__alt a {
+		font-weight: 600;
+	}
+	.auth__note {
+		font-size: var(--text-2xs);
+		letter-spacing: 0.04em;
+		color: var(--text-tertiary);
+	}
+</style>

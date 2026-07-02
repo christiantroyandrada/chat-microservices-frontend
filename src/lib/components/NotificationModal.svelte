@@ -5,6 +5,17 @@
 	// Svelte 5 runes: use $props() instead of export let
 	let { isOpen = false, onClose = () => {} }: { isOpen?: boolean; onClose?: () => void } = $props();
 
+	let backdropEl = $state<HTMLDivElement | null>(null);
+
+	// Move focus into the dialog on open so Escape/Tab work immediately,
+	// and hand it back to the opener on close.
+	$effect(() => {
+		if (!isOpen || !backdropEl) return;
+		const opener = document.activeElement as HTMLElement | null;
+		backdropEl.focus();
+		return () => opener?.focus();
+	});
+
 	// Derive reactive values from store
 	let notifications = $derived.by(() => $notificationStore.notifications);
 	let loading = $derived.by(() => $notificationStore.loading);
@@ -59,7 +70,29 @@
 
 	function handleBackdropKeydown(e: KeyboardEvent) {
 		// Close on Escape
-		if (e.key === 'Escape') onClose();
+		if (e.key === 'Escape') {
+			onClose();
+			return;
+		}
+		// aria-modal promises containment: keep Tab cycling inside the dialog
+		if (e.key === 'Tab' && backdropEl) {
+			const focusable = backdropEl.querySelectorAll<HTMLElement>(
+				'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+			);
+			if (focusable.length === 0) return;
+			const first = focusable[0];
+			const last = focusable[focusable.length - 1];
+			if (
+				e.shiftKey &&
+				(document.activeElement === first || document.activeElement === backdropEl)
+			) {
+				e.preventDefault();
+				last.focus();
+			} else if (!e.shiftKey && document.activeElement === last) {
+				e.preventDefault();
+				first.focus();
+			}
+		}
 	}
 </script>
 
@@ -72,6 +105,7 @@
 		aria-modal="true"
 		aria-labelledby="notification-modal-title"
 		tabindex="-1"
+		bind:this={backdropEl}
 	>
 		<div
 			class="notification-modal glass-strong animate-scale-in relative w-full max-w-lg rounded-2xl"
@@ -173,7 +207,7 @@
 									</div>
 
 									<div
-										class="notification-actions shrink-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+										class="notification-actions shrink-0 opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
 									>
 										<div class="flex gap-1">
 											{#if !notification.read}
@@ -239,7 +273,6 @@
 	/* Use PostCSS nesting for clarity: base backdrop contains modal and children */
 	.notification-backdrop {
 		background: var(--modal-backdrop);
-		backdrop-filter: blur(8px);
 
 		.notification-modal {
 			box-shadow: var(--shadow-strong);
@@ -259,8 +292,8 @@
 			}
 
 			.mark-all-btn {
-				background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-				color: white;
+				background: var(--accent-primary);
+				color: var(--accent-contrast);
 				border: 1px solid rgba(0, 0, 0, 0);
 			}
 
@@ -300,17 +333,6 @@
 				&.unread {
 					background: var(--bg-hover);
 					position: relative;
-
-					&::before {
-						content: '';
-						position: absolute;
-						left: 0;
-						top: 0;
-						bottom: 0;
-						width: 3px;
-						background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
-						border-radius: 0 2px 2px 0;
-					}
 				}
 			}
 
@@ -337,8 +359,8 @@
 			}
 
 			.action-btn-read {
-				background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-				color: white;
+				background: var(--accent-primary);
+				color: var(--accent-contrast);
 			}
 
 			.action-btn-delete {

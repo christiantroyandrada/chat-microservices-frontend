@@ -92,6 +92,6 @@ describe('login page', () => {
 		const registerLink = container.querySelector('a[href="/register"]');
 
 		expect(registerLink).toBeTruthy();
-		expect(registerLink?.textContent?.trim()).toBe('Create one');
+		expect(registerLink?.textContent?.trim()).toBe('Request one');
 	});
 });

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ChatConversation } from '$lib/types';
+	import Seal from '$lib/components/Seal.svelte';
 
 	// Props (runes mode) - accept a callback prop for the back action in Svelte 5
 	let {
@@ -45,12 +46,11 @@
 
 {#if recipient}
 	<div class="chat-header p-3 md:p-4">
-		<div class="flex items-center justify-between">
-			<div class="header-user-info flex items-center gap-3">
-				<!-- Avatar -->
+		<div class="flex items-center justify-between gap-3">
+			<div class="header-user-info flex min-w-0 items-center gap-3">
 				<!-- Back button (mobile only) -->
 				<button
-					class="back-btn mr-2 rounded p-2"
+					class="back-btn rounded p-2"
 					type="button"
 					onclick={() => back?.()}
 					aria-label="Back to conversations"
@@ -69,19 +69,15 @@
 						/>
 					</svg>
 				</button>
-				<div
-					class="avatar-circle flex h-10 w-10 items-center justify-center rounded-full font-semibold text-white"
-				>
+				<div class="avatar-circle flex h-10 w-10 items-center justify-center rounded-full">
 					{(recipient.username?.[0] ?? '').toUpperCase()}
 				</div>
 
-				<div>
-					<h3 class="username text-base font-semibold md:text-lg">
-						{recipient.username}
-					</h3>
+				<div class="min-w-0">
+					<h3 class="username truncate">{recipient.username}</h3>
 					{#if isTyping}
-						<div class="status-text flex items-center gap-1 text-sm">
-							<span>typing</span>
+						<div class="status-text flex items-center gap-1">
+							<span>writing</span>
 							<span class="typing-dots">
 								<span class="dot"></span>
 								<span class="dot"></span>
@@ -89,9 +85,15 @@
 							</span>
 						</div>
 					{:else}
-						<p class="status-text text-sm">{getStatusText()}</p>
+						<p class="status-text">{getStatusText()}</p>
 					{/if}
 				</div>
+			</div>
+
+			<!-- E2EE indicator: this conversation is sealed -->
+			<div class="seal-status" title="This conversation is end-to-end encrypted">
+				<Seal size={20} title="End-to-end encrypted" />
+				<span class="seal-status__label eyebrow">Sealed</span>
 			</div>
 		</div>
 	</div>
@@ -103,8 +105,8 @@
 
 <style>
 	.chat-header {
-		background: var(--bg-primary);
-		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+		background: var(--bg-secondary);
+		border-bottom: 1px solid var(--border-subtle);
 	}
 
 	.chat-header .header-user-info {
@@ -112,15 +114,49 @@
 	}
 
 	.chat-header .avatar-circle {
-		background: var(--gradient-accent);
+		flex: none;
+		background: var(--accent-primary);
+		color: var(--accent-contrast);
+		font-family: var(--font-serif);
+		font-weight: 600;
+		font-size: var(--text-lg);
+		box-shadow: var(--shadow-cta);
 	}
 
 	.chat-header .username {
+		font-family: var(--font-serif);
+		font-size: var(--text-lg);
+		font-weight: 600;
+		letter-spacing: -0.01em;
 		color: var(--text-primary);
 	}
 
 	.chat-header .status-text {
+		font-size: var(--text-sm);
 		color: var(--text-tertiary);
+	}
+
+	.back-btn {
+		color: var(--text-secondary);
+		transition: color var(--dur-fast) ease;
+	}
+	.back-btn:hover {
+		color: var(--accent-primary);
+	}
+
+	.seal-status {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-xs);
+		flex: none;
+	}
+	.seal-status__label {
+		color: var(--text-tertiary);
+	}
+	@media (max-width: 640px) {
+		.seal-status__label {
+			display: none;
+		}
 	}
 
 	.chat-header .typing-dots {
@@ -132,7 +168,7 @@
 	.chat-header .typing-dots .dot {
 		width: 4px;
 		height: 4px;
-		background-color: var(--text-tertiary);
+		background-color: var(--accent-primary);
 		border-radius: 50%;
 		display: inline-block;
 		animation: typing-bounce 1.4s infinite ease-in-out;
@@ -141,11 +177,9 @@
 	.chat-header .typing-dots .dot:nth-child(1) {
 		animation-delay: 0s;
 	}
-
 	.chat-header .typing-dots .dot:nth-child(2) {
 		animation-delay: 0.2s;
 	}
-
 	.chat-header .typing-dots .dot:nth-child(3) {
 		animation-delay: 0.4s;
 	}
@@ -164,8 +198,8 @@
 	}
 
 	.chat-header-empty {
-		background: var(--bg-primary);
-		border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+		background: var(--bg-secondary);
+		border-bottom: 1px solid var(--border-subtle);
 
 		.empty-message {
 			color: var(--text-secondary);

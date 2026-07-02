@@ -1,5 +1,20 @@
 <script lang="ts">
 	import '../app.css';
+	// Self-hosted fonts (CSP font-src 'self'): Spectral (display/serif),
+	// Hanken Grotesk (body/sans), Spline Sans Mono (cryptographic metadata).
+	import '@fontsource/spectral/400.css';
+	import '@fontsource/spectral/500.css';
+	import '@fontsource/spectral/600.css';
+	import '@fontsource/spectral/700.css';
+	import '@fontsource/spectral/400-italic.css';
+	import '@fontsource/spectral/500-italic.css';
+	import '@fontsource-variable/hanken-grotesk';
+	import '@fontsource-variable/spline-sans-mono';
+	// Preload the two critical files (body sans + display serif) so first paint
+	// doesn't flash fallback type. `?url` resolves to the same hashed asset the
+	// @fontsource CSS references, so nothing is fetched twice.
+	import hankenGroteskUrl from '@fontsource-variable/hanken-grotesk/files/hanken-grotesk-latin-wght-normal.woff2?url';
+	import spectral600Url from '@fontsource/spectral/files/spectral-latin-600-normal.woff2?url';
 	import favicon from '$lib/assets/favicon.svg';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -37,17 +52,17 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<!-- Font preloads: crossorigin is required even same-origin (font fetches are CORS-mode) -->
+	<link rel="preload" href={hankenGroteskUrl} as="font" type="font/woff2" crossorigin="anonymous" />
+	<link rel="preload" href={spectral600Url} as="font" type="font/woff2" crossorigin="anonymous" />
 </svelte:head>
 
 {#if showLoading}
-	<!-- Auth initialization loading screen -->
-	<div class="flex min-h-screen items-center justify-center" style="background: var(--bg-primary);">
-		<div class="text-center">
-			<div
-				class="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2"
-				style="border-color: var(--accent-primary);"
-			></div>
-			<p style="color: var(--text-secondary);">Loading...</p>
+	<!-- Auth initialization: unsealing the user's correspondence -->
+	<div class="loading-screen">
+		<div class="loading-card">
+			<span class="wax-seal loading-seal" aria-hidden="true">✦</span>
+			<p class="eyebrow">Unsealing your correspondence</p>
 		</div>
 	</div>
 {:else}
@@ -58,3 +73,38 @@
 
 	{@render children?.()}
 {/if}
+
+<style>
+	.loading-screen {
+		display: flex;
+		min-height: 100vh;
+		align-items: center;
+		justify-content: center;
+		background: var(--bg-primary);
+	}
+	.loading-card {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-md);
+	}
+	.loading-seal {
+		--seal-size: 3.25rem;
+		font-size: var(--text-lg);
+		animation: sealPulse 1.6s var(--ease-out-quart) infinite;
+	}
+	@keyframes sealPulse {
+		0%,
+		100% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.06);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.loading-seal {
+			animation: none;
+		}
+	}
+</style>

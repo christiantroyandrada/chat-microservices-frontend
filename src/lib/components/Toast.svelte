@@ -16,34 +16,20 @@
 				return '';
 		}
 	};
-
-	const getColorClasses = (type: string) => {
-		switch (type) {
-			case 'success':
-				return 'bg-green-500 text-white';
-			case 'error':
-				return 'bg-red-500 text-white';
-			case 'warning':
-				return 'bg-yellow-500 text-white';
-			case 'info':
-				return 'bg-blue-500 text-white';
-			default:
-				return 'bg-gray-800 text-white';
-		}
-	};
 </script>
 
-<div class="fixed top-4 right-4 z-50 flex max-w-md flex-col gap-2">
-	{#each toastStore.items as toast (toast.id)}
+<div class="fixed top-4 right-4 z-50 flex max-w-md flex-col gap-2" aria-live="polite">
+	{#each $toastStore as toast (toast.id)}
 		<div
 			transition:fly={{ y: -20, duration: 300 }}
-			class="flex items-center gap-3 rounded-lg px-4 py-3 shadow-lg {getColorClasses(toast.type)}"
+			class="toast toast--{toast.type} flex items-center gap-3 px-4 py-3"
+			role="status"
 		>
-			<span class="text-xl font-bold">{getIcon(toast.type)}</span>
+			<span class="toast__icon text-xl font-bold">{getIcon(toast.type)}</span>
 			<p class="flex-1 text-sm">{toast.message}</p>
 			<button
 				onclick={() => toastStore.dismiss(toast.id)}
-				class="text-white transition-opacity hover:opacity-80"
+				class="toast__close transition-opacity hover:opacity-80"
 				aria-label="Close"
 			>
 				✕
@@ -51,3 +37,32 @@
 		</div>
 	{/each}
 </div>
+
+<style>
+	/* A small paper note: tokenized surface, semantic colour carried by the icon */
+	.toast {
+		background: var(--surface-raised);
+		border: 1px solid var(--border-subtle);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-medium);
+		color: var(--text-primary);
+	}
+	.toast--success .toast__icon {
+		color: var(--color-success);
+	}
+	.toast--error {
+		border-color: var(--color-error-border);
+	}
+	.toast--error .toast__icon {
+		color: var(--color-error);
+	}
+	.toast--warning .toast__icon {
+		color: var(--color-warning);
+	}
+	.toast--info .toast__icon {
+		color: var(--color-info);
+	}
+	.toast__close {
+		color: var(--text-tertiary);
+	}
+</style>

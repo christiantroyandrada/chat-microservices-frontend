@@ -17,12 +17,20 @@
 </script>
 
 <svelte:head>
-	<title>Chat App - Loading...</title>
+	<title>Secret · Loading…</title>
 </svelte:head>
 
-<div class="flex min-h-screen items-center justify-center bg-gray-50">
-	<div class="text-center">
-		<div class="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
-		<p class="text-gray-600">Loading...</p>
+<!-- Body already carries --bg-primary, so this inherits paper/candlelight correctly -->
+<div class="flex min-h-screen items-center justify-center">
+	<div class="text-center" role="status">
+		<div class="loading-ring mx-auto mb-4 h-12 w-12 animate-spin rounded-full"></div>
+		<p style="color: var(--text-tertiary);">Loading…</p>
 	</div>
 </div>
+
+<style>
+	.loading-ring {
+		border: 2px solid var(--border-subtle);
+		border-bottom-color: var(--accent-primary);
+	}
+</style>
