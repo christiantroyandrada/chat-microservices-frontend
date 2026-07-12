@@ -4,6 +4,9 @@ import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
+	build: {
+		assetsInlineLimit: 0
+	},
 	optimizeDeps: {
 		exclude: []
 	},
