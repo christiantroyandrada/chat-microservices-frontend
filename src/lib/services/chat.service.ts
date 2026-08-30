@@ -53,9 +53,7 @@ function normalizeMessage(serverMsg: ServerMessage): Message {
 		senderId: serverMsg.senderId,
 		senderUsername: serverMsg.senderUsername || serverMsg.senderName || undefined,
 		receiverId: serverMsg.receiverId,
-		// backend uses `message`; frontend uses `content`
 		content: serverMsg.message ?? serverMsg.content ?? '',
-		// prefer an explicit timestamp, fall back to createdAt
 		timestamp: serverMsg.timestamp ?? serverMsg.createdAt ?? new Date().toISOString(),
 		read: serverMsg.read ?? serverMsg.isRead ?? false,
 		createdAt: serverMsg.createdAt,
@@ -72,18 +70,15 @@ export const chatService = {
 		const response = await apiClient.get<ChatConversation[]>('/chat/conversations');
 		const conversations = response.data || [];
 
-		// If we have currentUserId, try to get last message from local storage
 		if (currentUserId) {
 			const messageStore = getMessageStore(currentUserId);
 
 			const conversationsWithLocalMessages = await Promise.all(
 				conversations.map(async (conv) => {
-					// Get the last message from local storage for this conversation
 					const messages = await messageStore.getMessages(conv.userId, currentUserId, 1);
 
 					if (messages.length > 0) {
 						const lastLocalMessage = messages.at(-1)!;
-						// Use local storage message (already decrypted plaintext)
 						return {
 							...conv,
 							lastMessage:
@@ -94,7 +89,6 @@ export const chatService = {
 						};
 					}
 
-					// No local messages, return as-is (might be new conversation)
 					return conv;
 				})
 			);
@@ -123,7 +117,6 @@ export const chatService = {
 
 		const messageStore = getMessageStore(currentUserId);
 
-		// Fetch from server to get latest messages (including any missed real-time broadcasts)
 		logger.info('[ChatService] Fetching messages from server...');
 		const response = await apiClient.get<ServerMessage[]>(
 			`/chat/get/${userId}?limit=${limit}&offset=${offset}`
@@ -131,7 +124,6 @@ export const chatService = {
 		const data = response.data || [];
 
 		if (data.length === 0) {
-			// No messages on server, check if we have anything locally
 			const localMessages = await messageStore.getMessages(userId, currentUserId, limit);
 			logger.info(
 				`[ChatService] Server has no messages, loaded ${localMessages.length} from local storage`
@@ -141,19 +133,14 @@ export const chatService = {
 
 		const normalized = data.map(normalizeMessage);
 
-		// Decrypt and store messages locally
 		await initSignal(currentUserId);
 
-		// Process messages in batches to avoid spawning 200 concurrent IndexedDB
-		// reads + Signal Protocol decrypt operations simultaneously. This reduces
-		// main-thread blocking and UI jank when loading large conversations.
 		const BATCH_SIZE = 20;
 		const decrypted: Message[] = [];
 		for (let i = 0; i < normalized.length; i += BATCH_SIZE) {
 			const batch = normalized.slice(i, i + BATCH_SIZE);
 			const batchResults = await Promise.all(
 				batch.map(async (msg) => {
-					// Check if already in local storage
 					const existing = await messageStore.getMessage(msg._id);
 					if (existing) {
 						// If the cached message is a decryption error, try to decrypt again
