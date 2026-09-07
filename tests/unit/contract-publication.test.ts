@@ -1469,15 +1469,15 @@ try {
 		const opened: number[] = [];
 		const closed: number[] = [];
 		request.fsOps = {
-			openSync: ((path: string, flags: string | number, mode?: number) => {
-				const fd = openSync(path, flags as any, mode as any);
+			openSync: ((path: unknown, flags: unknown, mode?: unknown) => {
+				const fd = openSync(path as string, flags as string | number, mode as number | undefined);
 				opened.push(fd);
 				return fd;
-			}) as any,
-			closeSync: ((fd: number) => {
-				closed.push(fd);
-				return closeSync(fd);
-			}) as any
+			}) as unknown as typeof openSync,
+			closeSync: ((fd: unknown) => {
+				closed.push(fd as number);
+				return closeSync(fd as number);
+			}) as unknown as typeof closeSync
 		};
 		const error = captureError(() => publishRound5(request));
 		expect(error).toBeUndefined();
