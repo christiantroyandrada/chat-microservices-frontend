@@ -1463,6 +1463,40 @@ try {
 		expect(readFileSync(replacedPath!)).toEqual(Buffer.from('foreign replacement\n'));
 	});
 
+	it('closes every descriptor exactly once after successful publication', () => {
+		const fixture = makePublicationFixture();
+		const request = makePublicationRequest(fixture) as Round5PublicationRequest;
+		const opened: number[] = [];
+		const closed: number[] = [];
+		request.fsOps = {
+			openSync: ((path: string, flags: string | number, mode?: number) => {
+				const fd = openSync(path, flags as any, mode as any);
+				opened.push(fd);
+				return fd;
+			}) as any,
+			closeSync: ((fd: number) => {
+				closed.push(fd);
+				return closeSync(fd);
+			}) as any
+		};
+		const error = captureError(() => publishRound5(request));
+		expect(error).toBeUndefined();
+		expect(opened.length).toBeGreaterThan(0);
+		expect(closed.length, `opened ${opened.length} vs closed ${closed.length}`).toBe(opened.length);
+		const openCounts = new Map<number, number>();
+		for (const fd of opened) openCounts.set(fd, (openCounts.get(fd) ?? 0) + 1);
+		const closeCounts = new Map<number, number>();
+		for (const fd of closed) closeCounts.set(fd, (closeCounts.get(fd) ?? 0) + 1);
+		for (const [fd, count] of openCounts) {
+			expect(closeCounts.get(fd), `fd ${fd} close count`).toBe(count);
+		}
+		for (const [fd, count] of closeCounts) {
+			expect(openCounts.get(fd), `fd ${fd} open count`).toBe(count);
+		}
+		expect(listFiles(fixture.root).some((path) => path.includes(fixture.ownerToken))).toBe(false);
+		expect(existsSync(fixture.lockPath)).toBe(false);
+	});
+
 	it('surfaces ownership loss when a newly published target disappears before rollback', () => {
 		const fixture = makePublicationFixture();
 		const request = makePublicationRequest(fixture);

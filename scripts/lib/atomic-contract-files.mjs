@@ -874,6 +874,21 @@ export function publishSnapshot(input) {
 		rollbackResult = rollbackRecords(renamedRecords, io);
 	}
 
+	const publishedCloseErrors = [];
+	if (publicationError === undefined) {
+		for (const record of renamedRecords) {
+			if (record.publishedFd !== undefined) {
+				try {
+					io.closeSync(record.publishedFd);
+				} catch (error) {
+					publishedCloseErrors.push(asError(error));
+				} finally {
+					record.publishedFd = undefined;
+				}
+			}
+		}
+	}
+
 	const cleanupResult = cleanupResources(resources, rollbackResult.errors.length > 0, io);
 	let releaseError;
 	try {
@@ -887,6 +902,7 @@ export function publishSnapshot(input) {
 	if (rollbackResult.errors.length > 0) {
 		causes.push(new AggregateError(rollbackResult.errors, 'Publication rollback failed'));
 	}
+	causes.push(...publishedCloseErrors);
 	causes.push(...cleanupResult.errors);
 	if (releaseError !== undefined) causes.push(asError(releaseError));
 	const recoveryPaths = [
