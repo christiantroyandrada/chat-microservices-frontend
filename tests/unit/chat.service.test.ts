@@ -3,21 +3,32 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { ContractBoundaryError } from '$lib/services/contract-boundary';
+import type {
+	ChatApiConversation,
+	ChatApiMessage,
+	UserApiSearchUser
+} from '$lib/generated/api.types';
+import type { ApiResponse } from '$lib/types';
 import { testMessages, testConversations } from '../fixtures/messages';
 import { testUsers } from '../fixtures/users';
 
-// Mock API client BEFORE importing
-const mockApiClient = {
-	get: vi.fn(),
-	post: vi.fn(),
-	put: vi.fn(),
-	delete: vi.fn(),
-	patch: vi.fn()
+// Mock typed endpoint helpers BEFORE importing the domain service
+const mockUserApi = {
+	getPrekeyBundle: vi.fn(),
+	searchUsers: vi.fn()
+};
+const mockChatApi = {
+	getConversations: vi.fn(),
+	getMessages: vi.fn(),
+	sendMessage: vi.fn(),
+	markAsRead: vi.fn()
 };
 
 // Mock dependencies
-vi.mock('$lib/services/api', () => ({
-	apiClient: mockApiClient
+vi.mock('$lib/services/api.generated', () => ({
+	userApi: mockUserApi,
+	chatApi: mockChatApi
 }));
 
 const mockLogger = {
@@ -72,11 +83,17 @@ const { chatService } = await import('$lib/services/chat.service');
 
 // Helper to create success response
 const createSuccessResponse = <T>(data: T) => ({
-	data,
-	status: 200,
-	statusText: 'OK',
-	headers: {}
+	success: true,
+	data
 });
+
+const toConversationWire = (conversations: typeof testConversations) =>
+	conversations.map(({ userId, username, ...conversation }) => ({
+		...conversation,
+		id: userId,
+		name: username,
+		avatar: null
+	}));
 
 describe('chatService', () => {
 	beforeEach(() => {
@@ -86,18 +103,26 @@ describe('chatService', () => {
 	afterEach(() => {
 		vi.clearAllMocks();
 	});
+
+	it('does not expose unsupported message deletion', () => {
+		expect(chatService).not.toHaveProperty('deleteMessage');
+	});
+
 	describe('getConversations', () => {
 		it('should get conversations successfully', async () => {
-			mockApiClient.get.mockResolvedValue(createSuccessResponse(testConversations));
+			mockChatApi.getConversations.mockResolvedValue(
+				createSuccessResponse(toConversationWire(testConversations))
+			);
 
 			const result = await chatService.getConversations();
 
-			expect(mockApiClient.get).toHaveBeenCalledWith('/chat/conversations');
 			expect(result).toEqual(testConversations);
 		});
 
 		it('should enhance conversations with local message previews', async () => {
-			mockApiClient.get.mockResolvedValue(createSuccessResponse(testConversations));
+			mockChatApi.getConversations.mockResolvedValue(
+				createSuccessResponse(toConversationWire(testConversations))
+			);
 			mockMessageStore.getMessages.mockResolvedValue([testMessages[0]]);
 
 			const result = await chatService.getConversations('user-alice-123');
@@ -106,7 +131,7 @@ describe('chatService', () => {
 		});
 
 		it('should handle empty conversations', async () => {
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([]));
+			mockChatApi.getConversations.mockResolvedValue(createSuccessResponse([]));
 
 			const result = await chatService.getConversations();
 
@@ -115,7 +140,7 @@ describe('chatService', () => {
 
 		it('should handle API errors', async () => {
 			const error = new Error('Network error');
-			mockApiClient.get.mockRejectedValue(error);
+			mockChatApi.getConversations.mockRejectedValue(error);
 
 			await expect(chatService.getConversations()).rejects.toThrow('Network error');
 		});
@@ -134,21 +159,25 @@ describe('chatService', () => {
 		it('should fetch and decrypt messages from server', async () => {
 			const serverMessages = testMessages.map((msg) => ({
 				...msg,
+				status: 'Seen' as const,
 				message: msg.content,
 				content: undefined
 			}));
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse(serverMessages));
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse(serverMessages));
 			mockMessageStore.getMessage.mockResolvedValue(null);
 
 			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
 
-			expect(mockApiClient.get).toHaveBeenCalledWith(`/chat/get/${userId}?limit=50&offset=0`);
-			expect(result.length).toBeGreaterThan(0);
+			expect(result).toHaveLength(serverMessages.length);
+			expect(result[0]).toMatchObject({
+				_id: serverMessages[0]._id,
+				content: serverMessages[0].message
+			});
 		});
 
 		it('should return local messages when server has none', async () => {
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([]));
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse([]));
 			mockMessageStore.getMessages.mockResolvedValue(testMessages);
 
 			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
@@ -157,8 +186,10 @@ describe('chatService', () => {
 		});
 
 		it('should use cached messages when available', async () => {
-			const serverMessages = [testMessages[0]];
-			mockApiClient.get.mockResolvedValue(createSuccessResponse(serverMessages));
+			const serverMessages = [
+				{ ...testMessages[0], status: 'Seen' as const, message: testMessages[0].content }
+			];
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse(serverMessages));
 			mockMessageStore.getMessage.mockResolvedValue(testMessages[0]);
 
 			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
@@ -180,7 +211,11 @@ describe('chatService', () => {
 				_encryptedContent: type3Envelope
 			};
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([testMessages[0]]));
+			mockChatApi.getMessages.mockResolvedValue(
+				createSuccessResponse([
+					{ ...testMessages[0], status: 'Seen' as const, message: testMessages[0].content }
+				])
+			);
 			mockMessageStore.getMessage.mockResolvedValue(cachedFailedMsg);
 
 			const signal = await import('$lib/crypto/signal');
@@ -207,8 +242,13 @@ describe('chatService', () => {
 			};
 
 			// Server still sends the original encrypted envelope
-			const serverMsg = { ...testMessages[0], content: type3Envelope };
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([serverMsg]));
+			const serverMsg = {
+				...testMessages[0],
+				status: 'Seen' as const,
+				content: type3Envelope,
+				message: type3Envelope
+			};
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse([serverMsg]));
 			mockMessageStore.getMessage.mockResolvedValue(cachedFailedMsg);
 
 			const signal = await import('$lib/crypto/signal');
@@ -232,7 +272,11 @@ describe('chatService', () => {
 				_encryptedContent: type1Envelope
 			};
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([testMessages[0]]));
+			mockChatApi.getMessages.mockResolvedValue(
+				createSuccessResponse([
+					{ ...testMessages[0], status: 'Seen' as const, message: testMessages[0].content }
+				])
+			);
 			mockMessageStore.getMessage.mockResolvedValue(cachedFailedMsg);
 
 			const signal = await import('$lib/crypto/signal');
@@ -248,11 +292,12 @@ describe('chatService', () => {
 		it('should handle unencrypted plaintext messages', async () => {
 			const plainMessage = {
 				...testMessages[0],
+				status: 'Seen' as const,
 				message: 'plain text content',
 				content: 'plain text content'
 			};
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([plainMessage]));
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse([plainMessage]));
 			mockMessageStore.getMessage.mockResolvedValue(null);
 
 			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
@@ -269,11 +314,12 @@ describe('chatService', () => {
 
 			const encryptedMessage = {
 				...testMessages[0],
+				status: 'Seen' as const,
 				content: encryptedContent,
 				message: encryptedContent
 			};
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([encryptedMessage]));
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse([encryptedMessage]));
 			mockMessageStore.getMessage.mockResolvedValue(null);
 
 			// Import the signal mock
@@ -294,11 +340,12 @@ describe('chatService', () => {
 
 			const message = {
 				...testMessages[0],
+				status: 'Seen' as const,
 				content: invalidEncrypted,
 				message: invalidEncrypted
 			};
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([message]));
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse([message]));
 			mockMessageStore.getMessage.mockResolvedValue(null);
 
 			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
@@ -316,11 +363,12 @@ describe('chatService', () => {
 
 			const encryptedMessage = {
 				...testMessages[0],
+				status: 'Seen' as const,
 				content: encryptedContent,
 				message: encryptedContent
 			};
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([encryptedMessage]));
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse([encryptedMessage]));
 			mockMessageStore.getMessage.mockResolvedValue(null);
 
 			const signal = await import('$lib/crypto/signal');
@@ -341,12 +389,13 @@ describe('chatService', () => {
 
 			const ownMessage = {
 				...testMessages[0],
+				status: 'Seen' as const,
 				senderId: currentUserId, // Current user sent this message
 				content: encryptedContent,
 				message: encryptedContent
 			};
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([ownMessage]));
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse([ownMessage]));
 			mockMessageStore.getMessage.mockResolvedValue(null);
 
 			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
@@ -364,10 +413,11 @@ describe('chatService', () => {
 				receiverId: currentUserId,
 				message: 'Hello from server',
 				createdAt: '2024-01-01T00:00:00Z',
+				status: 'Delivered' as const,
 				isRead: false
 			};
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse([serverMessage]));
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse([serverMessage]));
 			mockMessageStore.getMessage.mockResolvedValue(null);
 
 			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
@@ -376,6 +426,58 @@ describe('chatService', () => {
 			expect(result[0]._id).toBe('msg-123');
 			expect(result[0].senderUsername).toBe('Bob');
 			expect(result[0].content).toBe('Hello from server');
+		});
+
+		it('maps each backend delivery status to its client status and read state', async () => {
+			const serverMessages = [
+				{
+					...testMessages[0],
+					status: 'NotDelivered' as const,
+					read: true,
+					message: 'queued',
+					content: undefined
+				},
+				{
+					...testMessages[0],
+					_id: 'message-delivered',
+					status: 'Delivered' as const,
+					isRead: true,
+					message: 'delivered',
+					content: undefined
+				},
+				{
+					...testMessages[0],
+					_id: 'message-seen',
+					status: 'Seen' as const,
+					read: false,
+					message: 'seen',
+					content: undefined
+				}
+			];
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse(serverMessages));
+			mockMessageStore.getMessage.mockResolvedValue(null);
+
+			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
+
+			expect(result.map(({ status, read }) => ({ status, read }))).toEqual([
+				{ status: 'sent', read: false },
+				{ status: 'delivered', read: false },
+				{ status: 'read', read: true }
+			]);
+		});
+
+		it('rejects a server message missing the required delivery status', async () => {
+			const malformedMessage = {
+				...testMessages[0],
+				message: 'missing status',
+				content: undefined
+			};
+			mockChatApi.getMessages.mockResolvedValue(createSuccessResponse([malformedMessage]));
+			mockMessageStore.getMessage.mockResolvedValue(null);
+
+			await expect(chatService.getMessages(userId, 50, 0, currentUserId)).rejects.toThrow(
+				'chat.getMessages: status must be NotDelivered, Delivered, or Seen'
+			);
 		});
 	});
 
@@ -388,7 +490,7 @@ describe('chatService', () => {
 			vi.clearAllMocks();
 		});
 
-		it('should send encrypted message successfully', async () => {
+		it('encrypts, normalizes, and stores a sent message', async () => {
 			const payload = {
 				senderId: currentUserId,
 				receiverId: recipientId,
@@ -397,10 +499,10 @@ describe('chatService', () => {
 
 			const serverResponse = {
 				...testMessages[0],
+				status: 'NotDelivered' as const,
 				message: 'encrypted-content'
 			};
 
-			// Mock the prekey bundle fetch (now uses apiClient.get)
 			const prekeyBundle = {
 				userId: recipientId,
 				deviceId: 'device-123',
@@ -418,16 +520,28 @@ describe('chatService', () => {
 				}
 			};
 
-			// Mock apiClient.get for prekey bundle request
-			mockApiClient.get.mockResolvedValueOnce(createSuccessResponse(prekeyBundle));
-
-			mockApiClient.post.mockResolvedValueOnce(createSuccessResponse(serverResponse));
+			mockUserApi.getPrekeyBundle.mockResolvedValueOnce(createSuccessResponse(prekeyBundle));
+			mockChatApi.sendMessage.mockResolvedValueOnce(createSuccessResponse(serverResponse));
 
 			const result = await chatService.sendMessage(payload, currentUserId);
 
-			expect(mockApiClient.get).toHaveBeenCalled();
-			expect(mockApiClient.post).toHaveBeenCalled();
-			expect(result).toBeDefined();
+			expect(mockChatApi.sendMessage).toHaveBeenCalledWith({
+				receiverId: recipientId,
+				message: JSON.stringify({ __encrypted: true, type: 3, body: 'encrypted-content' })
+			});
+			expect(result).toMatchObject({
+				_id: serverResponse._id,
+				content: 'Hello!'
+			});
+			expect(mockMessageStore.saveMessage).toHaveBeenCalledWith(result);
+		});
+
+		it('does not swallow a prekey request failure', async () => {
+			const payload = { receiverId: 'uncached-recipient', content: 'Hello!' };
+			const failure = new Error('Prekey service unavailable');
+			mockUserApi.getPrekeyBundle.mockRejectedValueOnce(failure);
+
+			await expect(chatService.sendMessage(payload, currentUserId)).rejects.toBe(failure);
 		});
 
 		it('should require currentUserId', async () => {
@@ -451,17 +565,14 @@ describe('chatService', () => {
 
 	describe('markAsRead', () => {
 		it('should mark messages as read', async () => {
-			mockApiClient.put.mockResolvedValue(createSuccessResponse({}));
+			mockChatApi.markAsRead.mockResolvedValue(createSuccessResponse({ modifiedCount: 1 }));
 
-			await chatService.markAsRead('user-bob-456');
-
-			// Fix: Update to actual API path
-			expect(mockApiClient.put).toHaveBeenCalledWith('/chat/messages/read/user-bob-456');
+			await expect(chatService.markAsRead('user-bob-456')).resolves.toBeUndefined();
 		});
 
 		it('should handle mark as read error', async () => {
 			const error = new Error('Failed to mark as read');
-			mockApiClient.put.mockRejectedValue(error);
+			mockChatApi.markAsRead.mockRejectedValue(error);
 
 			await expect(chatService.markAsRead('user-bob-456')).rejects.toThrow(
 				'Failed to mark as read'
@@ -475,23 +586,224 @@ describe('chatService', () => {
 			vi.clearAllMocks();
 		});
 
-		it('should search users by query', async () => {
+		it('preserves the generated search user shape', async () => {
 			const users = [testUsers.alice, testUsers.bob];
-			mockApiClient.get.mockResolvedValueOnce(createSuccessResponse(users));
+			mockUserApi.searchUsers.mockResolvedValueOnce(createSuccessResponse(users));
 
 			const result = await chatService.searchUsers('alice');
 
-			// Fix: Update to actual API path (user service)
-			expect(mockApiClient.get).toHaveBeenCalledWith('/user/search?q=alice');
 			expect(result).toEqual(users);
+			expect(result[0]).toEqual({
+				_id: 'user-alice-123',
+				username: 'alice',
+				email: 'alice@test.com'
+			});
 		});
 
 		it('should handle empty search results', async () => {
-			mockApiClient.get.mockResolvedValueOnce(createSuccessResponse([]));
+			mockUserApi.searchUsers.mockResolvedValueOnce(createSuccessResponse([]));
 
 			const result = await chatService.searchUsers('nonexistent');
 
 			expect(result).toEqual([]);
+		});
+	});
+
+	describe('domain boundaries', () => {
+		const userId = 'user-bob-456';
+		const currentUserId = 'user-alice-123';
+
+		it('throws when getConversations response data is not array', async () => {
+			const { chatService } = await import('$lib/services/chat.service');
+			mockChatApi.getConversations.mockResolvedValue({
+				success: true,
+				data: {} as unknown as ChatApiConversation[]
+			});
+			await expect(chatService.getConversations()).rejects.toBeInstanceOf(ContractBoundaryError);
+		});
+
+		it('throws when getConversations data is missing', async () => {
+			const { chatService } = await import('$lib/services/chat.service');
+			mockChatApi.getConversations.mockResolvedValue({ success: true } as unknown as ApiResponse<
+				ChatApiConversation[]
+			>);
+			await expect(chatService.getConversations()).rejects.toBeInstanceOf(ContractBoundaryError);
+		});
+
+		it('throws when conversation missing id', async () => {
+			const badConv = {
+				name: 'bob',
+				avatar: null,
+				lastMessage: 'hi',
+				unreadCount: 0,
+				lastMessageTime: new Date().toISOString()
+			} as unknown as ChatApiConversation;
+			mockChatApi.getConversations.mockResolvedValue({
+				success: true,
+				data: [badConv]
+			} as unknown as ApiResponse<ChatApiConversation[]>);
+			await expect(chatService.getConversations()).rejects.toThrow(
+				'chat.getConversations: id must be non-empty string'
+			);
+		});
+
+		it('throws when conversation missing name', async () => {
+			const badConv = {
+				id: 'user-1',
+				avatar: null,
+				lastMessage: 'hi',
+				unreadCount: 0,
+				lastMessageTime: new Date().toISOString()
+			} as unknown as ChatApiConversation;
+			mockChatApi.getConversations.mockResolvedValue({
+				success: true,
+				data: [badConv]
+			} as unknown as ApiResponse<ChatApiConversation[]>);
+			await expect(chatService.getConversations()).rejects.toThrow(
+				'chat.getConversations: name must be non-empty string'
+			);
+		});
+
+		it('throws when conversation unreadCount is not finite number', async () => {
+			const badConv = {
+				id: 'user-1',
+				name: 'bob',
+				avatar: null,
+				lastMessage: 'hi',
+				unreadCount: 'not-a-number',
+				lastMessageTime: new Date().toISOString()
+			} as unknown as ChatApiConversation;
+			mockChatApi.getConversations.mockResolvedValue({
+				success: true,
+				data: [badConv]
+			} as unknown as ApiResponse<ChatApiConversation[]>);
+			await expect(chatService.getConversations()).rejects.toThrow(
+				'chat.getConversations: unreadCount must be finite number'
+			);
+		});
+
+		it('throws when getMessages data is not array', async () => {
+			mockChatApi.getMessages.mockResolvedValue({
+				success: true,
+				data: {} as unknown as ChatApiMessage[]
+			} as unknown as ApiResponse<ChatApiMessage[]>);
+			await expect(chatService.getMessages(userId, 50, 0, currentUserId)).rejects.toBeInstanceOf(
+				ContractBoundaryError
+			);
+		});
+
+		it('throws when getMessages data missing', async () => {
+			mockChatApi.getMessages.mockResolvedValue({ success: true } as unknown as ApiResponse<
+				ChatApiMessage[]
+			>);
+			await expect(chatService.getMessages(userId, 50, 0, currentUserId)).rejects.toBeInstanceOf(
+				ContractBoundaryError
+			);
+		});
+
+		it('throws when server message missing id', async () => {
+			const badMsg = {
+				senderId: 'a',
+				receiverId: 'b',
+				status: 'Seen' as const,
+				message: 'hi',
+				createdAt: new Date().toISOString()
+			} as unknown as ChatApiMessage;
+			mockChatApi.getMessages.mockResolvedValue({
+				success: true,
+				data: [badMsg]
+			} as unknown as ApiResponse<ChatApiMessage[]>);
+			mockMessageStore.getMessage.mockResolvedValue(null);
+			await expect(chatService.getMessages(userId, 50, 0, currentUserId)).rejects.toThrow(
+				'chat.getMessages: id or _id must be non-empty string'
+			);
+		});
+
+		it('throws when server message missing status', async () => {
+			const badMsg = {
+				_id: 'm1',
+				senderId: 'a',
+				receiverId: 'b',
+				message: 'hi'
+			} as unknown as ChatApiMessage;
+			mockChatApi.getMessages.mockResolvedValue({
+				success: true,
+				data: [badMsg]
+			} as unknown as ApiResponse<ChatApiMessage[]>);
+			mockMessageStore.getMessage.mockResolvedValue(null);
+			await expect(chatService.getMessages(userId, 50, 0, currentUserId)).rejects.toBeInstanceOf(
+				ContractBoundaryError
+			);
+		});
+
+		it('throws when server message missing content', async () => {
+			const badMsg = {
+				_id: 'm1',
+				senderId: 'a',
+				receiverId: 'b',
+				status: 'Seen' as const
+			} as unknown as ChatApiMessage;
+			mockChatApi.getMessages.mockResolvedValue({
+				success: true,
+				data: [badMsg]
+			} as unknown as ApiResponse<ChatApiMessage[]>);
+			mockMessageStore.getMessage.mockResolvedValue(null);
+			await expect(chatService.getMessages(userId, 50, 0, currentUserId)).rejects.toThrow(
+				'chat.getMessages: message/content must be string'
+			);
+		});
+
+		it('throws when searchUsers data is not array', async () => {
+			mockUserApi.searchUsers.mockResolvedValue({
+				success: true,
+				data: {} as unknown as UserApiSearchUser[]
+			} as unknown as ApiResponse<UserApiSearchUser[]>);
+			await expect(chatService.searchUsers('alice')).rejects.toBeInstanceOf(ContractBoundaryError);
+		});
+
+		it('throws when searchUsers entry missing required field', async () => {
+			const badUser = { _id: 'u1', username: 'bob' } as unknown as UserApiSearchUser; // missing email
+			mockUserApi.searchUsers.mockResolvedValue({
+				success: true,
+				data: [badUser]
+			} as unknown as ApiResponse<UserApiSearchUser[]>);
+			await expect(chatService.searchUsers('bob')).rejects.toThrow(
+				'chat.searchUsers: email must be non-empty string'
+			);
+		});
+
+		it('valid fixtures satisfy generated types', async () => {
+			const validConv = {
+				id: 'user-2',
+				name: 'bob',
+				avatar: null,
+				lastMessage: 'hello',
+				unreadCount: 1,
+				lastMessageTime: new Date().toISOString()
+			} satisfies ChatApiConversation;
+			const validMsg = {
+				id: 'msg-1',
+				senderId: 'a',
+				receiverId: 'b',
+				message: 'encrypted',
+				isEncrypted: true,
+				status: 'Seen' as const,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString()
+			} satisfies ChatApiMessage;
+			mockChatApi.getConversations.mockResolvedValue({
+				success: true,
+				data: [validConv]
+			} as unknown as ApiResponse<ChatApiConversation[]>);
+			mockChatApi.getMessages.mockResolvedValue({
+				success: true,
+				data: [validMsg]
+			} as unknown as ApiResponse<ChatApiMessage[]>);
+			mockMessageStore.getMessage.mockResolvedValue(null);
+			const convs = await chatService.getConversations();
+			expect(convs[0].userId).toBe('user-2');
+			const msgs = await chatService.getMessages(userId, 50, 0, currentUserId);
+			expect(msgs[0]._id).toBe('msg-1');
 		});
 	});
 });

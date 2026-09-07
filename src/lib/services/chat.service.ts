@@ -1,4 +1,4 @@
-import { apiClient } from './api';
+import { chatApi, userApi } from './api.generated';
 import {
 	initSignal,
 	hasSession as signalHasSession,
@@ -8,9 +8,25 @@ import {
 	SignalDecryptionError
 } from '$lib/crypto/signal';
 import { getMessageStore } from '$lib/crypto/messageStore';
-import type { Message, SendMessagePayload, ChatConversation, ServerMessage } from '$lib/types';
+import type {
+	Message,
+	SendMessagePayload,
+	ChatConversation,
+	ServerMessage,
+	User
+} from '$lib/types';
 import type { EncryptedEnvelope } from '$lib/crypto/types';
+import type { ChatApiConversation, UserApiSearchUser } from '$lib/generated/api.types';
 import { logger } from './dev-logger';
+import {
+	ContractBoundaryError,
+	assertNonEmptyString,
+	assertString,
+	assertStringOrNull,
+	assertFiniteNumber,
+	assertArray,
+	assertObject
+} from './contract-boundary';
 
 /**
  * ServiceResult is imported from central types file.
@@ -47,15 +63,42 @@ function prekeyBundleCacheSet(
  * Helper to normalize server message shape -> frontend Message
  * Backend uses `message` field, frontend uses `content` field
  */
+function assertValidServerMessage(raw: unknown, context: string): asserts raw is ServerMessage {
+	const obj = assertObject(raw, context, 'message');
+	const id = (obj as Record<string, unknown>)._id ?? (obj as Record<string, unknown>).id;
+	if (typeof id !== 'string' || id.length === 0) {
+		throw new ContractBoundaryError(`${context}: id or _id must be non-empty string`);
+	}
+	assertNonEmptyString((obj as Record<string, unknown>).senderId, context, 'senderId');
+	assertNonEmptyString((obj as Record<string, unknown>).receiverId, context, 'receiverId');
+	const status = (obj as Record<string, unknown>).status;
+	if (status !== 'NotDelivered' && status !== 'Delivered' && status !== 'Seen') {
+		throw new ContractBoundaryError(`${context}: status must be NotDelivered, Delivered, or Seen`);
+	}
+	const messageRaw = (obj as Record<string, unknown>).message;
+	const contentRaw = (obj as Record<string, unknown>).content;
+	const wireContent = messageRaw ?? contentRaw;
+	if (typeof wireContent !== 'string') {
+		throw new ContractBoundaryError(`${context}: message/content must be string`);
+	}
+}
+
 function normalizeMessage(serverMsg: ServerMessage): Message {
+	assertValidServerMessage(serverMsg, 'chat.getMessages');
+	const deliveryStatus = serverMsg.status;
+	const status =
+		deliveryStatus === 'Seen' ? 'read' : deliveryStatus === 'Delivered' ? 'delivered' : 'sent';
+	const read = deliveryStatus === 'Seen';
+	const id = (serverMsg._id ?? serverMsg.id) as string;
 	return {
-		_id: serverMsg._id || serverMsg.id || String(serverMsg._id || serverMsg.id || ''),
+		_id: id,
 		senderId: serverMsg.senderId,
 		senderUsername: serverMsg.senderUsername || serverMsg.senderName || undefined,
 		receiverId: serverMsg.receiverId,
-		content: serverMsg.message ?? serverMsg.content ?? '',
+		content: (serverMsg.message ?? serverMsg.content) as string,
 		timestamp: serverMsg.timestamp ?? serverMsg.createdAt ?? new Date().toISOString(),
-		read: serverMsg.read ?? serverMsg.isRead ?? false,
+		status,
+		read,
 		createdAt: serverMsg.createdAt,
 		updatedAt: serverMsg.updatedAt
 	} as Message;
@@ -67,18 +110,51 @@ export const chatService = {
 	 * Pulls last message preview from local storage (already decrypted)
 	 */
 	async getConversations(currentUserId?: string): Promise<ChatConversation[]> {
-		const response = await apiClient.get<ChatConversation[]>('/chat/conversations');
-		const conversations = response.data || [];
+		const response = await chatApi.getConversations();
+		const data = assertArray(response.data, 'chat.getConversations', 'data');
+		for (const conv of data) {
+			const c = assertObject(conv, 'chat.getConversations', 'conversation');
+			assertNonEmptyString((c as Record<string, unknown>).id, 'chat.getConversations', 'id');
+			assertNonEmptyString((c as Record<string, unknown>).name, 'chat.getConversations', 'name');
+			assertStringOrNull((c as Record<string, unknown>).avatar, 'chat.getConversations', 'avatar');
+			assertString(
+				(c as Record<string, unknown>).lastMessage,
+				'chat.getConversations',
+				'lastMessage'
+			);
+			assertFiniteNumber(
+				(c as Record<string, unknown>).unreadCount,
+				'chat.getConversations',
+				'unreadCount'
+			);
+			assertString(
+				(c as Record<string, unknown>).lastMessageTime,
+				'chat.getConversations',
+				'lastMessageTime'
+			);
+		}
+		const conversations: ChatConversation[] = (data as ChatApiConversation[]).map(
+			(conversation) => ({
+				userId: conversation.id,
+				username: conversation.name,
+				lastMessage: conversation.lastMessage,
+				lastMessageTime: conversation.lastMessageTime,
+				unreadCount: conversation.unreadCount
+			})
+		);
 
+		// If we have currentUserId, try to get last message from local storage
 		if (currentUserId) {
 			const messageStore = getMessageStore(currentUserId);
 
 			const conversationsWithLocalMessages = await Promise.all(
 				conversations.map(async (conv) => {
+					// Get the last message from local storage for this conversation
 					const messages = await messageStore.getMessages(conv.userId, currentUserId, 1);
 
 					if (messages.length > 0) {
 						const lastLocalMessage = messages.at(-1)!;
+						// Use local storage message (already decrypted plaintext)
 						return {
 							...conv,
 							lastMessage:
@@ -89,6 +165,7 @@ export const chatService = {
 						};
 					}
 
+					// No local messages, return as-is (might be new conversation)
 					return conv;
 				})
 			);
@@ -117,13 +194,16 @@ export const chatService = {
 
 		const messageStore = getMessageStore(currentUserId);
 
+		// Fetch from server to get latest messages (including any missed real-time broadcasts)
 		logger.info('[ChatService] Fetching messages from server...');
-		const response = await apiClient.get<ServerMessage[]>(
-			`/chat/get/${userId}?limit=${limit}&offset=${offset}`
-		);
-		const data = response.data || [];
+		const response = await chatApi.getMessages(userId, limit, offset);
+		const data = assertArray(response.data, 'chat.getMessages', 'data');
+		for (const m of data) {
+			assertValidServerMessage(m, 'chat.getMessages');
+		}
 
 		if (data.length === 0) {
+			// No messages on server, check if we have anything locally
 			const localMessages = await messageStore.getMessages(userId, currentUserId, limit);
 			logger.info(
 				`[ChatService] Server has no messages, loaded ${localMessages.length} from local storage`
@@ -131,16 +211,21 @@ export const chatService = {
 			return localMessages;
 		}
 
-		const normalized = data.map(normalizeMessage);
+		const normalized = (data as ServerMessage[]).map(normalizeMessage);
 
+		// Decrypt and store messages locally
 		await initSignal(currentUserId);
 
+		// Process messages in batches to avoid spawning 200 concurrent IndexedDB
+		// reads + Signal Protocol decrypt operations simultaneously. This reduces
+		// main-thread blocking and UI jank when loading large conversations.
 		const BATCH_SIZE = 20;
 		const decrypted: Message[] = [];
 		for (let i = 0; i < normalized.length; i += BATCH_SIZE) {
 			const batch = normalized.slice(i, i + BATCH_SIZE);
 			const batchResults = await Promise.all(
 				batch.map(async (msg) => {
+					// Check if already in local storage
 					const existing = await messageStore.getMessage(msg._id);
 					if (existing) {
 						// If the cached message is a decryption error, try to decrypt again
@@ -313,19 +398,11 @@ export const chatService = {
 		let prekeyBundleData = prekeyBundleCache.get(payload.receiverId) ?? null;
 
 		if (!prekeyBundleData) {
-			// Fetch recipient prekey bundle via centralized apiClient (OWASP: credentials + CSRF)
-			try {
-				const resp = await apiClient.get<{ userId: string; deviceId: string; bundle: unknown }>(
-					`/user/prekeys/${encodeURIComponent(payload.receiverId)}`
-				);
-				prekeyBundleData = resp.data ?? null;
-				// Cache for this session (LRU-bounded)
-				if (prekeyBundleData) {
-					prekeyBundleCacheSet(payload.receiverId, prekeyBundleData);
-				}
-			} catch {
-				// treat as missing prekey
-				prekeyBundleData = null;
+			const resp = await userApi.getPrekeyBundle(payload.receiverId);
+			prekeyBundleData = resp.data ?? null;
+			// Cache for this session (LRU-bounded)
+			if (prekeyBundleData) {
+				prekeyBundleCacheSet(payload.receiverId, prekeyBundleData);
 			}
 		}
 
@@ -359,7 +436,7 @@ export const chatService = {
 
 		// backend exposes POST /send on the chat router
 		// backend expects `message` field, not `content`
-		const response = await apiClient.post<ServerMessage>('/chat/send', sendBody);
+		const response = await chatApi.sendMessage(sendBody);
 
 		if (!response.data) {
 			throw new Error('Failed to send message');
@@ -367,7 +444,8 @@ export const chatService = {
 
 		// Normalize the response and return with the original plaintext content
 		// The server returns the encrypted message, but the sender should see their own plaintext
-		const normalizedResponse = normalizeMessage(response.data);
+		assertValidServerMessage(response.data, 'chat.sendMessage');
+		const normalizedResponse = normalizeMessage(response.data as ServerMessage);
 		normalizedResponse.content = payload.content; // Use original plaintext for sender's view
 
 		// Store the plaintext message in local IndexedDB (Signal-style approach)
@@ -385,23 +463,29 @@ export const chatService = {
 	 * Mark messages as read
 	 */
 	async markAsRead(senderId: string): Promise<void> {
-		await apiClient.put(`/chat/messages/read/${senderId}`);
-	},
-
-	/**
-	 * Delete a message
-	 */
-	async deleteMessage(messageId: string): Promise<void> {
-		await apiClient.delete(`/chat/messages/${messageId}`);
+		await chatApi.markAsRead(senderId);
 	},
 
 	/**
 	 * Search users for starting new conversations
 	 */
-	async searchUsers(query: string): Promise<ChatConversation[]> {
-		const response = await apiClient.get<ChatConversation[]>(
-			`/user/search?q=${encodeURIComponent(query)}`
-		);
-		return response.data || [];
+	async searchUsers(query: string): Promise<User[]> {
+		const response = await userApi.searchUsers(query);
+		const data = assertArray(response.data, 'chat.searchUsers', 'data');
+		for (const u of data) {
+			const obj = assertObject(u, 'chat.searchUsers', 'user');
+			assertNonEmptyString((obj as Record<string, unknown>)._id, 'chat.searchUsers', '_id');
+			assertNonEmptyString(
+				(obj as Record<string, unknown>).username,
+				'chat.searchUsers',
+				'username'
+			);
+			assertNonEmptyString((obj as Record<string, unknown>).email, 'chat.searchUsers', 'email');
+		}
+		return (data as UserApiSearchUser[]).map((u) => ({
+			_id: u._id,
+			username: u.username,
+			email: u.email
+		})) as User[];
 	}
 };

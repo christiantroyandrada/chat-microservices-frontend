@@ -3,19 +3,22 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { testAuthUsers } from '../fixtures/users';
+import { ContractBoundaryError } from '$lib/services/contract-boundary';
+import type { UserApiUser, UserApiSignalKeyBackupRequest } from '$lib/generated/api.types';
+import type { ApiResponse } from '$lib/types';
 
-// Mock the API client BEFORE importing anything else
-const mockApiClient = {
-	get: vi.fn(),
-	post: vi.fn(),
-	put: vi.fn(),
-	delete: vi.fn(),
-	patch: vi.fn()
+// Mock the typed endpoint helper BEFORE importing the domain service
+const mockUserApi = {
+	register: vi.fn(),
+	login: vi.fn(),
+	logout: vi.fn(),
+	getCurrentUser: vi.fn(),
+	storeSignalKeys: vi.fn(),
+	fetchSignalKeys: vi.fn()
 };
 
-vi.mock('$lib/services/api', () => ({
-	apiClient: mockApiClient
+vi.mock('$lib/services/api.generated', () => ({
+	userApi: mockUserApi
 }));
 
 // Mock the logger
@@ -38,10 +41,8 @@ const { authService } = await import('$lib/services/auth.service');
 
 // Helper to create success response
 const createSuccessResponse = <T>(data: T) => ({
-	data,
-	status: 200,
-	statusText: 'OK',
-	headers: {}
+	success: true,
+	data
 });
 
 describe('authService', () => {
@@ -49,23 +50,33 @@ describe('authService', () => {
 		vi.clearAllMocks();
 	});
 	describe('register', () => {
-		it('should register a new user successfully', async () => {
+		it('normalizes the username and registered user shape', async () => {
 			const credentials = {
-				username: 'alice',
+				username: '  ALICE  ',
 				email: 'alice@test.com',
 				password: 'password123'
 			};
 
-			mockApiClient.post.mockResolvedValue(createSuccessResponse(testAuthUsers.alice));
+			mockUserApi.register.mockResolvedValue(
+				createSuccessResponse({
+					id: 'user-alice-123',
+					username: 'alice',
+					email: 'alice@test.com'
+				})
+			);
 
 			const result = await authService.register(credentials);
 
-			expect(mockApiClient.post).toHaveBeenCalledWith('/user/register', {
+			expect(mockUserApi.register).toHaveBeenCalledWith({
 				username: 'alice',
 				email: 'alice@test.com',
 				password: 'password123'
 			});
-			expect(result).toEqual(testAuthUsers.alice);
+			expect(result).toEqual({
+				_id: 'user-alice-123',
+				username: 'alice',
+				email: 'alice@test.com'
+			});
 		});
 
 		it('should normalize username with special characters', async () => {
@@ -89,25 +100,25 @@ describe('authService', () => {
 			};
 
 			const error = new Error('Email already exists');
-			mockApiClient.post.mockRejectedValue(error);
+			mockUserApi.register.mockRejectedValue(error);
 
 			await expect(authService.register(credentials)).rejects.toThrow('Email already exists');
 		});
 	});
 
 	describe('login', () => {
-		it('should login user successfully', async () => {
+		it('resolves undefined after a successful cookie-only login', async () => {
 			const credentials = {
 				email: 'alice@test.com',
 				password: 'password123'
 			};
 
-			mockApiClient.post.mockResolvedValue(createSuccessResponse(testAuthUsers.alice));
+			mockUserApi.login.mockResolvedValue({ success: true, message: 'Login successful' });
 
 			const result = await authService.login(credentials);
 
-			expect(mockApiClient.post).toHaveBeenCalledWith('/user/login', credentials);
-			expect(result).toEqual(testAuthUsers.alice);
+			expect(mockUserApi.login).toHaveBeenCalledWith(credentials);
+			expect(result).toBeUndefined();
 		});
 
 		it('should handle login error', async () => {
@@ -117,7 +128,7 @@ describe('authService', () => {
 			};
 
 			const error = new Error('Invalid credentials');
-			mockApiClient.post.mockRejectedValue(error);
+			mockUserApi.login.mockRejectedValue(error);
 
 			await expect(authService.login(credentials)).rejects.toThrow('Invalid credentials');
 		});
@@ -125,11 +136,9 @@ describe('authService', () => {
 
 	describe('logout', () => {
 		it('should logout user successfully', async () => {
-			mockApiClient.post.mockResolvedValue(createSuccessResponse({}));
+			mockUserApi.logout.mockResolvedValue({ success: true });
 
-			authService.logout();
-
-			expect(mockApiClient.post).toHaveBeenCalledWith('/user/logout');
+			await expect(authService.logout()).resolves.toBeUndefined();
 		});
 	});
 
@@ -141,11 +150,10 @@ describe('authService', () => {
 				email: 'alice@test.com'
 			};
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse(backendUser));
+			mockUserApi.getCurrentUser.mockResolvedValue(createSuccessResponse(backendUser));
 
 			const result = await authService.getCurrentUser();
 
-			expect(mockApiClient.get).toHaveBeenCalledWith('/user/me');
 			expect(result).toEqual({
 				_id: 'user-alice-123',
 				username: 'alice',
@@ -154,15 +162,13 @@ describe('authService', () => {
 		});
 
 		it('should handle missing user data', async () => {
-			mockApiClient.get.mockResolvedValue(createSuccessResponse({}));
+			mockUserApi.getCurrentUser.mockResolvedValue(
+				createSuccessResponse({} as unknown as UserApiUser)
+			);
 
-			const result = await authService.getCurrentUser();
-
-			expect(result).toEqual({
-				_id: '',
-				username: '',
-				email: ''
-			});
+			await expect(authService.getCurrentUser()).rejects.toThrow(
+				'user.getCurrentUser: id must be non-empty string'
+			);
 		});
 	});
 
@@ -177,11 +183,11 @@ describe('authService', () => {
 				deviceId: 'device-123'
 			};
 
-			mockApiClient.post.mockResolvedValue(createSuccessResponse({}));
+			mockUserApi.storeSignalKeys.mockResolvedValue({ success: true });
 
 			await authService.storeSignalKeys(deviceId, encryptedBundle);
 
-			expect(mockApiClient.post).toHaveBeenCalledWith('/user/signal-keys', {
+			expect(mockUserApi.storeSignalKeys).toHaveBeenCalledWith({
 				deviceId,
 				encryptedBundle
 			});
@@ -199,11 +205,12 @@ describe('authService', () => {
 				deviceId: 'device-123'
 			};
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse({ encryptedBundle }));
+			mockUserApi.fetchSignalKeys.mockResolvedValue(
+				createSuccessResponse({ deviceId, encryptedBundle })
+			);
 
 			const result = await authService.fetchSignalKeys(deviceId);
 
-			expect(mockApiClient.get).toHaveBeenCalledWith(`/user/signal-keys?deviceId=${deviceId}`);
 			expect(result).toEqual(encryptedBundle);
 		});
 
@@ -214,7 +221,7 @@ describe('authService', () => {
 				response: { status: 404 }
 			};
 
-			mockApiClient.get.mockRejectedValue(error404);
+			mockUserApi.fetchSignalKeys.mockRejectedValue(error404);
 
 			const result = await authService.fetchSignalKeys(deviceId);
 
@@ -224,11 +231,13 @@ describe('authService', () => {
 		it('should return null when response data is missing', async () => {
 			const deviceId = 'device-123';
 
-			mockApiClient.get.mockResolvedValue(createSuccessResponse({}));
+			mockUserApi.fetchSignalKeys.mockResolvedValue(
+				createSuccessResponse({} as unknown as UserApiSignalKeyBackupRequest)
+			);
 
-			const result = await authService.fetchSignalKeys(deviceId);
-
-			expect(result).toBeNull();
+			await expect(authService.fetchSignalKeys(deviceId)).rejects.toThrow(
+				'user.fetchSignalKeys: encryptedBundle is required'
+			);
 		});
 
 		it('should throw non-404 errors', async () => {
@@ -238,7 +247,7 @@ describe('authService', () => {
 				response: { status: 500 }
 			};
 
-			mockApiClient.get.mockRejectedValue(error500);
+			mockUserApi.fetchSignalKeys.mockRejectedValue(error500);
 
 			await expect(authService.fetchSignalKeys(deviceId)).rejects.toEqual(error500);
 		});
@@ -247,9 +256,78 @@ describe('authService', () => {
 			const deviceId = 'device-123';
 			const networkError = new Error('Network error');
 
-			mockApiClient.get.mockRejectedValue(networkError);
+			mockUserApi.fetchSignalKeys.mockRejectedValue(networkError);
 
 			await expect(authService.fetchSignalKeys(deviceId)).rejects.toThrow('Network error');
+		});
+	});
+
+	describe('domain boundaries', () => {
+		it('throws when register response missing id', async () => {
+			mockUserApi.register.mockResolvedValue({
+				success: true,
+				data: { username: 'alice', email: 'alice@test.com' } as unknown as UserApiUser
+			});
+			await expect(
+				authService.register({
+					username: 'alice',
+					email: 'alice@test.com',
+					password: 'password123'
+				})
+			).rejects.toThrow('user.register: id must be non-empty string');
+		});
+
+		it('throws when register response has empty username', async () => {
+			mockUserApi.register.mockResolvedValue({
+				success: true,
+				data: { id: 'u1', username: '', email: 'alice@test.com' } as unknown as UserApiUser
+			});
+			await expect(
+				authService.register({
+					username: 'alice',
+					email: 'alice@test.com',
+					password: 'password123'
+				})
+			).rejects.toThrow('user.register: username must be non-empty string');
+		});
+
+		it('throws when register response data is not object', async () => {
+			mockUserApi.register.mockResolvedValue({ success: true, data: [] as unknown as UserApiUser });
+			await expect(
+				authService.register({
+					username: 'alice',
+					email: 'alice@test.com',
+					password: 'password123'
+				})
+			).rejects.toBeInstanceOf(ContractBoundaryError);
+		});
+
+		it('throws when getCurrentUser response missing email', async () => {
+			mockUserApi.getCurrentUser.mockResolvedValue({
+				success: true,
+				data: { id: 'u1', username: 'alice' } as unknown as UserApiUser
+			});
+			await expect(authService.getCurrentUser()).rejects.toThrow(
+				'user.getCurrentUser: email must be non-empty string'
+			);
+		});
+
+		it('throws when getCurrentUser data missing', async () => {
+			mockUserApi.getCurrentUser.mockResolvedValue({
+				success: true
+			} as unknown as ApiResponse<UserApiUser>);
+			await expect(authService.getCurrentUser()).rejects.toBeInstanceOf(ContractBoundaryError);
+		});
+
+		it('valid user fixture satisfies generated type', async () => {
+			const valid = {
+				id: 'user-1',
+				username: 'alice',
+				email: 'alice@test.com'
+			} satisfies UserApiUser;
+			mockUserApi.getCurrentUser.mockResolvedValue({ success: true, data: valid });
+			const user = await authService.getCurrentUser();
+			expect(user._id).toBe('user-1');
 		});
 	});
 });

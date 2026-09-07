@@ -37,13 +37,19 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify frontend deployment workflow
+        run: node --test scripts/__tests__/deployment-workflow.test.mjs
 
       - name: Audit dependencies
         run: pnpm audit --audit-level=moderate || true
 
       - name: Lint
         run: pnpm run lint
+
+      - name: Verify generated API contracts
+        run: pnpm run check:contracts
 
       - name: TypeScript check
         run: pnpm exec tsc --noEmit
@@ -111,6 +117,8 @@ jobs:
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      frontend_digest: ${{ steps.build-image.outputs.digest }}
 
     steps:
       - name: Checkout
@@ -141,6 +149,7 @@ jobs:
           secret-path: /
 
       - name: Build and push frontend
+        id: build-image
         # Pinned to specific commit SHA for supply-chain security
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
@@ -156,7 +165,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Deploy to VPS - Blue-Green style deployment with health verification
   deploy:
     name: Deploy Frontend to VPS
     needs: docker-build
@@ -169,166 +177,20 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - name: Deploy Frontend via SSH (Blue-Green)
-        # Pinned to specific commit SHA for supply-chain security
+      - name: Checkout deployment script
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Deploy Frontend via SSH
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
-          VPS_SUDO_PASSWORD: ${{ secrets.VPS_SUDO_PASSWORD }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          IMAGE_TAG: ${{ github.sha }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
+          IMAGE_REF: ghcr.io/${{ github.repository_owner }}/chat-frontend@${{ needs.docker-build.outputs.frontend_digest }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           port: ${{ secrets.VPS_PORT }}
           command_timeout: 20m
-          envs: VPS_SUDO_PASSWORD,GITHUB_TOKEN,IMAGE_TAG,REPO_OWNER
-          script: |
-            set -euo pipefail
-            DEPLOY_PATH="/opt/chat-app/chat-microservices"
-
-            # Mask sensitive env vars from logs
-            echo "::add-mask::$VPS_SUDO_PASSWORD"
-            echo "::add-mask::$GITHUB_TOKEN"
-
-            echo "🚀 Starting frontend deployment (Blue-Green strategy)..."
-
-            # Check if backend has been deployed first
-            if [ ! -f "$DEPLOY_PATH/docker-compose.yml" ]; then
-              echo "❌ Backend not deployed yet. Please deploy backend first."
-              exit 1
-            fi
-
-            cd "$DEPLOY_PATH"
-
-            # Log in to GHCR (token passed via stdin, not echoed)
-            echo "🔐 Logging in to GHCR..."
-            docker login ghcr.io -u "$REPO_OWNER" --password-stdin <<< "$GITHUB_TOKEN" 2>/dev/null
-
-            # Store current image tag for rollback
-            CURRENT_TAG=$(grep -oP "chat-frontend:\K[^\s\"']+" docker-compose.yml 2>/dev/null || echo "latest")
-            echo "📌 Current frontend tag: $CURRENT_TAG"
-            echo "📌 New frontend tag: $IMAGE_TAG"
-
-            # Update frontend image tag and add runtime env vars
-            echo "📝 Updating frontend configuration..."
-            sed -i "s|ghcr.io/${REPO_OWNER}/chat-frontend:[^[:space:]\"']*|ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}|g" docker-compose.yml
-
-            # Ensure runtime PUBLIC_API_URL and PUBLIC_WS_URL are set
-            if ! grep -q "PUBLIC_API_URL:" docker-compose.yml; then
-              echo "⚠️ Adding missing PUBLIC_API_URL to frontend environment"
-            fi
-
-            echo "🐳 Pre-pulling new frontend image..."
-            docker pull "ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}"
-
-            # Verify the new image exists and is valid
-            if ! docker image inspect "ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}" >/dev/null 2>&1; then
-              echo "❌ Failed to pull new image, aborting deployment"
-              exit 1
-            fi
-            echo "✅ New image pulled and verified"
-
-            # Point :latest at the freshly pulled image. The compose frontend
-            # service references :latest (and the backend regenerates the compose
-            # with :latest on every deploy), so retagging here makes the recreate
-            # deterministically land on the new build regardless of the tag-rewrite
-            # sed above or which pipeline deployed last.
-            docker tag "ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}" "ghcr.io/${REPO_OWNER}/chat-frontend:latest"
-
-            # Recreate the frontend container with the new image. A real
-            # blue-green swap isn't possible for a single named compose service,
-            # and the previous --no-recreate step left the OLD container running
-            # (compose reported "Running" and never applied the new tag). Force
-            # the recreate so the freshly pulled image is actually deployed; the
-            # container's own healthcheck + restart policy keep downtime to seconds.
-            echo "🔵 Recreating frontend container with new image..."
-            docker compose up -d --no-deps --force-recreate frontend
-
-            echo "⏳ Waiting for new container to be healthy (max 60s)..."
-            HEALTH_TIMEOUT=60
-            HEALTH_CHECK=0
-            while [ $HEALTH_CHECK -lt $HEALTH_TIMEOUT ]; do
-              # Check if container is running and responding
-              CONTAINER_STATUS=$(docker compose ps frontend --format json 2>/dev/null | head -1)
-              if echo "$CONTAINER_STATUS" | grep -q '"State":"running"'; then
-                # Test internal health endpoint
-                FRONTEND_IP=$(docker compose exec -T frontend hostname -i 2>/dev/null || echo "")
-                if [ -n "$FRONTEND_IP" ]; then
-                  if docker compose exec -T nginx wget -q --spider --timeout=2 "http://frontend:3000/" 2>/dev/null || \
-                     docker compose exec -T nginx timeout 2 bash -c "</dev/tcp/frontend/3000" 2>/dev/null; then
-                    echo "✅ New frontend container is healthy!"
-                    break
-                  fi
-                fi
-              fi
-              sleep 2
-              HEALTH_CHECK=$((HEALTH_CHECK + 2))
-              echo "   Waiting... ${HEALTH_CHECK}s"
-            done
-
-            if [ $HEALTH_CHECK -ge $HEALTH_TIMEOUT ]; then
-              echo "⚠️ Health check timeout, but proceeding (container may still be starting)..."
-            fi
-
-            # Reload nginx to pick up any DNS changes (no restart needed)
-            echo "🔄 Reloading nginx configuration..."
-            docker compose exec -T nginx nginx -s reload 2>/dev/null || docker compose restart nginx || true
-
-            sleep 5
-
-            # Final verification via public endpoint
-            echo "🔍 Verifying deployment via public endpoint..."
-            if curl -fsS --max-time 10 http://localhost:80/ >/dev/null 2>&1; then
-              echo "✅ Frontend deployment successful!"
-              echo "🧹 Cleaning up old images..."
-              docker image prune -f --filter "until=24h" || true
-            else
-              echo "⚠️ Public endpoint check failed, checking container status..."
-              docker compose ps frontend
-              docker compose logs frontend --tail=50
-              
-              # Attempt rollback if we have a previous working tag
-              if [ "$CURRENT_TAG" != "$IMAGE_TAG" ] && [ "$CURRENT_TAG" != "latest" ]; then
-                echo "🔙 Attempting rollback to $CURRENT_TAG..."
-                sed -i "s|ghcr.io/${REPO_OWNER}/chat-frontend:${IMAGE_TAG}|ghcr.io/${REPO_OWNER}/chat-frontend:${CURRENT_TAG}|g" docker-compose.yml
-                docker compose up -d --no-deps frontend
-                echo "⚠️ Rolled back to previous version"
-                exit 1
-              fi
-            fi
-
-            docker compose ps
-
-      - name: Security cleanup
-        if: always()
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
-        env:
-          VPS_SUDO_PASSWORD: ${{ secrets.VPS_SUDO_PASSWORD }}
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          envs: VPS_SUDO_PASSWORD
-          script: |
-            echo "🔒 Security cleanup..."
-            DEPLOY_PATH="/opt/chat-app"
-
-            # Mask sudo password
-            echo "::add-mask::$VPS_SUDO_PASSWORD"
-
-            # Remove any frontend source files if they exist
-            rm -rf "$DEPLOY_PATH/chat-microservices-frontend" 2>/dev/null || true
-
-            cd "$DEPLOY_PATH/chat-microservices" 2>/dev/null || exit 0
-
-            # Remove git data
-            rm -rf .git .github 2>/dev/null || true
-
-            # Prune Docker
-            docker image prune -f || true
-            docker container prune -f || true
-
-            echo "✅ Security cleanup complete!"
+          envs: GHCR_TOKEN,REPO_OWNER,IMAGE_REF
+          script_path: scripts/deploy-frontend.sh

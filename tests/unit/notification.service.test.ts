@@ -71,7 +71,10 @@ describe('notificationService', () => {
 
 			const result = await notificationService.getNotifications();
 
-			expect(mockApiClient.get).toHaveBeenCalledWith('/notifications/?limit=20&offset=0');
+			expect(mockApiClient.get).toHaveBeenCalledWith(
+				'/notifications/?limit=20&offset=0',
+				'envelope'
+			);
 			expect(result).toHaveLength(1);
 			expect(result[0].id).toBe('1');
 		});
@@ -81,7 +84,10 @@ describe('notificationService', () => {
 
 			await notificationService.getNotifications(10, 5);
 
-			expect(mockApiClient.get).toHaveBeenCalledWith('/notifications/?limit=10&offset=5');
+			expect(mockApiClient.get).toHaveBeenCalledWith(
+				'/notifications/?limit=10&offset=5',
+				'envelope'
+			);
 		});
 
 		it('should return empty array on error', async () => {
@@ -100,7 +106,7 @@ describe('notificationService', () => {
 
 			const result = await notificationService.getUnreadCount();
 
-			expect(mockApiClient.get).toHaveBeenCalledWith('/notifications/unread/count');
+			expect(mockApiClient.get).toHaveBeenCalledWith('/notifications/unread/count', 'envelope');
 			expect(result).toBe(5);
 		});
 
@@ -120,7 +126,11 @@ describe('notificationService', () => {
 
 			await notificationService.markAsRead('notif-123');
 
-			expect(mockApiClient.put).toHaveBeenCalledWith('/notifications/notif-123/read');
+			expect(mockApiClient.put).toHaveBeenCalledWith(
+				'/notifications/notif-123/read',
+				undefined,
+				'envelope'
+			);
 		});
 
 		it('should handle error gracefully', async () => {
@@ -138,7 +148,11 @@ describe('notificationService', () => {
 
 			await notificationService.markAllAsRead();
 
-			expect(mockApiClient.put).toHaveBeenCalledWith('/notifications/read-all');
+			expect(mockApiClient.put).toHaveBeenCalledWith(
+				'/notifications/read-all',
+				undefined,
+				'envelope'
+			);
 		});
 
 		it('should handle error gracefully', async () => {
@@ -156,7 +170,7 @@ describe('notificationService', () => {
 
 			await notificationService.deleteNotification('notif-123');
 
-			expect(mockApiClient.delete).toHaveBeenCalledWith('/notifications/notif-123');
+			expect(mockApiClient.delete).toHaveBeenCalledWith('/notifications/notif-123', 'envelope');
 		});
 
 		it('should handle error gracefully', async () => {
@@ -180,7 +194,7 @@ describe('notificationService', () => {
 
 			const result = await notificationService.sendNotification(payload);
 
-			expect(mockApiClient.post).toHaveBeenCalledWith('/notifications', payload);
+			expect(mockApiClient.post).toHaveBeenCalledWith('/notifications', payload, 'envelope');
 			expect(result.id).toBe('1');
 		});
 

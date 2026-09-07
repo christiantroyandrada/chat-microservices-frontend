@@ -39,7 +39,7 @@ describe('API Client', () => {
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
-		const response = await apiClient.get<{ id: string; name: string }>('/test');
+		const response = await apiClient.get('/test', 'envelope');
 
 		expect(response.success).toBe(true);
 		expect(response.data).toEqual({ id: '1', name: 'test' });
@@ -54,7 +54,7 @@ describe('API Client', () => {
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
-		const response = await apiClient.post('/test', { name: 'test' });
+		const response = await apiClient.post('/test', { name: 'test' }, 'envelope');
 
 		expect(response.success).toBe(true);
 	});
@@ -68,7 +68,7 @@ describe('API Client', () => {
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
-		const response = await apiClient.put('/test/1', { name: 'updated' });
+		const response = await apiClient.put('/test/1', { name: 'updated' }, 'envelope');
 
 		expect(response.success).toBe(true);
 	});
@@ -77,12 +77,12 @@ describe('API Client', () => {
 		const mockResponse = {
 			ok: true,
 			status: 204,
-			text: vi.fn().mockResolvedValue('')
+			text: vi.fn().mockResolvedValue(JSON.stringify({ status: 204, message: 'Deleted' }))
 		};
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
-		const response = await apiClient.delete('/test/1');
+		const response = await apiClient.delete('/test/1', 'envelope');
 
 		expect(response.success).toBe(true);
 	});
@@ -97,7 +97,7 @@ describe('API Client', () => {
 
 		const { apiClient } = await import('$lib/services/api');
 
-		await expect(apiClient.get('/not-found')).rejects.toThrow();
+		await expect(apiClient.get('/not-found', 'envelope')).rejects.toThrow();
 	});
 
 	it('should handle network error', async () => {
@@ -105,7 +105,7 @@ describe('API Client', () => {
 
 		const { apiClient } = await import('$lib/services/api');
 
-		await expect(apiClient.get('/test')).rejects.toThrow();
+		await expect(apiClient.get('/test', 'envelope')).rejects.toThrow();
 	});
 
 	it('should handle malformed JSON response', async () => {
@@ -117,13 +117,79 @@ describe('API Client', () => {
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
-		const response = await apiClient.get('/test');
-
-		// Should handle malformed JSON gracefully
-		expect(response).toBeDefined();
+		await expect(apiClient.get('/test', 'envelope')).rejects.toBeInstanceOf(
+			(await import('$lib/services/contract-boundary')).ContractBoundaryError
+		);
 	});
 
-	it('should handle empty response text', async () => {
+	it('preserves successful raw text through explicit raw mode', async () => {
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+			ok: true,
+			status: 200,
+			text: vi.fn().mockResolvedValue('plain text')
+		});
+		const { apiClient } = await import('$lib/services/api');
+		expect(await apiClient.getRaw<string>('/text')).toBe('plain text');
+	});
+
+	it('preserves successful raw JSON text without envelope fallback', async () => {
+		const rawJson = '{"status":"ok","service":"chat"}';
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+			ok: true,
+			status: 200,
+			text: vi.fn().mockResolvedValue(rawJson)
+		});
+		const { apiClient } = await import('$lib/services/api');
+
+		expect(await apiClient.getRaw<string>('/health')).toBe(rawJson);
+	});
+
+	it('keeps status/message-only success responses data-less and explicit', async () => {
+		const mockResponse = {
+			ok: true,
+			status: 200,
+			text: vi
+				.fn()
+				.mockResolvedValue(JSON.stringify({ status: 200, message: 'Prekey bundle published' }))
+		};
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+		const { apiClient } = await import('$lib/services/api');
+
+		const response = await apiClient.post('/user/prekeys', undefined, 'envelope');
+
+		expect(response.success).toBe(true);
+		expect(response.message).toBe('Prekey bundle published');
+		expect(response.data).toBeUndefined();
+	});
+
+	it('rejects an undefined raw value so getRaw keeps its declared contract', async () => {
+		const { apiClient } = await import('$lib/services/api');
+		const request = vi
+			.spyOn(apiClient, 'request')
+			.mockResolvedValue({ success: true, data: undefined });
+
+		await expect(apiClient.getRaw<string>('/missing')).rejects.toThrow(
+			'Raw response contract error: data is missing'
+		);
+
+		request.mockRestore();
+	});
+
+	it('does not classify inherited envelope-looking keys as an envelope', async () => {
+		const payload = Object.create({ data: 'inherited' });
+		payload.value = 'payload';
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+			ok: true,
+			status: 200,
+			text: vi.fn().mockResolvedValue(JSON.stringify(payload))
+		});
+		const { apiClient } = await import('$lib/services/api');
+		await expect(apiClient.get('/payload', 'envelope')).rejects.toBeInstanceOf(
+			(await import('$lib/services/contract-boundary')).ContractBoundaryError
+		);
+	});
+
+	it('should reject empty envelope response', async () => {
 		const mockResponse = {
 			ok: true,
 			status: 200,
@@ -132,9 +198,9 @@ describe('API Client', () => {
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
-		const response = await apiClient.get('/test');
-
-		expect(response.success).toBe(true);
+		await expect(apiClient.get('/test', 'envelope')).rejects.toBeInstanceOf(
+			(await import('$lib/services/contract-boundary')).ContractBoundaryError
+		);
 	});
 
 	it('should handle response with errors array', async () => {
@@ -153,7 +219,7 @@ describe('API Client', () => {
 		const { apiClient } = await import('$lib/services/api');
 
 		try {
-			await apiClient.post('/test', { email: 'invalid' });
+			await apiClient.post('/test', { email: 'invalid' }, 'envelope');
 		} catch (error) {
 			expect(error).toBeDefined();
 			expect((error as { status: number }).status).toBe(400);
@@ -170,7 +236,7 @@ describe('API Client', () => {
 
 		const { apiClient } = await import('$lib/services/api');
 
-		await expect(apiClient.get('/test')).rejects.toThrow('Internal server error');
+		await expect(apiClient.get('/test', 'envelope')).rejects.toThrow('Internal server error');
 	});
 
 	it('should cancel request by ID', async () => {
@@ -194,7 +260,7 @@ describe('API Client', () => {
 		const { apiClient } = await import('$lib/services/api');
 
 		// Start a request with ID
-		const requestPromise = apiClient.get('/test', 'request-1');
+		const requestPromise = apiClient.get('/test', 'envelope', 'request-1');
 
 		// Cancel it
 		apiClient.cancelRequest('request-1');
@@ -225,7 +291,7 @@ describe('API Client', () => {
 
 		const { apiClient } = await import('$lib/services/api');
 
-		await expect(apiClient.get('/test')).rejects.toThrow('Request cancelled');
+		await expect(apiClient.get('/test', 'envelope')).rejects.toThrow('Request cancelled');
 	});
 
 	it('should handle non-object response data', async () => {
@@ -237,9 +303,8 @@ describe('API Client', () => {
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
 		const { apiClient } = await import('$lib/services/api');
-		const response = await apiClient.get('/test');
-
-		expect(response).toBeDefined();
-		expect(response.success).toBe(true);
+		await expect(apiClient.get('/test', 'envelope')).rejects.toBeInstanceOf(
+			(await import('$lib/services/contract-boundary')).ContractBoundaryError
+		);
 	});
 });

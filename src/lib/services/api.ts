@@ -1,8 +1,11 @@
 import { env } from '$env/dynamic/public';
 import type { ApiResponse, ApiError, ResponseShape } from '$lib/types';
 import { safeToString } from '$lib/utils';
+import { ContractBoundaryError, type ResponseMode } from './contract-boundary';
 
 const API_URL = env.PUBLIC_API_URL || 'http://localhost:80';
+export type { ResponseMode };
+type ApiRequestInit = RequestInit & { responseMode: ResponseMode };
 
 class ApiClient {
 	private readonly baseURL: string;
@@ -13,54 +16,78 @@ class ApiClient {
 	}
 
 	private getAuthHeaders(): HeadersInit {
-		// Cookies are sent automatically with credentials: 'include'
-		// No need to manually add Authorization header. We only set
-		// Content-Type when a body is present (avoids sending it for GET requests).
 		return {
 			'Content-Type': 'application/json'
 		};
 	}
 
-	/**
-	 * Remove a tracked active request (if any)
-	 */
 	private cleanupRequest(requestId?: string): void {
 		if (requestId) {
 			this.activeRequests.delete(requestId);
 		}
 	}
 
-	/**
-	 * Parse fetch response defensively into a normalized ResponseShape and
-	 * extracted runtime data.
-	 */
-	private async parseResponse(
-		response: Response
+	private async parseEnvelopeResponse(
+		response: Response,
+		endpoint: string
 	): Promise<{ normalized: ResponseShape; respData: unknown }> {
-		let data: unknown = null;
-		try {
-			const text = await response.text();
-			data = text ? JSON.parse(text) : {};
-		} catch (e) {
-			// Non-JSON response — keep raw text
-			data = { data: null, message: safeToString(e) };
+		const text = await response.text();
+
+		if (text === '') {
+			if (response.ok) {
+				throw new ContractBoundaryError(`${endpoint}: envelope response must be valid JSON object`);
+			} else {
+				const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
+				throw new ErrClass(`Invalid JSON response: empty body`, response.status);
+			}
 		}
 
-		const normalized: ResponseShape = ((): ResponseShape => {
-			if (data && typeof data === 'object') {
-				return data as ResponseShape;
+		let data: unknown;
+		try {
+			data = JSON.parse(text);
+		} catch (e) {
+			if (response.ok) {
+				throw new ContractBoundaryError(
+					`${endpoint}: envelope response must be valid JSON: ${safeToString(e)}`
+				);
+			} else {
+				const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
+				throw new ErrClass(`Invalid JSON response: ${safeToString(e)}`, response.status);
 			}
-			return { data } as ResponseShape;
-		})();
+		}
 
-		const respData = (normalized.data ?? normalized) as unknown;
+		if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+			if (response.ok) {
+				throw new ContractBoundaryError(`${endpoint}: envelope response must be non-null object`);
+			} else {
+				const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
+				throw new ErrClass(`Invalid JSON response: expected object`, response.status);
+			}
+		}
+
+		const normalized = data as ResponseShape;
+
+		const hasEnvelopeKey = ['status', 'message', 'error', 'data'].some((key) =>
+			Object.prototype.hasOwnProperty.call(normalized, key)
+		);
+
+		if (!hasEnvelopeKey) {
+			if (response.ok) {
+				throw new ContractBoundaryError(
+					`${endpoint}: envelope response missing required envelope key (status, message, error, data)`
+				);
+			} else {
+				const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
+				throw new ErrClass(`Invalid envelope: missing status/message/error/data`, response.status);
+			}
+		}
+
+		const hasOwnData = Object.prototype.hasOwnProperty.call(normalized, 'data');
+		const respData = hasOwnData ? normalized.data : undefined;
+
 		return { normalized, respData };
 	}
 
-	/**
-	 * Runtime Error type used by this client so we always throw Error instances
-	 * (satisfies linters like Sonar S3696) while preserving ApiError fields.
-	 */
 	private static readonly ApiClientError = class ApiClientError extends Error implements ApiError {
 		status: number;
 		errors?: ApiError['errors'];
@@ -73,40 +100,30 @@ class ApiClient {
 			Object.setPrototypeOf(this, new.target.prototype);
 		}
 	};
-	// Token storage is deprecated — JWT is sent in an httpOnly cookie.
 
-	// Default timeout for requests (10 seconds)
 	private readonly defaultTimeout = 10000;
-
-	// Track timeouts to distinguish from user cancellation
 	private readonly timeoutIds = new Map<AbortController, boolean>();
 
-	/**
-	 * Make an HTTP request with automatic cancellation support and timeout
-	 */
-	async request<T>(
+	async request<T, TMeta extends object = Record<never, never>>(
 		endpoint: string,
-		options: RequestInit = {},
+		options: ApiRequestInit,
 		requestId?: string
-	): Promise<ApiResponse<T>> {
-		// Create abort controller for this request
+	): Promise<ApiResponse<T, TMeta>> {
 		const abortController = new AbortController();
-
-		// Set up timeout and track that it's a timeout abort
 		const timeoutId = setTimeout(() => {
 			this.timeoutIds.set(abortController, true);
 			abortController.abort();
 		}, this.defaultTimeout);
 
-		// Track for cancellation if caller provided an id
 		if (requestId) {
 			this.cancelRequest(requestId);
 			this.activeRequests.set(requestId, abortController);
 		}
 
 		try {
+			const { responseMode, ...fetchOptions } = options;
 			const response = await fetch(`${this.baseURL}${endpoint}`, {
-				...options,
+				...fetchOptions,
 				headers: {
 					...this.getAuthHeaders(),
 					...options.headers
@@ -115,10 +132,27 @@ class ApiClient {
 				signal: abortController.signal
 			});
 
-			// Always remove tracking for this request
 			this.cleanupRequest(requestId);
 
-			const { normalized, respData } = await this.parseResponse(response);
+			// Raw mode handling: need to preserve exact text for success, and map failure text to error
+			if (responseMode === 'raw') {
+				const text = await response.text();
+				if (!response.ok) {
+					const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
+					const message = text !== '' ? text : 'Request failed';
+					throw new ErrClass(message, response.status);
+				}
+				// For consistency with ApiResponse shape, raw mode returns data as text
+				const finalResp = {
+					success: true,
+					data: text as unknown as T,
+					message: undefined,
+					error: undefined
+				} as unknown as ApiResponse<T, TMeta>;
+				return finalResp;
+			}
+
+			const { normalized, respData } = await this.parseEnvelopeResponse(response, endpoint);
 
 			if (!response.ok) {
 				const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
@@ -129,20 +163,28 @@ class ApiClient {
 				);
 			}
 
+			const reservedKeys = new Set(['status', 'success', 'data', 'message', 'error', 'errors']);
+			const metadata = Object.fromEntries(
+				Object.entries(normalized).filter(([key]) => !reservedKeys.has(key))
+			);
 			const finalResp = {
+				...metadata,
 				success: true,
 				data: respData as T,
 				message: normalized.message,
-				...(typeof normalized === 'object' ? normalized : {})
-			} as unknown as ApiResponse<T>;
+				error: normalized.error
+			} as unknown as ApiResponse<T, TMeta>;
 
 			return finalResp;
 		} catch (error) {
 			this.cleanupRequest(requestId);
 
+			if (error instanceof ContractBoundaryError) {
+				throw error;
+			}
+
 			if (error instanceof Error && error.name === 'AbortError') {
 				const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
-				// Check if this was a timeout vs user cancellation
 				const wasTimeout = this.timeoutIds.get(abortController);
 				this.timeoutIds.delete(abortController);
 				if (wasTimeout) {
@@ -151,22 +193,21 @@ class ApiClient {
 				throw new ErrClass('Request cancelled', 0);
 			}
 
-			if ((error as ApiError).status) {
+			if ((error as ApiError).status !== undefined && (error as ApiError).status !== 0) {
+				throw error;
+			}
+			if (error instanceof (this.constructor as typeof ApiClient).ApiClientError) {
 				throw error;
 			}
 
 			const ErrClass = (this.constructor as typeof ApiClient).ApiClientError;
 			throw new ErrClass('Network error. Please check your connection.', 0);
 		} finally {
-			// Always clear the timeout and cleanup
 			clearTimeout(timeoutId);
 			this.timeoutIds.delete(abortController);
 		}
 	}
 
-	/**
-	 * Cancel a specific request by ID
-	 */
 	cancelRequest(requestId: string): void {
 		const controller = this.activeRequests.get(requestId);
 		if (controller) {
@@ -175,42 +216,71 @@ class ApiClient {
 		}
 	}
 
-	/**
-	 * Cancel all active requests
-	 */
 	cancelAllRequests(): void {
 		this.activeRequests.forEach((controller) => controller.abort());
 		this.activeRequests.clear();
 	}
 
-	async get<T>(endpoint: string, requestId?: string): Promise<ApiResponse<T>> {
-		return this.request<T>(endpoint, { method: 'GET' }, requestId);
+	async get<T, TMeta extends object = Record<never, never>>(
+		endpoint: string,
+		responseMode: ResponseMode,
+		requestId?: string
+	): Promise<ApiResponse<T, TMeta>> {
+		return this.request<T, TMeta>(endpoint, { method: 'GET', responseMode }, requestId);
 	}
 
-	async post<T>(endpoint: string, body?: unknown, requestId?: string): Promise<ApiResponse<T>> {
-		return this.request<T>(
+	async getRaw<T>(endpoint: string, requestId?: string): Promise<T> {
+		const response = await this.request<T>(
+			endpoint,
+			{ method: 'GET', responseMode: 'raw' },
+			requestId
+		);
+		if (response.data === undefined) {
+			throw new Error('Raw response contract error: data is missing');
+		}
+		return response.data;
+	}
+
+	async post<T, TMeta extends object = Record<never, never>>(
+		endpoint: string,
+		body: unknown,
+		responseMode: ResponseMode,
+		requestId?: string
+	): Promise<ApiResponse<T, TMeta>> {
+		return this.request<T, TMeta>(
 			endpoint,
 			{
 				method: 'POST',
-				body: JSON.stringify(body)
+				body: body !== undefined ? JSON.stringify(body) : undefined,
+				responseMode
 			},
 			requestId
 		);
 	}
 
-	async put<T>(endpoint: string, body?: unknown, requestId?: string): Promise<ApiResponse<T>> {
-		return this.request<T>(
+	async put<T, TMeta extends object = Record<never, never>>(
+		endpoint: string,
+		body: unknown,
+		responseMode: ResponseMode,
+		requestId?: string
+	): Promise<ApiResponse<T, TMeta>> {
+		return this.request<T, TMeta>(
 			endpoint,
 			{
 				method: 'PUT',
-				body: JSON.stringify(body)
+				body: body !== undefined ? JSON.stringify(body) : undefined,
+				responseMode
 			},
 			requestId
 		);
 	}
 
-	async delete<T>(endpoint: string, requestId?: string): Promise<ApiResponse<T>> {
-		return this.request<T>(endpoint, { method: 'DELETE' }, requestId);
+	async delete<T, TMeta extends object = Record<never, never>>(
+		endpoint: string,
+		responseMode: ResponseMode,
+		requestId?: string
+	): Promise<ApiResponse<T, TMeta>> {
+		return this.request<T, TMeta>(endpoint, { method: 'DELETE', responseMode }, requestId);
 	}
 }
 

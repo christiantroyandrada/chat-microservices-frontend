@@ -19,6 +19,9 @@ const { mockPost } = vi.hoisted(() => ({
 vi.mock('$lib/services/api', () => ({
 	apiClient: { post: mockPost, get: vi.fn() }
 }));
+vi.mock('$lib/services/api.generated', () => ({
+	userApi: { publishPrekey: (body: unknown) => mockPost('/user/prekeys', body) }
+}));
 
 // Mock KeyHelper from libsignal so we can control generated keys
 const makeArrayBuffer = (seed: number) => new Uint8Array([seed, seed + 1, seed + 2]).buffer;
@@ -71,10 +74,8 @@ describe('signalKeyManager', () => {
 		expect(store.storePreKey).toHaveBeenCalled();
 	});
 
-	it('publishSignalPrekey posts bundle and returns response on success', async () => {
-		const fakeResp = { success: true };
-		// mock apiClient.post to return a wrapped response
-		mockPost.mockResolvedValue({ success: true, data: fakeResp });
+	it('publishSignalPrekey posts the contract body and returns void on success', async () => {
+		mockPost.mockResolvedValue({ success: true, data: undefined });
 
 		const bundle = {
 			identityKey: 'a',
@@ -90,11 +91,10 @@ describe('signalKeyManager', () => {
 		);
 
 		expect(mockPost).toHaveBeenCalledWith('/user/prekeys', {
-			userId: 'u',
 			deviceId: 'd',
 			bundle
 		});
-		expect(res).toEqual(fakeResp);
+		expect(res).toBeUndefined();
 	});
 
 	it('publishSignalPrekey throws when server responds non-ok', async () => {

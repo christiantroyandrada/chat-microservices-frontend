@@ -105,12 +105,12 @@ export interface WebSocketMessage {
 
 // API Response Types
 // Used by: api.ts for all API client methods
-export interface ApiResponse<T = unknown> {
+export type ApiResponse<T = unknown, TMeta extends object = Record<never, never>> = {
 	success: boolean;
 	data?: T;
 	message?: string;
 	error?: string;
-}
+} & TMeta;
 
 // Shape of normalized responses parsed by the frontend API client
 // Used by: api.ts internally for response normalization
@@ -166,6 +166,7 @@ export interface ServerMessage {
 	read?: boolean;
 	isRead?: boolean;
 	updatedAt?: string;
+	status: 'NotDelivered' | 'Delivered' | 'Seen';
 }
 
 // Toast/Alert Types

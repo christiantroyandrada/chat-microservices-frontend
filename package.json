@@ -4,6 +4,11 @@
 	"version": "0.0.2",
 	"license": "MIT",
 	"type": "module",
+	"packageManager": "pnpm@9.11.0",
+	"engines": {
+		"node": ">=22 <23",
+		"pnpm": "9.11.0"
+	},
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
@@ -16,9 +21,13 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
 		"coverage:unit": "vitest --coverage --run",
-		"test:e2e": "playwright test"
+		"test:e2e": "playwright test",
+		"sync:contracts": "node scripts/sync-api-contracts.mjs --backend-dir ../backend",
+		"gen:api": "node scripts/gen-api-types.mjs",
+		"check:contracts": "node scripts/gen-api-types.mjs --check"
 	},
 	"devDependencies": {
+		"@storybook/svelte": "^10.0.0",
 		"@eslint/compat": "^1.4.1",
 		"@eslint/js": "^9.39.2",
 		"@playwright/test": "^1.61.1",

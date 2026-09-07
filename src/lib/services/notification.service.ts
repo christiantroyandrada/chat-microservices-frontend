@@ -14,7 +14,8 @@ export const notificationService = {
 		try {
 			// Use canonical `/notifications` prefix
 			const response = await apiClient.get<unknown>(
-				`/notifications/?limit=${limit}&offset=${offset}`
+				`/notifications/?limit=${limit}&offset=${offset}`,
+				'envelope'
 			);
 
 			const raw = response.data as Array<unknown>;
@@ -32,7 +33,10 @@ export const notificationService = {
 	 */
 	async getUnreadCount(): Promise<number> {
 		try {
-			const response = await apiClient.get<{ count: number }>('/notifications/unread/count');
+			const response = await apiClient.get<{ count: number }>(
+				'/notifications/unread/count',
+				'envelope'
+			);
 			return response.data?.count || 0;
 		} catch (err) {
 			logger.warning('notificationService.getUnreadCount failed, returning 0', err);
@@ -45,7 +49,7 @@ export const notificationService = {
 	 */
 	async markAsRead(notificationId: string): Promise<void> {
 		try {
-			await apiClient.put(`/notifications/${notificationId}/read`);
+			await apiClient.put(`/notifications/${notificationId}/read`, undefined, 'envelope');
 		} catch (err) {
 			logger.warning('notificationService.markAsRead failed', err);
 		}
@@ -56,7 +60,7 @@ export const notificationService = {
 	 */
 	async markAllAsRead(): Promise<void> {
 		try {
-			await apiClient.put('/notifications/read-all');
+			await apiClient.put('/notifications/read-all', undefined, 'envelope');
 		} catch (err) {
 			logger.warning('notificationService.markAllAsRead failed', err);
 		}
@@ -67,7 +71,7 @@ export const notificationService = {
 	 */
 	async deleteNotification(notificationId: string): Promise<void> {
 		try {
-			await apiClient.delete(`/notifications/${notificationId}`);
+			await apiClient.delete(`/notifications/${notificationId}`, 'envelope');
 		} catch (err) {
 			logger.warning('notificationService.deleteNotification failed', err);
 		}
@@ -78,7 +82,7 @@ export const notificationService = {
 	 */
 	async sendNotification(payload: NotificationPayload): Promise<Notification> {
 		try {
-			const response = await apiClient.post<unknown>('/notifications', payload);
+			const response = await apiClient.post<unknown>('/notifications', payload, 'envelope');
 			const raw = response.data;
 			// reuse normalization logic (recreate same inline logic)
 			return normalizeNotification(raw);

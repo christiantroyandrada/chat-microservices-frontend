@@ -8,20 +8,14 @@
 
 import { KeyHelper } from '@privacyresearch/libsignal-protocol-typescript';
 import type { KeyPairType } from '@privacyresearch/libsignal-protocol-typescript';
-import type {
-	Identity,
-	GeneratedIdentity,
-	PublicPreKeyBundle,
-	PublishPrekeyResponse,
-	StoredSignedPreKey
-} from './types';
+import type { Identity, GeneratedIdentity, PublicPreKeyBundle, StoredSignedPreKey } from './types';
 import { isStoredSignedPreKey } from './types';
 import type { SignalKeySet } from '$lib/types';
 import type { IndexedDBSignalProtocolStore } from './signalStore';
 import { arrayBufferToBase64, base64ToArrayBuffer } from './signalUtils';
 import { DEFAULT_SIGNED_PREKEY_ID, PREKEY_COUNT } from './signalConstants';
 import { logger } from '$lib/services/dev-logger';
-import { apiClient } from '$lib/services/api';
+import { userApi } from '$lib/services/api.generated';
 
 /**
  * Generate a complete Signal Protocol identity with all necessary keys
@@ -106,16 +100,14 @@ export async function generateSignalIdentity(
  */
 export async function publishSignalPrekey(
 	_apiBase: string,
-	userId: string,
+	_userId: string,
 	deviceId: string,
 	bundle: PublicPreKeyBundle
-): Promise<PublishPrekeyResponse> {
-	const response = await apiClient.post<PublishPrekeyResponse>('/user/prekeys', {
-		userId,
+): Promise<void> {
+	await userApi.publishPrekey({
 		deviceId,
 		bundle
 	});
-	return response.data as PublishPrekeyResponse;
 }
 
 /**

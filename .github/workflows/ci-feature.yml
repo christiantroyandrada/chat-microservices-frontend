@@ -36,10 +36,13 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint (Prettier + ESLint)
         run: pnpm run lint
+
+      - name: Verify generated API contracts
+        run: pnpm run check:contracts
 
       - name: TypeScript type check
         run: pnpm exec tsc --noEmit
