@@ -98,7 +98,7 @@ if [[ -n "$frontend_previous" ]] && ! is_immutable_frontend_ref "$frontend_previ
 	die "release state contains an invalid frontend.previous ref"
 fi
 
-write_state() {
+prepare_state() {
 	local current="$1"
 	local previous="$2"
 	temporary_state="$(mktemp "$DEPLOY_ROOT/.release-state.env.XXXXXX")"
@@ -130,8 +130,19 @@ write_state() {
 	if [[ "${DEPLOY_TEST_FAIL_BEFORE_RENAME:-0}" == '1' ]]; then
 		die 'injected failure before release-state rename'
 	fi
+}
+
+commit_state() {
+	if [[ "${DEPLOY_TEST_FAIL_BEFORE_COMMIT:-0}" == '1' ]]; then
+		die 'injected failure before release-state commit'
+	fi
 	mv -f -- "$temporary_state" "$STATE_FILE"
 	temporary_state=''
+}
+
+write_state() {
+	prepare_state "$1" "$2"
+	commit_state
 }
 
 docker_compose() {
@@ -176,9 +187,18 @@ rollback_frontend() {
 	echo "deploy-frontend: health check failed; rolling back to $rollback_ref" >&2
 	docker pull "$rollback_ref"
 	docker image inspect "$rollback_ref" >/dev/null
-	write_state "$rollback_ref" "$IMAGE_REF"
-	FRONTEND_IMAGE="$rollback_ref" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend
-	wait_for_frontend "$rollback_ref" || die 'rollback health or runtime-image validation failed'
+	prepare_state "$rollback_ref" "$IMAGE_REF"
+	if ! FRONTEND_IMAGE="$rollback_ref" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend; then
+		rm -f -- "$temporary_state"
+		temporary_state=''
+		die "rollback container replacement failed"
+	fi
+	if ! wait_for_frontend "$rollback_ref"; then
+		rm -f -- "$temporary_state"
+		temporary_state=''
+		die 'rollback health or runtime-image validation failed'
+	fi
+	commit_state
 	die "frontend release rolled back to $rollback_ref"
 }
 
@@ -209,14 +229,23 @@ fi
 docker pull "$IMAGE_REF"
 docker image inspect "$IMAGE_REF" >/dev/null
 
-write_state "$IMAGE_REF" "$frontend_current"
+prepare_state "$IMAGE_REF" "$frontend_current"
 if ! docker_compose up -d --no-deps --force-recreate frontend; then
-	rollback_frontend "$frontend_current"
+	rm -f -- "$temporary_state"
+	temporary_state=''
+	if [[ -n "$frontend_current" ]]; then
+		rollback_frontend "$frontend_current"
+	else
+		die "frontend container replacement failed and no previous release is recorded"
+	fi
 fi
 
 if wait_for_frontend "$IMAGE_REF"; then
+	commit_state
 	echo "deploy-frontend: deployed $IMAGE_REF"
 	exit 0
 fi
 
+rm -f -- "$temporary_state"
+temporary_state=''
 rollback_frontend "$frontend_current"

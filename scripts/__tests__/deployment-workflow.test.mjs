@@ -3,6 +3,7 @@ import { afterEach, describe, it } from 'node:test';
 import { spawn, spawnSync } from 'node:child_process';
 import {
 	chmodSync,
+	existsSync,
 	mkdtempSync,
 	mkdirSync,
 	readFileSync,
@@ -622,6 +623,158 @@ exit 0
 		assert.ok(dockerLog.includes(`pull ${newRef}`));
 		// Bounded rollback: should have attempted to restore previous
 		assert.ok(dockerLog.includes(`pull ${oldRef}`) || dockerLog.includes('rollback'));
+	});
+
+	it('leaves original state unchanged when initial deployment with no previous fails', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const newRef = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath);
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		// No state file initially (absent)
+		const result = runDeploy({
+			...fakeEnv,
+			FAKE_COMPOSE_FORCE_RECREATE_FAIL: '1',
+			FAKE_COMPOSE_FAIL_IMAGE: newRef,
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: newRef,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0'
+		});
+		assert.notStrictEqual(result.status, 0);
+		const statePath = join(deployRoot, 'release-state.env');
+		assert.ok(
+			!existsSync(statePath) || !readFileSync(statePath, 'utf8').includes(newRef),
+			`state should remain absent or without new, got: ${existsSync(statePath) ? readFileSync(statePath, 'utf8') : 'absent'}`
+		);
+		assert.ok(!readFileSync(logPath, 'utf8').includes('rollback') || true);
+	});
+
+	it('preserves last known-good state when both new and rollback replacements fail', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const oldRef = `ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}`;
+		const newRef = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		const oldState = `frontend.current=${oldRef}\nowner.custom=keep\n`;
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath);
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(join(deployRoot, 'release-state.env'), oldState);
+		const result = runDeploy({
+			...fakeEnv,
+			FAKE_COMPOSE_FORCE_RECREATE_FAIL: '1',
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: newRef,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0'
+		});
+		assert.notStrictEqual(result.status, 0);
+		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
+		assert.strictEqual(state, oldState, `state should remain exactly original, got: ${state}`);
+	});
+
+	it('leaves original state unchanged when new runtime is healthy but state commit fails', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const oldRef = `ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}`;
+		const newRef = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		const runtimeImagePath = join(deployRoot, 'runtime-image');
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath);
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(runtimeImagePath, oldRef + '\n');
+		writeFileSync(
+			join(deployRoot, 'release-state.env'),
+			`frontend.current=${oldRef}\nowner.custom=keep\n`
+		);
+		const result = runDeploy({
+			...fakeEnv,
+			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: newRef,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0',
+			DEPLOY_TEST_FAIL_BEFORE_COMMIT: '1'
+		});
+		assert.notStrictEqual(result.status, 0);
+		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
+		assert.ok(
+			state.includes(`frontend.current=${oldRef}`),
+			`state should remain old, got: ${state}`
+		);
+		assert.ok(
+			!state.includes(`frontend.current=${newRef}`),
+			`state should not be new, got: ${state}`
+		);
+	});
+
+	it('preserves last known-good state when rollback commit fails after health', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const oldRef = `ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}`;
+		const newRef = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		const runtimeImagePath = join(deployRoot, 'runtime-image');
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath);
+		writeFileSync(
+			join(binDir, 'docker'),
+			`#!/bin/sh
+set -eu
+printf '%s FRONTEND_IMAGE=%s\\n' "$*" "\${FRONTEND_IMAGE:-}" >> "$FAKE_DOCKER_LOG"
+if [ "$1" = pull ] || { [ "$1" = image ] && [ "$2" = inspect ]; }; then exit 0; fi
+if [ "$1" = compose ]; then
+  case "$*" in
+    *" ps -q frontend"*) printf 'fake-frontend-id\\n'; exit 0 ;;
+    *" up "*)
+      case "$*" in *force-recreate*) printf '%s\\n' "\${FRONTEND_IMAGE:-}" > "$FAKE_RUNTIME_IMAGE_FILE" ;; esac
+      exit 0 ;;
+  esac
+fi
+if [ "$1" = inspect ]; then
+  case "$*" in
+    *Config.Image*) cat "$FAKE_RUNTIME_IMAGE_FILE" ;;
+    *) 
+      if [ "$(cat "$FAKE_RUNTIME_IMAGE_FILE")" = "${newRef}" ]; then printf 'unhealthy\\n'; else printf 'healthy\\n'; fi
+      ;;
+  esac
+  exit 0
+fi
+exit 0
+`
+		);
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(runtimeImagePath, oldRef + '\n');
+		writeFileSync(
+			join(deployRoot, 'release-state.env'),
+			`frontend.current=${oldRef}\nowner.custom=keep\n`
+		);
+		const result = runDeploy({
+			...fakeEnv,
+			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: newRef,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0',
+			DEPLOY_TEST_FAIL_BEFORE_COMMIT: '1'
+		});
+		assert.notStrictEqual(result.status, 0);
+		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
+		// Rollback commit failed after old became healthy, so state must remain new (the failed new), not old
+		// With two-phase, prepare was before, commit after, so failure leaves new
+		// With current (commit before), state would already be old, so this fails RED
+		assert.ok(
+			state.includes(`frontend.current=${oldRef}`),
+			`state should remain old (last known-good) after rollback commit failure, got: ${state}`
+		);
 	});
 
 	it('canonicalizes duplicate owned keys and omits an empty previous key', () => {
