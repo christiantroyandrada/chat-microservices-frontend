@@ -187,7 +187,7 @@ rollback_frontend() {
 	echo "deploy-frontend: health check failed; rolling back to $rollback_ref" >&2
 	docker pull "$rollback_ref"
 	docker image inspect "$rollback_ref" >/dev/null
-	prepare_state "$rollback_ref" "$IMAGE_REF"
+	prepare_state "$rollback_ref" "$frontend_previous"
 	if ! FRONTEND_IMAGE="$rollback_ref" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend; then
 		rm -f -- "$temporary_state"
 		temporary_state=''
@@ -241,7 +241,30 @@ if ! docker_compose up -d --no-deps --force-recreate frontend; then
 fi
 
 if wait_for_frontend "$IMAGE_REF"; then
-	commit_state
+	if ! commit_state; then
+		rm -f -- "$temporary_state"
+		temporary_state=''
+		if [[ -n "$frontend_current" ]]; then
+			echo "deploy-frontend: state commit failed after health verification; rolling back to $frontend_current" >&2
+			prepare_state "$frontend_current" "$frontend_previous"
+			if ! FRONTEND_IMAGE="$frontend_current" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend; then
+				rm -f -- "$temporary_state"
+				temporary_state=''
+				die "state commit failed and rollback container replacement failed"
+			fi
+			if ! wait_for_frontend "$frontend_current"; then
+				rm -f -- "$temporary_state"
+				temporary_state=''
+				die "state commit failed and rollback health failed"
+			fi
+			commit_state
+			die "state commit failed after health verification; rolled back to $frontend_current"
+		else
+			docker compose -f "$COMPOSE_FILE" -p chat-microservices rm -f -s frontend 2>/dev/null || true
+			docker rm -f chat-microservices-frontend-1 2>/dev/null || true
+			die "state commit failed after health verification and no previous release; unrecorded runtime removed"
+		fi
+	fi
 	echo "deploy-frontend: deployed $IMAGE_REF"
 	exit 0
 fi
