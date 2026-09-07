@@ -608,8 +608,14 @@ exit 0
 
 		assert.notStrictEqual(result.status, 0);
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
-		assert.ok(state.includes(`frontend.current=${oldRef}`), `state should remain old, got: ${state}`);
-		assert.ok(!state.includes(`frontend.current=${newRef}`), `current should not be new, got: ${state}`);
+		assert.ok(
+			state.includes(`frontend.current=${oldRef}`),
+			`state should remain old, got: ${state}`
+		);
+		assert.ok(
+			!state.includes(`frontend.current=${newRef}`),
+			`current should not be new, got: ${state}`
+		);
 		assert.ok(state.includes('owner.custom=keep'));
 		assert.strictEqual(readFileSync(runtimeImagePath, 'utf8'), oldRef + '\n');
 		const dockerLog = readFileSync(logPath, 'utf8');
