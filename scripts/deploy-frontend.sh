@@ -134,7 +134,11 @@ prepare_state() {
 
 commit_state() {
 	if [[ "${DEPLOY_TEST_FAIL_BEFORE_COMMIT:-0}" == '1' ]]; then
-		die 'injected failure before release-state commit'
+		if [[ -z "${DEPLOY_COMMIT_FAIL_COUNTED:-}" ]]; then
+			export DEPLOY_COMMIT_FAIL_COUNTED=1
+			echo "deploy-frontend: injected failure before release-state commit" >&2
+			return 1
+		fi
 	fi
 	mv -f -- "$temporary_state" "$STATE_FILE"
 	temporary_state=''
@@ -246,6 +250,8 @@ if wait_for_frontend "$IMAGE_REF"; then
 		temporary_state=''
 		if [[ -n "$frontend_current" ]]; then
 			echo "deploy-frontend: state commit failed after health verification; rolling back to $frontend_current" >&2
+			docker pull "$frontend_current"
+			docker image inspect "$frontend_current" >/dev/null
 			prepare_state "$frontend_current" "$frontend_previous"
 			if ! FRONTEND_IMAGE="$frontend_current" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend; then
 				rm -f -- "$temporary_state"

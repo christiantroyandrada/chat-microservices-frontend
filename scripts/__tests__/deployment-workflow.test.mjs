@@ -41,6 +41,12 @@ set -eu
 printf '%s FRONTEND_IMAGE=%s\\n' "$*" "\${FRONTEND_IMAGE:-}" >> "$FAKE_DOCKER_LOG"
 if [ "$1" = pull ]; then exit 0; fi
 if [ "$1" = image ] && [ "$2" = inspect ]; then exit 0; fi
+if [ "$1" = rm ]; then
+  if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ]; then
+    rm -f "\${FAKE_RUNTIME_IMAGE_FILE}"
+  fi
+  exit 0
+fi
 if [ "$1" = compose ]; then
   if [ "\${FAKE_COMPOSE_FORCE_RECREATE_FAIL:-0}" = "1" ]; then
     case "$*" in *force-recreate*)
@@ -55,6 +61,11 @@ if [ "$1" = compose ]; then
   fi
   case "$*" in
     *" ps -q frontend"*) printf '%s\\n' fake-frontend-id; exit 0 ;;
+    *" rm "*)
+      if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ]; then
+        rm -f "\${FAKE_RUNTIME_IMAGE_FILE}"
+      fi
+      exit 0 ;;
     *" up "*)
       if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ]; then
         case "$*" in
@@ -352,7 +363,14 @@ exit 0
 		assert.notStrictEqual(result.status, 0);
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
 		assert.ok(state.includes(`frontend.current=${oldRef}`));
-		assert.ok(state.includes(`frontend.previous=${newRef}`));
+		assert.ok(
+			!state.includes(`frontend.previous=${newRef}`),
+			`previous must not be failed candidate, got: ${state}`
+		);
+		assert.ok(
+			!state.includes('frontend.previous='),
+			`previous should remain absent, got: ${state}`
+		);
 		const dockerLog = readFileSync(logPath, 'utf8');
 		assert.ok(dockerLog.includes(`pull ${newRef}`));
 		assert.ok(dockerLog.includes(`pull ${oldRef}`));
@@ -513,7 +531,10 @@ exit 0
 		assert.strictEqual(readFileSync(runtimeImagePath, 'utf8'), oldRef + '\n');
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
 		assert.ok(state.includes(`frontend.current=${oldRef}`));
-		assert.ok(state.includes(`frontend.previous=${targetRef}`));
+		assert.ok(
+			!state.includes(`frontend.previous=${targetRef}`),
+			`previous must not be failed candidate, got: ${state}`
+		);
 		assert.ok(state.includes('owner.custom=keep'));
 		const dockerLog = readFileSync(logPath, 'utf8');
 		assert.ok(dockerLog.includes(`pull ${oldRef}`));
@@ -578,7 +599,10 @@ exit 0
 		assert.strictEqual(readFileSync(runtimeImagePath, 'utf8'), oldRef + '\n');
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
 		assert.ok(state.includes(`frontend.current=${oldRef}`));
-		assert.ok(state.includes(`frontend.previous=${targetRef}`));
+		assert.ok(
+			!state.includes(`frontend.previous=${targetRef}`),
+			`previous must not be failed candidate, got: ${state}`
+		);
 		assert.ok(state.includes('owner.custom=keep'));
 	});
 
@@ -730,7 +754,10 @@ exit 0
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
 		writeFileSync(runtimeImagePath, oldRef + '\n');
-		writeFileSync(join(deployRoot, 'release-state.env'), `frontend.current=${oldRef}\nowner.custom=keep\n`);
+		writeFileSync(
+			join(deployRoot, 'release-state.env'),
+			`frontend.current=${oldRef}\nowner.custom=keep\n`
+		);
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
@@ -744,17 +771,28 @@ exit 0
 		assert.notStrictEqual(result.status, 0);
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
 		const runtime = readFileSync(runtimeImagePath, 'utf8').trim();
-		assert.ok(state.includes(`frontend.current=${oldRef}`), `state should remain old, got: ${state}`);
+		assert.ok(
+			state.includes(`frontend.current=${oldRef}`),
+			`state should remain old, got: ${state}`
+		);
 		assert.strictEqual(runtime, oldRef, `runtime should be rolled back to old, got: ${runtime}`);
 		const log = readFileSync(logPath, 'utf8');
 		const pullNewIdx = log.indexOf(`pull ${newRef}`);
 		const pullOldIdx = log.indexOf(`pull ${oldRef}`);
-		const upNewIdx = log.indexOf(`up -d --no-deps --force-recreate frontend FRONTEND_IMAGE=${newRef}`);
-		const upOldIdx = log.indexOf(`up -d --no-deps --force-recreate frontend FRONTEND_IMAGE=${oldRef}`);
+		const upNewIdx = log.indexOf(
+			`up -d --no-deps --force-recreate frontend FRONTEND_IMAGE=${newRef}`
+		);
+		const upOldIdx = log.indexOf(
+			`up -d --no-deps --force-recreate frontend FRONTEND_IMAGE=${oldRef}`
+		);
 		assert.ok(pullNewIdx !== -1 && upNewIdx !== -1, 'should have pulled and up new');
 		assert.ok(pullOldIdx > pullNewIdx, 'rollback pull should be after new pull');
 		assert.ok(upOldIdx > upNewIdx, 'rollback up should be after new up');
-		const upOldCount = (log.match(new RegExp(`up -d --no-deps --force-recreate frontend FRONTEND_IMAGE=${oldRef}`, 'g')) || []).length;
+		const upOldCount = (
+			log.match(
+				new RegExp(`up -d --no-deps --force-recreate frontend FRONTEND_IMAGE=${oldRef}`, 'g')
+			) || []
+		).length;
 		assert.strictEqual(upOldCount, 1, 'rollback should be bounded to one attempt');
 	});
 
@@ -782,8 +820,13 @@ exit 0
 		assert.notStrictEqual(result.status, 0);
 		const statePath = join(deployRoot, 'release-state.env');
 		assert.ok(!existsSync(statePath) || !readFileSync(statePath, 'utf8').includes(newRef));
-		const runtime = existsSync(runtimeImagePath) ? readFileSync(runtimeImagePath, 'utf8').trim() : '';
-		assert.ok(runtime !== newRef, `runtime should not remain new after failed initial commit, got: ${runtime}`);
+		const runtime = existsSync(runtimeImagePath)
+			? readFileSync(runtimeImagePath, 'utf8').trim()
+			: '';
+		assert.ok(
+			runtime !== newRef,
+			`runtime should not remain new after failed initial commit, got: ${runtime}`
+		);
 		const log = readFileSync(logPath, 'utf8');
 		assert.ok(log.includes(`pull ${newRef}`));
 		assert.ok(log.includes('rm -f') || log.includes('remove') || !runtime.includes(newRef));
@@ -801,7 +844,10 @@ exit 0
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
 		writeFileSync(runtimeImagePath, oldRef + '\n');
-		writeFileSync(join(deployRoot, 'release-state.env'), `frontend.current=${oldRef}\nfrontend.previous=${prevRef}\nowner.custom=keep\n`);
+		writeFileSync(
+			join(deployRoot, 'release-state.env'),
+			`frontend.current=${oldRef}\nfrontend.previous=${prevRef}\nowner.custom=keep\n`
+		);
 		// Make new health fail, so rollback to old
 		writeFileSync(
 			join(binDir, 'docker'),
@@ -839,8 +885,14 @@ exit 0
 		assert.notStrictEqual(result.status, 0);
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
 		assert.ok(state.includes(`frontend.current=${oldRef}`));
-		assert.ok(!state.includes(`frontend.previous=${newRef}`), `previous must not be failed candidate, got: ${state}`);
-		assert.ok(state.includes(`frontend.previous=${prevRef}`) || !state.includes('frontend.previous='), `previous should remain prior fallback or absent, got: ${state}`);
+		assert.ok(
+			!state.includes(`frontend.previous=${newRef}`),
+			`previous must not be failed candidate, got: ${state}`
+		);
+		assert.ok(
+			state.includes(`frontend.previous=${prevRef}`) || !state.includes('frontend.previous='),
+			`previous should remain prior fallback or absent, got: ${state}`
+		);
 		// Retry with old should still succeed and not select failed candidate
 		const retryResult = runDeploy({
 			...fakeEnv,
@@ -880,7 +932,7 @@ fi
 if [ "$1" = inspect ]; then
   case "$*" in
     *Config.Image*) cat "$FAKE_RUNTIME_IMAGE_FILE" ;;
-    *) 
+    *)
       if [ "$(cat "$FAKE_RUNTIME_IMAGE_FILE")" = "${newRef}" ]; then printf 'unhealthy\\n'; else printf 'healthy\\n'; fi
       ;;
   esac
