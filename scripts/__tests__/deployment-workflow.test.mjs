@@ -41,6 +41,14 @@ printf '%s FRONTEND_IMAGE=%s\\n' "$*" "\${FRONTEND_IMAGE:-}" >> "$FAKE_DOCKER_LO
 if [ "$1" = pull ]; then exit 0; fi
 if [ "$1" = image ] && [ "$2" = inspect ]; then exit 0; fi
 if [ "$1" = compose ]; then
+  if [ "\${FAKE_COMPOSE_FORCE_RECREATE_FAIL:-0}" = "1" ]; then
+    case "$*" in *force-recreate*)
+      if [ -z "\${FAKE_COMPOSE_FAIL_IMAGE:-}" ] || [ "\${FRONTEND_IMAGE:-}" = "\${FAKE_COMPOSE_FAIL_IMAGE}" ]; then
+        exit 42
+      fi
+      ;;
+    esac
+  fi
   case "$*" in
     *" ps -q frontend"*) printf '%s\\n' fake-frontend-id; exit 0 ;;
     *" up "*)
@@ -568,6 +576,46 @@ exit 0
 		assert.ok(state.includes(`frontend.current=${oldRef}`));
 		assert.ok(state.includes(`frontend.previous=${targetRef}`));
 		assert.ok(state.includes('owner.custom=keep'));
+	});
+
+	it('does not advance release state when container replacement fails', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const oldRef = `ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}`;
+		const newRef = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		const runtimeImagePath = join(deployRoot, 'runtime-image');
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath);
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(runtimeImagePath, oldRef + '\n');
+		writeFileSync(
+			join(deployRoot, 'release-state.env'),
+			`frontend.current=${oldRef}\nowner.custom=keep\n`
+		);
+
+		const result = runDeploy({
+			...fakeEnv,
+			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
+			FAKE_COMPOSE_FORCE_RECREATE_FAIL: '1',
+			FAKE_COMPOSE_FAIL_IMAGE: newRef,
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: newRef,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0'
+		});
+
+		assert.notStrictEqual(result.status, 0);
+		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
+		assert.ok(state.includes(`frontend.current=${oldRef}`), `state should remain old, got: ${state}`);
+		assert.ok(!state.includes(`frontend.current=${newRef}`), `current should not be new, got: ${state}`);
+		assert.ok(state.includes('owner.custom=keep'));
+		assert.strictEqual(readFileSync(runtimeImagePath, 'utf8'), oldRef + '\n');
+		const dockerLog = readFileSync(logPath, 'utf8');
+		assert.ok(dockerLog.includes(`pull ${newRef}`));
+		// Bounded rollback: should have attempted to restore previous
+		assert.ok(dockerLog.includes(`pull ${oldRef}`) || dockerLog.includes('rollback'));
 	});
 
 	it('canonicalizes duplicate owned keys and omits an empty previous key', () => {

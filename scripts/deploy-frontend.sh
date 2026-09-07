@@ -209,9 +209,10 @@ fi
 docker pull "$IMAGE_REF"
 docker image inspect "$IMAGE_REF" >/dev/null
 
-# Record the exact release transition before replacing the owned service.
 write_state "$IMAGE_REF" "$frontend_current"
-docker_compose up -d --no-deps --force-recreate frontend
+if ! docker_compose up -d --no-deps --force-recreate frontend; then
+	rollback_frontend "$frontend_current"
+fi
 
 if wait_for_frontend "$IMAGE_REF"; then
 	echo "deploy-frontend: deployed $IMAGE_REF"
