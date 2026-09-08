@@ -32,49 +32,61 @@ function writeExecutable(path, source) {
 	chmodSync(path, 0o755);
 }
 
-function fakeMv(binDir, failPattern = '.release-state.env.') {
+function fakeMv(
+	binDir,
+	deployRoot,
+	failPattern = '.release-state.env.',
+	failOnCounts = [1],
+	onFailure = ''
+) {
+	const countFile = join(deployRoot, '.fake-mv-count');
 	writeExecutable(
 		join(binDir, 'mv'),
 		`#!/bin/sh
 if printf '%s' "$*" | grep -q "${failPattern}"; then
-  echo "fake mv: injected failure for $*" >&2
-  exit 1
+  count=$(cat "${countFile}" 2>/dev/null || echo 0)
+  count=$((count + 1))
+  echo "$count" > "${countFile}"
+  case " ${failOnCounts.join(' ')} " in *" $count "*)
+    ${onFailure}
+    echo "fake mv: injected failure for $* (count $count)" >&2
+    exit 1 ;;
+  esac
 fi
 exec /bin/mv "$@"
 `
 	);
-}
-
-function fakeMvNth(binDir, failPattern = '.release-state.env.', failOnCount = 2) {
-	writeExecutable(
-		join(binDir, 'mv'),
-		`#!/bin/sh
-countFile="/tmp/mv-count-$$"
-count=$(cat "$countFile" 2>/dev/null || echo 0)
-count=$((count + 1))
-echo "$count" > "$countFile"
-if printf '%s' "$*" | grep -q "${failPattern}" && [ "$count" -eq ${failOnCount} ]; then
-  echo "fake mv: injected failure for $* (count $count)" >&2
-  exit 1
-fi
-exec /bin/mv "$@"
-`
-	);
+	return countFile;
 }
 
 function fakeDocker(binDir, logPath, health = 'healthy') {
+	const runtimeImagePath = join(dirname(logPath), 'runtime-image');
+	const frontendIdPath = join(dirname(logPath), 'frontend-id');
 	writeExecutable(join(binDir, 'flock'), '#!/bin/sh\nexit 0\n');
 	writeExecutable(
 		join(binDir, 'docker'),
 		`#!/bin/sh
 set -eu
 printf '%s FRONTEND_IMAGE=%s\\n' "$*" "\${FRONTEND_IMAGE:-}" >> "$FAKE_DOCKER_LOG"
-if [ "$1" = pull ]; then exit 0; fi
-if [ "$1" = image ] && [ "$2" = inspect ]; then exit 0; fi
+if [ "$1" = pull ]; then
+  [ "$2" = "\${FAKE_MISSING_IMAGE:-}" ] && exit 44
+  exit 0
+fi
+if [ "$1" = image ] && [ "$2" = inspect ]; then
+  [ "$3" = "\${FAKE_MISSING_IMAGE:-}" ] && exit 44
+  exit 0
+fi
 if [ "$1" = rm ]; then
+	  if [ "\${FAKE_DOCKER_RM_FAIL:-0}" = "1" ]; then
+	    echo 'fake docker: injected rm failure' >&2
+	    exit 43
+	  fi
   if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ]; then
     rm -f "\${FAKE_RUNTIME_IMAGE_FILE}"
   fi
+	  if [ -n "\${FAKE_FRONTEND_ID_FILE:-}" ]; then
+	    rm -f "\${FAKE_FRONTEND_ID_FILE}"
+	  fi
   exit 0
 fi
 if [ "$1" = compose ]; then
@@ -83,6 +95,7 @@ if [ "$1" = compose ]; then
       if [ -z "\${FAKE_COMPOSE_FAIL_IMAGE:-}" ] || [ "\${FRONTEND_IMAGE:-}" = "\${FAKE_COMPOSE_FAIL_IMAGE}" ]; then
         if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ]; then
           printf '%s\n' "\${FRONTEND_IMAGE:-}" > "\${FAKE_RUNTIME_IMAGE_FILE}"
+          if [ -n "\${FAKE_FRONTEND_ID_FILE:-}" ]; then printf '%s\n' candidate-frontend-id > "\${FAKE_FRONTEND_ID_FILE}"; fi
         fi
         exit 42
       fi
@@ -90,16 +103,24 @@ if [ "$1" = compose ]; then
     esac
   fi
   case "$*" in
-    *" ps -q frontend"*) printf '%s\\n' fake-frontend-id; exit 0 ;;
+    *" ps "*"-q frontend"*)
+      if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ] && [ -f "\${FAKE_RUNTIME_IMAGE_FILE}" ]; then
+        if [ "\${FAKE_STOPPED_CANDIDATE:-0}" != "1" ] || printf '%s' "$*" | grep -q -- '--all'; then
+          if [ -n "\${FAKE_FRONTEND_ID_FILE:-}" ] && [ -f "\${FAKE_FRONTEND_ID_FILE}" ]; then cat "\${FAKE_FRONTEND_ID_FILE}"; else printf 'fake-frontend-id\\n'; fi
+        fi
+      fi
+      exit 0 ;;
     *" rm "*)
       if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ]; then
         rm -f "\${FAKE_RUNTIME_IMAGE_FILE}"
       fi
       exit 0 ;;
-    *" up "*)
+	  *" up "*)
       if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ]; then
         case "$*" in
-		  *force-recreate*) printf '%s\\n' "\${FRONTEND_IMAGE:-}" > "$FAKE_RUNTIME_IMAGE_FILE" ;;
+		  *force-recreate*)
+            printf '%s\\n' "\${FRONTEND_IMAGE:-}" > "$FAKE_RUNTIME_IMAGE_FILE"
+            if [ -n "\${FAKE_FRONTEND_ID_FILE:-}" ]; then printf '%s\\n' candidate-frontend-id > "$FAKE_FRONTEND_ID_FILE"; fi ;;
         esac
       fi
       exit 0 ;;
@@ -111,9 +132,7 @@ if [ "$1" = inspect ]; then
     *"Config.Image"*)
 	      if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ] && [ -f "$FAKE_RUNTIME_IMAGE_FILE" ]; then
 	        cat "$FAKE_RUNTIME_IMAGE_FILE"
-	      else
-	        printf '%s\\n' "\${FAKE_RUNTIME_IMAGE:-$EXPECTED_IMAGE_REF}"
-      fi ;;
+	      elif [ -n "\${FAKE_RUNTIME_IMAGE:-}" ]; then printf '%s\\n' "\${FAKE_RUNTIME_IMAGE}"; fi ;;
     *) printf '%s\\n' "$FAKE_HEALTH" ;;
   esac
   exit 0
@@ -121,7 +140,12 @@ fi
 exit 0
 `
 	);
-	return { FAKE_DOCKER_LOG: logPath, FAKE_HEALTH: health };
+	return {
+		FAKE_DOCKER_LOG: logPath,
+		FAKE_HEALTH: health,
+		FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
+		FAKE_FRONTEND_ID_FILE: frontendIdPath
+	};
 }
 
 function runDeploy(env, args = []) {
@@ -403,7 +427,7 @@ exit 0
 		);
 		const dockerLog = readFileSync(logPath, 'utf8');
 		assert.ok(dockerLog.includes(`pull ${newRef}`));
-		assert.ok(dockerLog.includes(`pull ${oldRef}`));
+		assert.doesNotMatch(dockerLog, new RegExp(`pull ${oldRef}`));
 		assert.ok(
 			dockerLog.includes('up -d --no-deps --force-recreate frontend FRONTEND_IMAGE=' + oldRef)
 		);
@@ -451,6 +475,7 @@ exit 0
 			'services:\n  frontend:\n    image: stale\n'
 		);
 		writeFileSync(join(deployRoot, 'release-state.env'), oldState);
+		writeFileSync(fakeEnv.FAKE_RUNTIME_IMAGE_FILE, image + '\n');
 
 		const result = runDeploy({
 			...fakeEnv,
@@ -567,7 +592,7 @@ exit 0
 		);
 		assert.ok(state.includes('owner.custom=keep'));
 		const dockerLog = readFileSync(logPath, 'utf8');
-		assert.ok(dockerLog.includes(`pull ${oldRef}`));
+		assert.doesNotMatch(dockerLog, new RegExp(`pull ${oldRef}`));
 		assert.ok(
 			dockerLog.includes(`up -d --no-deps --force-recreate frontend FRONTEND_IMAGE=${oldRef}`)
 		);
@@ -654,7 +679,6 @@ exit 0
 
 		const result = runDeploy({
 			...fakeEnv,
-			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
 			FAKE_COMPOSE_FORCE_RECREATE_FAIL: '1',
 			FAKE_COMPOSE_FAIL_IMAGE: newRef,
 			PATH: `${binDir}:${process.env.PATH}`,
@@ -679,7 +703,7 @@ exit 0
 		const dockerLog = readFileSync(logPath, 'utf8');
 		assert.ok(dockerLog.includes(`pull ${newRef}`));
 		// Bounded rollback: should have attempted to restore previous
-		assert.ok(dockerLog.includes(`pull ${oldRef}`) || dockerLog.includes('rollback'));
+		assert.ok(dockerLog.includes(`force-recreate frontend FRONTEND_IMAGE=${oldRef}`));
 	});
 
 	it('leaves original state unchanged when initial deployment with no previous fails', () => {
@@ -726,6 +750,7 @@ exit 0
 		writeFileSync(join(deployRoot, 'release-state.env'), oldState);
 		const result = runDeploy({
 			...fakeEnv,
+			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
 			FAKE_COMPOSE_FORCE_RECREATE_FAIL: '1',
 			PATH: `${binDir}:${process.env.PATH}`,
 			DEPLOY_ROOT: deployRoot,
@@ -746,7 +771,7 @@ exit 0
 		const pullNewCount = (log2.match(new RegExp(`pull ${newRef}`, 'g')) || []).length;
 		const pullOldCount = (log2.match(new RegExp(`pull ${oldRef}`, 'g')) || []).length;
 		assert.strictEqual(pullNewCount, 1, 'new pull should be bounded to one');
-		assert.strictEqual(pullOldCount, 1, 'rollback pull should be bounded to one');
+		assert.strictEqual(pullOldCount, 0, 'cached rollback image should not be pulled');
 	});
 
 	it('leaves original state unchanged when new runtime is healthy but state commit fails', () => {
@@ -764,7 +789,7 @@ exit 0
 			join(deployRoot, 'release-state.env'),
 			`frontend.current=${oldRef}\nowner.custom=keep\n`
 		);
-		fakeMv(binDir, '.release-state.env.');
+		fakeMv(binDir, deployRoot);
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
@@ -801,7 +826,7 @@ exit 0
 			join(deployRoot, 'release-state.env'),
 			`frontend.current=${oldRef}\nowner.custom=keep\n`
 		);
-		fakeMv(binDir, '.release-state.env.');
+		fakeMv(binDir, deployRoot);
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
@@ -829,7 +854,7 @@ exit 0
 			`up -d --no-deps --force-recreate frontend FRONTEND_IMAGE=${oldRef}`
 		);
 		assert.ok(pullNewIdx !== -1 && upNewIdx !== -1, 'should have pulled and up new');
-		assert.ok(pullOldIdx > pullNewIdx, 'rollback pull should be after new pull');
+		assert.strictEqual(pullOldIdx, -1, 'cached rollback image should not be pulled');
 		assert.ok(upOldIdx > upNewIdx, 'rollback up should be after new up');
 		const upOldCount = (
 			log.match(
@@ -850,7 +875,7 @@ exit 0
 		mkdirSync(join(deployRoot, 'chat-microservices'));
 		writeFileSync(runtimeImagePath, 'initial\n');
 		// No state file
-		fakeMv(binDir, '.release-state.env.');
+		fakeMv(binDir, deployRoot);
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
@@ -872,8 +897,11 @@ exit 0
 		);
 		const log = readFileSync(logPath, 'utf8');
 		assert.ok(log.includes(`pull ${newRef}`));
-		assert.ok(log.includes('rm -f -s frontend'), 'should have cleaned up unrecorded runtime');
-		const rmCount = (log.match(/rm -f -s frontend/g) || []).length;
+		assert.ok(
+			log.includes('rm -f candidate-frontend-id'),
+			'should have cleaned up exact unrecorded runtime'
+		);
+		const rmCount = (log.match(/rm -f candidate-frontend-id/g) || []).length;
 		assert.strictEqual(rmCount, 1, 'cleanup should be bounded to one attempt');
 		assert.ok(
 			!existsSync(runtimeImagePath) || readFileSync(runtimeImagePath, 'utf8').trim() === '',
@@ -1002,7 +1030,7 @@ exec /bin/mv "$@"
 		assert.strictEqual(pullCount, 1, 'should have bounded retry (one pull)');
 	});
 
-	it('preserves last known-good state when rollback commit fails after health', () => {
+	it('fails loudly while retaining old state and runtime when both state commits fail', () => {
 		const deployRoot = temporaryRoot();
 		const binDir = join(deployRoot, 'bin');
 		const logPath = join(deployRoot, 'docker.log');
@@ -1011,39 +1039,13 @@ exec /bin/mv "$@"
 		const runtimeImagePath = join(deployRoot, 'runtime-image');
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
-		writeFileSync(
-			join(binDir, 'docker'),
-			`#!/bin/sh
-set -eu
-printf '%s FRONTEND_IMAGE=%s\\n' "$*" "\${FRONTEND_IMAGE:-}" >> "$FAKE_DOCKER_LOG"
-if [ "$1" = pull ] || { [ "$1" = image ] && [ "$2" = inspect ]; }; then exit 0; fi
-if [ "$1" = compose ]; then
-  case "$*" in
-    *" ps -q frontend"*) printf 'fake-frontend-id\\n'; exit 0 ;;
-    *" up "*)
-      case "$*" in *force-recreate*) printf '%s\\n' "\${FRONTEND_IMAGE:-}" > "$FAKE_RUNTIME_IMAGE_FILE" ;; esac
-      exit 0 ;;
-  esac
-fi
-if [ "$1" = inspect ]; then
-  case "$*" in
-    *Config.Image*) cat "$FAKE_RUNTIME_IMAGE_FILE" ;;
-    *)
-      if [ "$(cat "$FAKE_RUNTIME_IMAGE_FILE")" = "${newRef}" ]; then printf 'unhealthy\\n'; else printf 'healthy\\n'; fi
-      ;;
-  esac
-  exit 0
-fi
-exit 0
-`
-		);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
 		writeFileSync(runtimeImagePath, oldRef + '\n');
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
 			`frontend.current=${oldRef}\nowner.custom=keep\n`
 		);
-		fakeMvNth(binDir, '.release-state.env.', 2);
+		const stateRenameCountPath = fakeMv(binDir, deployRoot, '.release-state.env.', [1, 2]);
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
@@ -1054,14 +1056,28 @@ exit 0
 			HEALTH_POLL_SECONDS: '0'
 		});
 		assert.notStrictEqual(result.status, 0);
-		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
-		assert.ok(
-			state.includes(`frontend.current=${oldRef}`),
-			`state should remain old (last known-good) after rollback commit failure, got: ${state}`
+		assert.strictEqual(
+			readFileSync(join(deployRoot, 'release-state.env'), 'utf8'),
+			`frontend.current=${oldRef}\nowner.custom=keep\n`
+		);
+		assert.strictEqual(readFileSync(runtimeImagePath, 'utf8'), oldRef + '\n');
+		assert.strictEqual(readFileSync(stateRenameCountPath, 'utf8').trim(), '2');
+		assert.match(result.stderr, /fake mv: injected failure.*count 1/);
+		assert.match(result.stderr, /fake mv: injected failure.*count 2/);
+		const log = readFileSync(logPath, 'utf8');
+		assert.strictEqual((log.match(new RegExp(`pull ${newRef}`, 'g')) || []).length, 1);
+		assert.strictEqual((log.match(new RegExp(`pull ${oldRef}`, 'g')) || []).length, 0);
+		assert.strictEqual(
+			(log.match(new RegExp(`force-recreate frontend FRONTEND_IMAGE=${newRef}`, 'g')) || []).length,
+			1
+		);
+		assert.strictEqual(
+			(log.match(new RegExp(`force-recreate frontend FRONTEND_IMAGE=${oldRef}`, 'g')) || []).length,
+			1
 		);
 	});
 
-	it('compose file remains staged and does not misrepresent after failed deployment', () => {
+	it('canonical placeholder-based Compose configuration contains no release digest', () => {
 		const deployRoot = temporaryRoot();
 		const binDir = join(deployRoot, 'bin');
 		const logPath = join(deployRoot, 'docker.log');
@@ -1114,6 +1130,140 @@ exit 0
 			afterBytes.includes('FRONTEND_IMAGE'),
 			`compose file should contain variable placeholder, got: ${JSON.stringify(afterBytes.slice(0, 300))}`
 		);
+	});
+
+	it('preserves a different frontend image during unrecorded-candidate cleanup', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const candidate = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		const other = `ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}`;
+		const runtimeImagePath = join(deployRoot, 'runtime-image');
+		const frontendIdPath = join(deployRoot, 'frontend-id');
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath);
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(runtimeImagePath, other + '\n');
+		writeFileSync(frontendIdPath, 'other-frontend-id\n');
+		fakeMv(
+			binDir,
+			deployRoot,
+			'.release-state.env.',
+			[1],
+			`printf '%s\\n' '${other}' > "$FAKE_RUNTIME_IMAGE_FILE"; printf '%s\\n' other-frontend-id > "$FAKE_FRONTEND_ID_FILE"`
+		);
+		const result = runDeploy({
+			...fakeEnv,
+			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
+			FAKE_FRONTEND_ID_FILE: frontendIdPath,
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: candidate,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0'
+		});
+
+		assert.notStrictEqual(result.status, 0);
+		assert.strictEqual(readFileSync(runtimeImagePath, 'utf8'), other + '\n');
+		assert.strictEqual(readFileSync(frontendIdPath, 'utf8'), 'other-frontend-id\n');
+		assert.doesNotMatch(readFileSync(logPath, 'utf8'), /compose .* rm |rm -f other-frontend-id/);
+	});
+
+	it('removes a partially created unrecorded candidate by its exact container ID', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const candidate = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath);
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		const result = runDeploy({
+			...fakeEnv,
+			FAKE_STOPPED_CANDIDATE: '1',
+			FAKE_COMPOSE_FORCE_RECREATE_FAIL: '1',
+			FAKE_COMPOSE_FAIL_IMAGE: candidate,
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: candidate,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0'
+		});
+
+		assert.notStrictEqual(result.status, 0);
+		assert.ok(!existsSync(fakeEnv.FAKE_RUNTIME_IMAGE_FILE));
+		assert.match(readFileSync(logPath, 'utf8'), /rm -f candidate-frontend-id/);
+	});
+
+	it('removes an unhealthy initial candidate by its exact container ID', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const candidate = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath, 'unhealthy');
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		const result = runDeploy({
+			...fakeEnv,
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: candidate,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0'
+		});
+
+		assert.notStrictEqual(result.status, 0);
+		assert.ok(!existsSync(fakeEnv.FAKE_RUNTIME_IMAGE_FILE));
+		assert.match(readFileSync(logPath, 'utf8'), /rm -f candidate-frontend-id/);
+	});
+
+	it('returns cleanup failure instead of reporting an unrecorded candidate as removed', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const candidate = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath);
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		fakeMv(binDir, deployRoot);
+		const result = runDeploy({
+			...fakeEnv,
+			FAKE_DOCKER_RM_FAIL: '1',
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: candidate,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0'
+		});
+
+		assert.notStrictEqual(result.status, 0);
+		assert.match(result.stderr, /state commit failed and unrecorded runtime still present/);
+		assert.strictEqual(readFileSync(fakeEnv.FAKE_RUNTIME_IMAGE_FILE, 'utf8'), candidate + '\n');
+	});
+
+	it('cleans up the candidate and fails loudly when the recorded rollback image cannot be acquired', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const oldRef = `ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}`;
+		const candidate = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath, 'unhealthy');
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(join(deployRoot, 'release-state.env'), `frontend.current=${oldRef}\n`);
+		const result = runDeploy({
+			...fakeEnv,
+			FAKE_MISSING_IMAGE: oldRef,
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: candidate,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0'
+		});
+
+		assert.notStrictEqual(result.status, 0);
+		assert.match(result.stderr, /rollback image acquisition failed; unrecorded candidate removed/);
+		assert.ok(!existsSync(fakeEnv.FAKE_RUNTIME_IMAGE_FILE));
+		assert.match(readFileSync(logPath, 'utf8'), new RegExp(`pull ${oldRef}`));
 	});
 
 	it('canonicalizes duplicate owned keys and omits an empty previous key', () => {

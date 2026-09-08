@@ -47,29 +47,22 @@ trap cleanup EXIT
 
 cleanup_unrecorded_candidate() {
 	local candidate="$1"
-	local compose_succeeded=0
-	if FRONTEND_IMAGE="$candidate" docker compose -f "$COMPOSE_FILE" -p chat-microservices rm -f -s frontend 2>/dev/null; then
-		compose_succeeded=1
-	fi
-	local cur_id
-	cur_id="$(docker_compose ps -q frontend 2>/dev/null || true)"
-	if [[ -n "$cur_id" ]]; then
-		if docker rm -f "$cur_id" 2>/dev/null; then
-			compose_succeeded=1
-		fi
-		cur_id="$(docker_compose ps -q frontend 2>/dev/null || true)"
-		if [[ -n "$cur_id" ]]; then
-			local cur_img
-			cur_img="$(docker inspect --format '{{.Config.Image}}' "$cur_id" 2>/dev/null || true)"
-			if [[ "$cur_img" == "$candidate" ]]; then
-				return 1
-			fi
-		fi
-	fi
-	if [[ "$compose_succeeded" -eq 0 ]]; then
+	local container_id runtime_image remaining
+	if ! container_id="$(FRONTEND_IMAGE="$candidate" docker compose -f "$COMPOSE_FILE" -p chat-microservices ps --all -q frontend)"; then
 		return 1
 	fi
-	return 0
+	[[ -n "$container_id" ]] || return 0
+	if ! runtime_image="$(docker inspect --format '{{.Config.Image}}' "$container_id")"; then
+		return 1
+	fi
+	[[ "$runtime_image" == "$candidate" ]] || return 0
+	if ! docker rm -f "$container_id"; then
+		return 1
+	fi
+	if ! remaining="$(docker ps -aq --no-trunc --filter "id=$container_id")"; then
+		return 1
+	fi
+	! grep -Fxq "$container_id" <<< "$remaining"
 }
 
 prepare_compose() {
@@ -215,8 +208,14 @@ rollback_frontend() {
 	local rollback_ref="$1"
 	[[ -n "$rollback_ref" ]] || die 'frontend health check failed and no previous immutable release is recorded'
 	echo "deploy-frontend: health check failed; rolling back to $rollback_ref" >&2
-	docker pull "$rollback_ref"
-	docker image inspect "$rollback_ref" >/dev/null
+	if ! docker image inspect "$rollback_ref" >/dev/null; then
+		if ! docker pull "$rollback_ref" || ! docker image inspect "$rollback_ref" >/dev/null; then
+			if ! cleanup_unrecorded_candidate "$IMAGE_REF"; then
+				die "rollback image acquisition failed and unrecorded candidate cleanup failed"
+			fi
+			die "rollback image acquisition failed; unrecorded candidate removed"
+		fi
+	fi
 	prepare_state "$rollback_ref" "$frontend_previous"
 	if ! FRONTEND_IMAGE="$rollback_ref" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend; then
 		rm -f -- "$temporary_state"
@@ -283,8 +282,14 @@ if wait_for_frontend "$IMAGE_REF"; then
 		temporary_state=''
 		if [[ -n "$frontend_current" ]]; then
 			echo "deploy-frontend: state commit failed after health verification; rolling back to $frontend_current" >&2
-			docker pull "$frontend_current"
-			docker image inspect "$frontend_current" >/dev/null
+			if ! docker image inspect "$frontend_current" >/dev/null; then
+				if ! docker pull "$frontend_current" || ! docker image inspect "$frontend_current" >/dev/null; then
+					if ! cleanup_unrecorded_candidate "$IMAGE_REF"; then
+						die "state commit failed, rollback image acquisition failed, and unrecorded candidate cleanup failed"
+					fi
+					die "state commit failed and rollback image acquisition failed; unrecorded candidate removed"
+				fi
+			fi
 			prepare_state "$frontend_current" "$frontend_previous"
 			if ! FRONTEND_IMAGE="$frontend_current" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend; then
 				rm -f -- "$temporary_state"
