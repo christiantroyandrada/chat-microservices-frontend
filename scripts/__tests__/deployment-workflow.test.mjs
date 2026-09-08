@@ -687,10 +687,12 @@ exit 0
 		const logPath = join(deployRoot, 'docker.log');
 		const oldRef = `ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}`;
 		const newRef = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		const runtimeImagePath = join(deployRoot, 'runtime-image');
 		const oldState = `frontend.current=${oldRef}\nowner.custom=keep\n`;
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(runtimeImagePath, oldRef + '\n');
 		writeFileSync(join(deployRoot, 'release-state.env'), oldState);
 		const result = runDeploy({
 			...fakeEnv,
@@ -704,6 +706,17 @@ exit 0
 		assert.notStrictEqual(result.status, 0);
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
 		assert.strictEqual(state, oldState, `state should remain exactly original, got: ${state}`);
+		const runtime = readFileSync(runtimeImagePath, 'utf8').trim();
+		assert.strictEqual(
+			runtime,
+			oldRef,
+			`runtime should remain old after both failures, got: ${runtime}`
+		);
+		const log2 = readFileSync(logPath, 'utf8');
+		const pullNewCount = (log2.match(new RegExp(`pull ${newRef}`, 'g')) || []).length;
+		const pullOldCount = (log2.match(new RegExp(`pull ${oldRef}`, 'g')) || []).length;
+		assert.strictEqual(pullNewCount, 1, 'new pull should be bounded to one');
+		assert.strictEqual(pullOldCount, 1, 'rollback pull should be bounded to one');
 	});
 
 	it('leaves original state unchanged when new runtime is healthy but state commit fails', () => {
@@ -829,7 +842,13 @@ exit 0
 		);
 		const log = readFileSync(logPath, 'utf8');
 		assert.ok(log.includes(`pull ${newRef}`));
-		assert.ok(log.includes('rm -f') || log.includes('remove') || !runtime.includes(newRef));
+		assert.ok(log.includes('rm -f -s frontend'), 'should have cleaned up unrecorded runtime');
+		const rmCount = (log.match(/rm -f -s frontend/g) || []).length;
+		assert.strictEqual(rmCount, 1, 'cleanup should be bounded to one attempt');
+		assert.ok(
+			!existsSync(runtimeImagePath) || readFileSync(runtimeImagePath, 'utf8').trim() === '',
+			'runtime should be absent after cleanup'
+		);
 	});
 
 	it('never stores failed candidate as previous after rollback', () => {
@@ -955,13 +974,10 @@ exit 0
 			IMAGE_REF: newRef,
 			HEALTH_TIMEOUT_SECONDS: '0',
 			HEALTH_POLL_SECONDS: '0',
-			DEPLOY_TEST_FAIL_BEFORE_COMMIT: '1'
+			DEPLOY_TEST_FAIL_ON_COMMIT_COUNT: '2'
 		});
 		assert.notStrictEqual(result.status, 0);
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
-		// Rollback commit failed after old became healthy, so state must remain new (the failed new), not old
-		// With two-phase, prepare was before, commit after, so failure leaves new
-		// With current (commit before), state would already be old, so this fails RED
 		assert.ok(
 			state.includes(`frontend.current=${oldRef}`),
 			`state should remain old (last known-good) after rollback commit failure, got: ${state}`

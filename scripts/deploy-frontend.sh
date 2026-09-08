@@ -45,7 +45,34 @@ cleanup() {
 }
 trap cleanup EXIT
 
-write_compose() {
+cleanup_unrecorded_candidate() {
+	local candidate="$1"
+	local compose_succeeded=0
+	if FRONTEND_IMAGE="$candidate" docker compose -f "$COMPOSE_FILE" -p chat-microservices rm -f -s frontend 2>/dev/null; then
+		compose_succeeded=1
+	fi
+	local cur_id
+	cur_id="$(docker_compose ps -q frontend 2>/dev/null || true)"
+	if [[ -n "$cur_id" ]]; then
+		if docker rm -f "$cur_id" 2>/dev/null; then
+			compose_succeeded=1
+		fi
+		cur_id="$(docker_compose ps -q frontend 2>/dev/null || true)"
+		if [[ -n "$cur_id" ]]; then
+			local cur_img
+			cur_img="$(docker inspect --format '{{.Config.Image}}' "$cur_id" 2>/dev/null || true)"
+			if [[ "$cur_img" == "$candidate" ]]; then
+				return 1
+			fi
+		fi
+	fi
+	if [[ "$compose_succeeded" -eq 0 ]]; then
+		return 1
+	fi
+	return 0
+}
+
+prepare_compose() {
 	temporary_compose="$(mktemp "$DEPLOY_PATH/.frontend.compose.yml.XXXXXX")"
 	printf '%s\n' \
 		'services:' \
@@ -70,15 +97,24 @@ write_compose() {
 		'      retries: 6' \
 		'    networks:' \
 		'      - chat-microservices_default' \
-		'networks:' \
-		'  chat-microservices_default:' \
-		'    external: true' \
-		'    name: chat-microservices_default' > "$temporary_compose"
+	'networks:' \
+	'  chat-microservices_default:' \
+	'    external: true' \
+	'    name: chat-microservices_default' > "$temporary_compose"
+}
+
+commit_compose() {
 	mv -f -- "$temporary_compose" "$COMPOSE_FILE"
 	temporary_compose=''
 }
 
-write_compose
+# Compose file uses only the variable placeholder, not the image digest,
+# so its rewrite cannot misrepresent the committed release: the release is
+# determined solely by STATE_FILE and the runtime image verified via
+# `docker inspect`. The file is prepared before replacement and committed
+# atomically before `up`, and its content is identical for every deployment.
+prepare_compose
+commit_compose
 
 frontend_current=''
 frontend_previous=''
@@ -133,20 +169,25 @@ prepare_state() {
 }
 
 commit_state() {
-	if [[ "${DEPLOY_TEST_FAIL_BEFORE_COMMIT:-0}" == '1' ]]; then
+	if [[ -n "${DEPLOY_TEST_FAIL_ON_COMMIT_COUNT:-}" ]]; then
+		: "${DEPLOY_COMMIT_COUNT:=0}"
+		DEPLOY_COMMIT_COUNT=$((DEPLOY_COMMIT_COUNT + 1))
+		export DEPLOY_COMMIT_COUNT
+		if [[ "$DEPLOY_COMMIT_COUNT" -eq "$DEPLOY_TEST_FAIL_ON_COMMIT_COUNT" ]]; then
+			echo "deploy-frontend: injected failure before release-state commit (count $DEPLOY_COMMIT_COUNT)" >&2
+			return 1
+		fi
+	elif [[ "${DEPLOY_TEST_FAIL_BEFORE_COMMIT:-0}" == '1' ]]; then
 		if [[ -z "${DEPLOY_COMMIT_FAIL_COUNTED:-}" ]]; then
 			export DEPLOY_COMMIT_FAIL_COUNTED=1
 			echo "deploy-frontend: injected failure before release-state commit" >&2
 			return 1
 		fi
 	fi
-	mv -f -- "$temporary_state" "$STATE_FILE"
+	if ! mv -f -- "$temporary_state" "$STATE_FILE"; then
+		return 1
+	fi
 	temporary_state=''
-}
-
-write_state() {
-	prepare_state "$1" "$2"
-	commit_state
 }
 
 docker_compose() {
@@ -202,7 +243,11 @@ rollback_frontend() {
 		temporary_state=''
 		die 'rollback health or runtime-image validation failed'
 	fi
-	commit_state
+	if ! commit_state; then
+		rm -f -- "$temporary_state"
+		temporary_state=''
+		die "rollback state commit failed"
+	fi
 	die "frontend release rolled back to $rollback_ref"
 }
 
@@ -263,11 +308,16 @@ if wait_for_frontend "$IMAGE_REF"; then
 				temporary_state=''
 				die "state commit failed and rollback health failed"
 			fi
-			commit_state
+			if ! commit_state; then
+				rm -f -- "$temporary_state"
+				temporary_state=''
+				die "state commit failed and rollback state commit failed"
+			fi
 			die "state commit failed after health verification; rolled back to $frontend_current"
 		else
-			docker compose -f "$COMPOSE_FILE" -p chat-microservices rm -f -s frontend 2>/dev/null || true
-			docker rm -f chat-microservices-frontend-1 2>/dev/null || true
+			if ! cleanup_unrecorded_candidate "$IMAGE_REF"; then
+				die "state commit failed and unrecorded runtime still present"
+			fi
 			die "state commit failed after health verification and no previous release; unrecorded runtime removed"
 		fi
 	fi
