@@ -32,6 +32,36 @@ function writeExecutable(path, source) {
 	chmodSync(path, 0o755);
 }
 
+function fakeMv(binDir, failPattern = '.release-state.env.') {
+	writeExecutable(
+		join(binDir, 'mv'),
+		`#!/bin/sh
+if printf '%s' "$*" | grep -q "${failPattern}"; then
+  echo "fake mv: injected failure for $*" >&2
+  exit 1
+fi
+exec /bin/mv "$@"
+`
+	);
+}
+
+function fakeMvNth(binDir, failPattern = '.release-state.env.', failOnCount = 2) {
+	writeExecutable(
+		join(binDir, 'mv'),
+		`#!/bin/sh
+countFile="/tmp/mv-count-$$"
+count=$(cat "$countFile" 2>/dev/null || echo 0)
+count=$((count + 1))
+echo "$count" > "$countFile"
+if printf '%s' "$*" | grep -q "${failPattern}" && [ "$count" -eq ${failOnCount} ]; then
+  echo "fake mv: injected failure for $* (count $count)" >&2
+  exit 1
+fi
+exec /bin/mv "$@"
+`
+	);
+}
+
 function fakeDocker(binDir, logPath, health = 'healthy') {
 	writeExecutable(join(binDir, 'flock'), '#!/bin/sh\nexit 0\n');
 	writeExecutable(
@@ -734,6 +764,7 @@ exit 0
 			join(deployRoot, 'release-state.env'),
 			`frontend.current=${oldRef}\nowner.custom=keep\n`
 		);
+		fakeMv(binDir, '.release-state.env.');
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
@@ -741,8 +772,7 @@ exit 0
 			DEPLOY_ROOT: deployRoot,
 			IMAGE_REF: newRef,
 			HEALTH_TIMEOUT_SECONDS: '0',
-			HEALTH_POLL_SECONDS: '0',
-			DEPLOY_TEST_FAIL_BEFORE_COMMIT: '1'
+			HEALTH_POLL_SECONDS: '0'
 		});
 		assert.notStrictEqual(result.status, 0);
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
@@ -771,6 +801,7 @@ exit 0
 			join(deployRoot, 'release-state.env'),
 			`frontend.current=${oldRef}\nowner.custom=keep\n`
 		);
+		fakeMv(binDir, '.release-state.env.');
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
@@ -778,8 +809,7 @@ exit 0
 			DEPLOY_ROOT: deployRoot,
 			IMAGE_REF: newRef,
 			HEALTH_TIMEOUT_SECONDS: '0',
-			HEALTH_POLL_SECONDS: '0',
-			DEPLOY_TEST_FAIL_BEFORE_COMMIT: '1'
+			HEALTH_POLL_SECONDS: '0'
 		});
 		assert.notStrictEqual(result.status, 0);
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
@@ -820,6 +850,7 @@ exit 0
 		mkdirSync(join(deployRoot, 'chat-microservices'));
 		writeFileSync(runtimeImagePath, 'initial\n');
 		// No state file
+		fakeMv(binDir, '.release-state.env.');
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
@@ -827,8 +858,7 @@ exit 0
 			DEPLOY_ROOT: deployRoot,
 			IMAGE_REF: newRef,
 			HEALTH_TIMEOUT_SECONDS: '0',
-			HEALTH_POLL_SECONDS: '0',
-			DEPLOY_TEST_FAIL_BEFORE_COMMIT: '1'
+			HEALTH_POLL_SECONDS: '0'
 		});
 		assert.notStrictEqual(result.status, 0);
 		const statePath = join(deployRoot, 'release-state.env');
@@ -925,6 +955,53 @@ exit 0
 		assert.strictEqual(retryResult.status, 0);
 	});
 
+	it('fails when state commit mv fails for real', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const oldRef = `ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}`;
+		const newRef = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath);
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(
+			join(deployRoot, 'release-state.env'),
+			`frontend.current=${oldRef}\nowner.custom=keep\n`
+		);
+		writeExecutable(
+			join(binDir, 'mv'),
+			`#!/bin/sh
+if printf '%s' "$*" | grep -q ".release-state.env."; then
+  echo "fake mv: injected failure for $*" >&2
+  exit 1
+fi
+exec /bin/mv "$@"
+`
+		);
+		const result = runDeploy({
+			...fakeEnv,
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: newRef,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0'
+		});
+		assert.notStrictEqual(result.status, 0);
+		assert.ok(
+			!result.stdout.includes('deployed') && !result.stderr.includes('deployed'),
+			'should not report successful deployment'
+		);
+		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
+		assert.ok(
+			state.includes(`frontend.current=${oldRef}`),
+			`state should remain old, got: ${state}`
+		);
+		assert.ok(!state.includes(`frontend.current=${newRef}`));
+		const log = readFileSync(logPath, 'utf8');
+		const pullCount = (log.match(new RegExp(`pull ${newRef}`, 'g')) || []).length;
+		assert.strictEqual(pullCount, 1, 'should have bounded retry (one pull)');
+	});
+
 	it('preserves last known-good state when rollback commit fails after health', () => {
 		const deployRoot = temporaryRoot();
 		const binDir = join(deployRoot, 'bin');
@@ -966,6 +1043,7 @@ exit 0
 			join(deployRoot, 'release-state.env'),
 			`frontend.current=${oldRef}\nowner.custom=keep\n`
 		);
+		fakeMvNth(binDir, '.release-state.env.', 2);
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_RUNTIME_IMAGE_FILE: runtimeImagePath,
@@ -973,14 +1051,68 @@ exit 0
 			DEPLOY_ROOT: deployRoot,
 			IMAGE_REF: newRef,
 			HEALTH_TIMEOUT_SECONDS: '0',
-			HEALTH_POLL_SECONDS: '0',
-			DEPLOY_TEST_FAIL_ON_COMMIT_COUNT: '2'
+			HEALTH_POLL_SECONDS: '0'
 		});
 		assert.notStrictEqual(result.status, 0);
 		const state = readFileSync(join(deployRoot, 'release-state.env'), 'utf8');
 		assert.ok(
 			state.includes(`frontend.current=${oldRef}`),
 			`state should remain old (last known-good) after rollback commit failure, got: ${state}`
+		);
+	});
+
+	it('compose file remains staged and does not misrepresent after failed deployment', () => {
+		const deployRoot = temporaryRoot();
+		const binDir = join(deployRoot, 'bin');
+		const logPath = join(deployRoot, 'docker.log');
+		const oldRef = `ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}`;
+		const newRef = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+		mkdirSync(binDir);
+		const fakeEnv = fakeDocker(binDir, logPath);
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(join(deployRoot, 'release-state.env'), `frontend.current=${oldRef}\n`);
+		const composePath = join(deployRoot, 'chat-microservices/frontend.compose.yml');
+		writeFileSync(composePath, 'services:\n  frontend: {}\n');
+		// Make new deployment fail at health (so rollback will happen, but compose should remain correct)
+		writeExecutable(
+			join(binDir, 'docker'),
+			`#!/bin/sh
+set -eu
+printf '%s FRONTEND_IMAGE=%s\\n' "$*" "\${FRONTEND_IMAGE:-}" >> "$FAKE_DOCKER_LOG"
+if [ "$1" = pull ] || { [ "$1" = image ] && [ "$2" = inspect ]; }; then exit 0; fi
+if [ "$1" = compose ]; then
+  case "$*" in
+    *" ps -q frontend"*) printf 'fake-frontend-id\\n'; exit 0 ;;
+    *" up "*) exit 0 ;;
+  esac
+fi
+if [ "$1" = inspect ]; then
+  case "$*" in
+    *Config.Image*) printf 'unhealthy\\n' ;;
+    *) printf 'unhealthy\\n' ;;
+  esac
+  exit 0
+fi
+exit 0
+`
+		);
+		const result = runDeploy({
+			...fakeEnv,
+			PATH: `${binDir}:${process.env.PATH}`,
+			DEPLOY_ROOT: deployRoot,
+			IMAGE_REF: newRef,
+			HEALTH_TIMEOUT_SECONDS: '0',
+			HEALTH_POLL_SECONDS: '0'
+		});
+		assert.notStrictEqual(result.status, 0);
+		const afterBytes = readFileSync(composePath, 'utf8');
+		assert.ok(
+			!afterBytes.includes(newRef) && !afterBytes.includes(oldRef),
+			'compose file should not contain image digest, only variable placeholder'
+		);
+		assert.ok(
+			afterBytes.includes('FRONTEND_IMAGE'),
+			`compose file should contain variable placeholder, got: ${JSON.stringify(afterBytes.slice(0, 300))}`
 		);
 	});
 

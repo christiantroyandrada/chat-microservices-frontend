@@ -169,21 +169,6 @@ prepare_state() {
 }
 
 commit_state() {
-	if [[ -n "${DEPLOY_TEST_FAIL_ON_COMMIT_COUNT:-}" ]]; then
-		: "${DEPLOY_COMMIT_COUNT:=0}"
-		DEPLOY_COMMIT_COUNT=$((DEPLOY_COMMIT_COUNT + 1))
-		export DEPLOY_COMMIT_COUNT
-		if [[ "$DEPLOY_COMMIT_COUNT" -eq "$DEPLOY_TEST_FAIL_ON_COMMIT_COUNT" ]]; then
-			echo "deploy-frontend: injected failure before release-state commit (count $DEPLOY_COMMIT_COUNT)" >&2
-			return 1
-		fi
-	elif [[ "${DEPLOY_TEST_FAIL_BEFORE_COMMIT:-0}" == '1' ]]; then
-		if [[ -z "${DEPLOY_COMMIT_FAIL_COUNTED:-}" ]]; then
-			export DEPLOY_COMMIT_FAIL_COUNTED=1
-			echo "deploy-frontend: injected failure before release-state commit" >&2
-			return 1
-		fi
-	fi
 	if ! mv -f -- "$temporary_state" "$STATE_FILE"; then
 		return 1
 	fi
@@ -285,6 +270,9 @@ if ! docker_compose up -d --no-deps --force-recreate frontend; then
 	if [[ -n "$frontend_current" ]]; then
 		rollback_frontend "$frontend_current"
 	else
+		if ! cleanup_unrecorded_candidate "$IMAGE_REF"; then
+			die "container replacement failed and unrecorded runtime still present"
+		fi
 		die "frontend container replacement failed and no previous release is recorded"
 	fi
 fi
@@ -327,4 +315,11 @@ fi
 
 rm -f -- "$temporary_state"
 temporary_state=''
-rollback_frontend "$frontend_current"
+if [[ -n "$frontend_current" ]]; then
+	rollback_frontend "$frontend_current"
+else
+	if ! cleanup_unrecorded_candidate "$IMAGE_REF"; then
+		die "health check failed and unrecorded runtime still present"
+	fi
+	die "frontend health check failed and no previous release is recorded"
+fi
