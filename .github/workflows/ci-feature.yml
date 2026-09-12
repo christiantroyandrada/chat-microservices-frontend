@@ -55,8 +55,7 @@ jobs:
           pnpm run prepare && pnpm run build
 
       - name: Audit repo
-        run: |
-          pnpm audit --audit-level=moderate || true
+        run: pnpm audit --prod --audit-level=low
 
       - name: Summary
         run: echo "Frontend CI completed successfully"
