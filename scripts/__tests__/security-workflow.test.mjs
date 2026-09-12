@@ -23,5 +23,6 @@ test('main and feature workflows fail on low-severity production advisories', ()
 	for (const audit of [mainAudit, featureAudit]) {
 		assert.equal(audit.run, 'pnpm audit --prod --audit-level=low');
 		assert.doesNotMatch(audit.run, /\|\|\s*true/);
+		assert.equal(audit['continue-on-error'], undefined);
 	}
 });
