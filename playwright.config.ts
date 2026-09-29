@@ -1,13 +1,15 @@
-/* stylelint-disable */
 /// <reference types="node" />
-// Ensure the TypeScript language server knows Node globals (process) for this standalone config file.
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
 	webServer: {
 		command: 'npm run build && npm run preview',
+		env: {
+			PUBLIC_API_URL: 'http://localhost:4173',
+			PUBLIC_WS_URL: 'http://localhost:4173'
+		},
 		port: 4173,
-		reuseExistingServer: true
+		reuseExistingServer: false
 	},
 	testDir: 'tests/e2e',
 	use: {

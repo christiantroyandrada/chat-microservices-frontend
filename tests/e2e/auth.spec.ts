@@ -1,179 +1,93 @@
-/**
- * E2E tests for authentication flow
- */
+import type { Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import setupMockBackend from './mockBackend';
 
-import { test, expect } from './test-with-mock';
+const seededUser = {
+	email: 'owner@example.com',
+	password: 'TestPass123!'
+};
 
-// Shared helper to generate a short random alphabetic string (used for test usernames)
-const randAlpha = (length = 6) =>
-	Array.from({ length }, () => String.fromCodePoint(97 + Math.floor(Math.random() * 26))).join('');
+async function fillRegistration(page: Page, username: string, email: string) {
+	await page.getByLabel('Username').fill(username);
+	await page.getByLabel('Email address').fill(email);
+	await page.locator('#password').fill('TestPass123!');
+	await page.locator('#confirmPassword').fill('TestPass123!');
+}
 
-const BASE_URL = 'http://localhost:4173';
+test.beforeEach(async ({ page, context }) => {
+	await context.clearCookies();
+	await setupMockBackend(page);
+});
 
 test.describe('Authentication', () => {
-	test.beforeEach(async ({ page }) => {
-		// Clear cookies and local storage
-		await page.context().clearCookies();
-		await page.goto(BASE_URL);
+	test('shows the login page by default', async ({ page }) => {
+		await page.goto('/');
+
+		await expect(page).toHaveURL(/\/login$/);
+		await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
 	});
 
-	test('should show login page by default', async ({ page }) => {
-		await expect(page).toHaveURL(/.*login/);
-		await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible();
+	test('opens registration from the current login link', async ({ page }) => {
+		await page.goto('/login');
+		await page.getByRole('link', { name: 'Request one' }).click();
+
+		await expect(page).toHaveURL(/\/register$/);
+		await expect(page.getByRole('heading', { name: 'Open your account' })).toBeVisible();
 	});
 
-	test('should navigate to register page', async ({ page }) => {
-		await page.goto(`${BASE_URL}/login`);
-		await page.getByRole('link', { name: /create one/i }).click();
+	test('registers a valid user and opens chat', async ({ page }) => {
+		await page.goto('/register');
+		await fillRegistration(page, 'newuser', 'new@example.com');
+		await page.getByRole('button', { name: 'Create account' }).click();
 
-		await expect(page).toHaveURL(/.*register/);
-		await expect(page.getByRole('heading', { name: /create account/i })).toBeVisible();
+		await expect(page).toHaveURL(/\/chat$/, { timeout: 15_000 });
+		await expect(page.getByRole('heading', { name: 'Correspondence' })).toBeVisible();
 	});
 
-	test('should register a new user', async ({ page }) => {
-		// Generate a username that matches backend name validation (letters, spaces, hyphens, apostrophes)
-		const testUser = {
-			username: `testuser${randAlpha()}`,
-			email: `test${Date.now()}@example.com`,
-			password: 'TestPass123!'
-		};
+	test('reports an existing email after otherwise valid registration', async ({ page }) => {
+		await page.goto('/register');
+		await fillRegistration(page, 'anotheruser', 'existing@example.com');
+		await page.getByRole('button', { name: 'Create account' }).click();
 
-		await page.goto(`${BASE_URL}/register`);
-
-		// Fill registration form
-		await page.getByLabel(/username/i).fill(testUser.username);
-		await page.getByLabel(/email/i).fill(testUser.email);
-		await page.locator('#password').fill(testUser.password);
-		await page.locator('#confirmPassword').fill(testUser.password);
-
-		// Submit form
-		await page.getByRole('button', { name: /create account/i }).click();
-
-		// After submit the app may either show a success toast or automatically
-		// redirect to /chat. Accept either behaviour so tests are resilient.
-		try {
-			await page.getByText(/registration successful/i).waitFor({ state: 'visible', timeout: 5000 });
-		} catch {
-			// If no toast, the app likely redirected to chat
-			await page.waitForURL(/.*chat/, { timeout: 5000 });
-		}
+		await expect(page.getByRole('alert')).toHaveText('Email already exists');
 	});
 
-	test('should show error for existing email', async ({ page }) => {
-		await page.goto(`${BASE_URL}/register`);
+	test('logs in the seeded user and opens chat', async ({ page }) => {
+		await page.goto('/login');
+		await page.getByLabel('Email address').fill(seededUser.email);
+		await page.locator('#password').fill(seededUser.password);
+		await page.getByRole('button', { name: 'Sign in' }).click();
 
-		// Try to register with existing email
-		await page.getByLabel(/username/i).fill('existinguser');
-		await page.getByLabel(/email/i).fill('existing@example.com');
-		await page.locator('#password').fill('password123');
-		await page.locator('#confirmPassword').fill('password123');
-
-		await page.getByRole('button', { name: /create account/i }).click();
-
-		// Should show error message (try broader patterns)
-		await expect(page.getByText(/already|exists|registered|taken/i)).toBeVisible({ timeout: 5000 });
+		await expect(page).toHaveURL(/\/chat$/, { timeout: 15_000 });
+		await expect(page.getByRole('heading', { name: 'Correspondence' })).toBeVisible();
 	});
 
-	test('should login with valid credentials', async ({ page }) => {
-		// First, create a test user
-		const testUser = {
-			username: `logintest${randAlpha()}`,
-			email: `logintest${Date.now()}@example.com`,
-			password: 'TestPass123!'
-		};
+	test('reports invalid credentials in the form alert', async ({ page }) => {
+		await page.goto('/login');
+		await page.getByLabel('Email address').fill('missing@example.com');
+		await page.locator('#password').fill('WrongPass123!');
+		await page.getByRole('button', { name: 'Sign in' }).click();
 
-		// Register the user
-		await page.goto(`${BASE_URL}/register`);
-		await page.getByLabel(/username/i).fill(testUser.username);
-		await page.getByLabel(/email/i).fill(testUser.email);
-		await page.locator('#password').fill(testUser.password);
-		await page.locator('#confirmPassword').fill(testUser.password);
-		await page.getByRole('button', { name: /create account/i }).click();
-
-		// After register the app may show a toast or redirect to /chat. Accept either.
-		try {
-			await page.getByText(/registration successful/i).waitFor({ state: 'visible', timeout: 5000 });
-		} catch {
-			await page.waitForURL(/.*chat/, { timeout: 5000 });
-		}
-
-		// Now login explicitly
-		await page.goto(`${BASE_URL}/login`);
-		await page.getByLabel(/email/i).fill(testUser.email);
-		await page.locator('#password').fill(testUser.password);
-		await page.getByRole('button', { name: /sign in/i }).click();
-
-		// Should redirect to chat page after login
-		await expect(page).toHaveURL(/.*chat/, { timeout: 10000 });
+		await expect(page.getByRole('alert')).toHaveText('Invalid credentials');
 	});
 
-	test('should show error for invalid credentials', async ({ page }) => {
-		await page.goto(`${BASE_URL}/login`);
+	test('logs out and clears the authentication cookie', async ({ page, context }) => {
+		await page.goto('/login');
+		await page.getByLabel('Email address').fill(seededUser.email);
+		await page.locator('#password').fill(seededUser.password);
+		await page.getByRole('button', { name: 'Sign in' }).click();
+		await expect(page).toHaveURL(/\/chat$/, { timeout: 15_000 });
 
-		// Fill with invalid credentials
-		await page.getByLabel(/email/i).fill('nonexistent@example.com');
-		await page.locator('#password').fill('wrongpassword123');
+		await page.getByRole('button', { name: 'Logout' }).click();
 
-		await page.getByRole('button', { name: /sign in/i }).click();
-
-		// Should show error message (check for common error patterns)
-		await expect(page.getByText(/invalid|incorrect|failed|not found|wrong/i)).toBeVisible({
-			timeout: 5000
-		});
+		await expect(page).toHaveURL(/\/login$/);
+		expect((await context.cookies()).some((cookie) => cookie.name === 'jwt')).toBe(false);
 	});
 
-	test('should logout successfully', async ({ page }) => {
-		// First, create and login a user
-		const testUser = {
-			username: `logouttest${randAlpha()}`,
-			email: `logouttest${Date.now()}@example.com`,
-			password: 'TestPass123!'
-		};
+	test('reports empty registration fields', async ({ page }) => {
+		await page.goto('/register');
+		await page.getByRole('button', { name: 'Create account' }).click();
 
-		// Register the user
-		await page.goto(`${BASE_URL}/register`);
-		await page.getByLabel(/username/i).fill(testUser.username);
-		await page.getByLabel(/email/i).fill(testUser.email);
-		await page.locator('#password').fill(testUser.password);
-		await page.locator('#confirmPassword').fill(testUser.password);
-		await page.getByRole('button', { name: /create account/i }).click();
-
-		// After register the app may show a toast or redirect to /chat. Accept either.
-		try {
-			await page.getByText(/registration successful/i).waitFor({ state: 'visible', timeout: 5000 });
-		} catch {
-			await page.waitForURL(/.*chat/, { timeout: 5000 });
-		}
-
-		// Login
-		await page.goto(`${BASE_URL}/login`);
-		await page.getByLabel(/email/i).fill(testUser.email);
-		await page.locator('#password').fill(testUser.password);
-		await page.getByRole('button', { name: /sign in/i }).click();
-
-		// Should redirect to chat page
-		await expect(page).toHaveURL(/.*chat/, { timeout: 10000 });
-
-		// Find and click logout button
-		await page.getByRole('button', { name: /logout|sign out/i }).click();
-
-		// Should redirect to login page
-		await expect(page).toHaveURL(/.*login/, { timeout: 5000 });
-	});
-
-	test('should validate required fields', async ({ page }) => {
-		await page.goto(`${BASE_URL}/register`);
-
-		// Try to submit without filling fields
-		await page.getByRole('button', { name: /create account/i }).click();
-
-		// Should show validation errors
-		const usernameInput = page.getByLabel(/username/i);
-		const emailInput = page.getByLabel(/email/i);
-		const passwordInput = page.locator('#password');
-
-		await expect(usernameInput).toHaveAttribute('required', '');
-		await expect(emailInput).toHaveAttribute('required', '');
-		await expect(passwordInput).toHaveAttribute('required', '');
+		await expect(page.getByRole('alert')).toHaveText('Please fill in all fields');
 	});
 });

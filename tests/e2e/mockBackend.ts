@@ -1,497 +1,280 @@
-import type { Page, Route } from '@playwright/test';
-import { safeToString } from '$lib/utils';
+import type { Page, Request, Route } from '@playwright/test';
+import type {
+	ChatApiConversation,
+	ChatApiConversationListResponse,
+	ChatApiMarkReadResponse,
+	ChatApiMessagesPageResponse,
+	UserApiSearchUser,
+	UserApiStatusResponse,
+	UserApiUser,
+	UserApiUserListResponse,
+	UserApiUserResponse
+} from '$lib/generated/api.types';
 
-// lightweight id generator to avoid external deps
-function genId(prefix = 'id') {
-	return `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(36)}`;
+type UserRecord = UserApiUser & { password: string };
+
+const owner = {
+	id: 'user-owner',
+	username: 'e2eowner',
+	email: 'owner@example.com',
+	password: 'TestPass123!'
+} satisfies UserRecord;
+
+const existingUser = {
+	id: 'user-existing',
+	username: 'existinguser',
+	email: 'existing@example.com',
+	password: 'TestPass123!'
+} satisfies UserRecord;
+
+const contacts = [
+	{
+		id: 'contact-one',
+		username: 'E2E Contact One',
+		email: 'contact.one@example.com',
+		password: 'TestPass123!'
+	},
+	{
+		id: 'contact-two',
+		username: 'E2E Contact Two',
+		email: 'contact.two@example.com',
+		password: 'TestPass123!'
+	},
+	{
+		id: 'search-user',
+		username: 'E2E Search User',
+		email: 'search.user@example.com',
+		password: 'TestPass123!'
+	}
+] satisfies UserRecord[];
+
+const seededConversations = [
+	{
+		id: contacts[0].id,
+		name: contacts[0].username,
+		avatar: null,
+		lastMessage: 'First sealed letter',
+		unreadCount: 2,
+		lastMessageTime: '2026-09-16T00:00:00.000Z'
+	},
+	{
+		id: contacts[1].id,
+		name: contacts[1].username,
+		avatar: null,
+		lastMessage: 'Second sealed letter',
+		unreadCount: 0,
+		lastMessageTime: '2026-09-15T00:00:00.000Z'
+	}
+] satisfies ChatApiConversation[];
+
+function parseCookies(request: Request) {
+	return Object.fromEntries(
+		(request.headers()['cookie'] ?? '')
+			.split(';')
+			.map((cookie) => cookie.trim().split('='))
+			.filter(([name, value]) => name && value)
+	);
 }
 
-// helper to parse cookies from request
-function parseCookie(cookieHeader?: string | null) {
-	const out: Record<string, string> = {};
-	if (!cookieHeader) return out;
-	cookieHeader.split(';').forEach((c) => {
-		const [k, ...v] = c.trim().split('=');
-		out[k] = v.join('=');
+function publicUser(user: UserRecord): UserApiUser {
+	return { id: user.id, username: user.username, email: user.email };
+}
+
+function authenticatedUser(request: Request, users: Map<string, UserRecord>) {
+	const id = parseCookies(request).jwt;
+	return id ? Array.from(users.values()).find((user) => user.id === id) : undefined;
+}
+
+async function fulfill(
+	route: Route,
+	status: number,
+	body: unknown,
+	headers?: Record<string, string>
+) {
+	await route.fulfill({
+		status,
+		contentType: 'application/json',
+		headers,
+		body: JSON.stringify(body)
 	});
-	return out;
 }
 
-type User = {
-	id: string;
-	name: string;
-	email: string;
-	password: string;
-};
-
-type Conversation = {
-	_id: string;
-	participants: string[];
-	title?: string;
-	otherUser?: { _id: string; username?: string; email?: string };
-	lastMessage?: { text: string; timestamp: string };
-	unreadCount?: number;
-};
-
-type Message = {
-	_id: string;
-	senderId?: string;
-	senderUsername?: string;
-	text?: string;
-	timestamp?: string;
-};
-
-// Seeding configuration - tweak these to change how much data is generated per test
-const SEED_CONTACTS = 3;
-const MESSAGES_PER_CONV = 12; // enough to test scrolling/loading
+async function unauthorized(route: Route) {
+	await fulfill(route, 401, { status: 401, message: 'Unauthorized' });
+}
 
 export async function setupMockBackend(page: Page) {
-	// In-memory store for the duration of a single test
-	const users = new Map<string, User>();
-	// Add a globally-seeded searchable account so tests can find another user
-	const seededUserId = `seed-${genId()}`;
-	const seededUserEmail = 'e2e.test.user@example.com';
-	const seededUser: User = {
-		id: seededUserId,
-		name: 'E2E Test User',
-		email: seededUserEmail,
-		password: 'password'
-	};
-	users.set(seededUserEmail, seededUser);
-	// Add a second global seeded account so there are always at least two accounts
-	const seededUser2Id = `seed-${genId()}`;
-	const seededUser2Email = 'e2e.test.user2@example.com';
-	const seededUser2: User = {
-		id: seededUser2Id,
-		name: 'E2E Second User',
-		email: seededUser2Email,
-		password: 'password'
-	};
-	users.set(seededUser2Email, seededUser2);
-	const conversationsByUser = new Map<string, Array<Conversation>>();
-	const messagesByConversation = new Map<string, Array<Message>>();
-
-	// route handler for user endpoints (delegated to helper)
-	await page.route('**/user/**', async (route: Route) =>
-		userRouteHandler(route, users, conversationsByUser, messagesByConversation)
+	const users = new Map(
+		[owner, existingUser, ...contacts].map((user) => [user.email, { ...user }] as const)
 	);
+	const conversations = new Map<string, ChatApiConversation[]>([
+		[owner.id, seededConversations.map((conversation) => ({ ...conversation }))]
+	]);
 
-	// route handler for chat endpoints (delegated to helper)
-	await page.route('**/chat/**', async (route: Route) =>
-		chatRouteHandler(route, conversationsByUser, messagesByConversation)
-	);
+	await page.route('**/user/**', (route) => handleUserRoute(route, users));
+	await page.route('**/chat/**', (route) => handleChatRoute(route, users, conversations));
 }
 
-// Module-level helper: user route handler extracted from setupMockBackend
-async function userRouteHandler(
-	route: Route,
-	users: Map<string, User>,
-	conversationsByUser: Map<string, Array<Conversation>>,
-	messagesByConversation: Map<string, Array<Message>>
-) {
-	const req = route.request();
-	const url = req.url();
-	const method = req.method().toUpperCase();
+async function handleUserRoute(route: Route, users: Map<string, UserRecord>) {
+	const request = route.request();
+	const { pathname, searchParams } = new URL(request.url());
+	const method = request.method();
 
-	// Delegate to small handlers to reduce cognitive complexity
-	if (
-		await handleUserRegister(
-			route,
-			req,
-			url,
-			method,
-			users,
-			conversationsByUser,
-			messagesByConversation
-		)
-	)
-		return;
-	if (await handleUserLogin(route, req, url, method, users)) return;
-	if (await handleGetCurrentUser(route, req, url, method, users)) return;
-	if (await handleUserSearch(route, url, method, users)) return;
-
-	// Fallback
-	return route.continue();
-}
-
-async function handleUserRegister(
-	route: Route,
-	req: ReturnType<Route['request']>,
-	url: string,
-	method: string,
-	users: Map<string, User>,
-	conversationsByUser: Map<string, Array<Conversation>>,
-	messagesByConversation: Map<string, Array<Message>>
-) {
-	if (!(url.endsWith('/user/register') && method === 'POST')) return false;
-	const body = (await req.postDataJSON()) as Record<string, unknown>;
-	const name = safeToString(body['name'] || body['username'] || '').trim();
-	const email = safeToString(body['email'] || '')
-		.trim()
-		.toLowerCase();
-	const password = safeToString(body['password'] || '');
-	const nameValid = /^[A-Za-z'\-\s]+$/.test(name);
-	if (!nameValid) {
-		await route.fulfill({
-			status: 400,
-			contentType: 'application/json',
-			body: JSON.stringify({
-				status: 400,
-				message: 'Validation failed',
-				errors: [
-					{
-						field: 'name',
-						message: 'Name can only contain letters, spaces, hyphens, and apostrophes'
-					}
-				]
-			})
-		});
-		return true;
-	}
-
-	if (users.has(email)) {
-		await route.fulfill({
-			status: 409,
-			contentType: 'application/json',
-			body: JSON.stringify({ status: 409, message: 'Email already exists' })
-		});
-		return true;
-	}
-
-	const id = `mock-${genId()}`;
-	const user: User = { id, name, email, password };
-	users.set(email, user);
-
-	const now = Date.now();
-	for (let ci = 0; ci < SEED_CONTACTS; ci++) {
-		const contactId = `contact-${genId()}`;
-		const contactEmail = `contact+${ci}+${Date.now()}@example.com`;
-		const contactUser: User = {
-			id: contactId,
-			name: `${name.split(' ')[0]}'s Contact ${ci + 1}`,
-			email: contactEmail,
-			password: 'contactpass'
-		};
-		users.set(contactEmail, contactUser);
-
-		const convId = `conv-${genId()}`;
-		const unreadCount = ci === 0 ? 2 : 0;
-		const conversation: Conversation = {
-			_id: convId,
-			participants: [id, contactId],
-			title: contactUser.name,
-			otherUser: { _id: contactUser.id, username: contactUser.name, email: contactUser.email },
-			lastMessage: {
-				text: `Seeded conversation ${ci + 1}`,
-				timestamp: new Date(now - 60000).toISOString()
-			},
-			unreadCount
-		};
-
-		const listForUser = conversationsByUser.get(id) || [];
-		listForUser.push(conversation);
-		conversationsByUser.set(id, listForUser);
-
-		const listForContact = conversationsByUser.get(contactId) || [];
-		listForContact.push(conversation);
-		conversationsByUser.set(contactId, listForContact);
-
-		const messages: Message[] = [];
-		for (let m = 0; m < MESSAGES_PER_CONV; m++) {
-			const minutesAgo = (MESSAGES_PER_CONV - m) * 5;
-			const ts = new Date(now - minutesAgo * 60 * 1000).toISOString();
-			const fromContact = m % 2 === 0;
-			const senderId = fromContact ? contactUser.id : id;
-			const senderUsername = fromContact ? contactUser.name : name;
-			messages.push({
-				_id: `msg-${genId()}`,
-				senderId,
-				senderUsername,
-				text: `Seeded message ${m + 1} for conv ${ci + 1}`,
-				timestamp: ts
-			});
+	if (pathname === '/user/register' && method === 'POST') {
+		const body = (await request.postDataJSON()) as Record<string, unknown>;
+		const username = String(body.username ?? '')
+			.trim()
+			.toLowerCase();
+		const email = String(body.email ?? '')
+			.trim()
+			.toLowerCase();
+		const password = String(body.password ?? '');
+		if (users.has(email)) {
+			await fulfill(route, 409, { status: 409, message: 'Email already exists' });
+			return;
 		}
-		messagesByConversation.set(convId, messages);
-	}
 
-	await route.fulfill({
-		status: 200,
-		headers: { 'Set-Cookie': `jwt=${id}; Path=/; HttpOnly` },
-		contentType: 'application/json',
-		body: JSON.stringify({
+		const user = { id: 'registered-user', username, email, password } satisfies UserRecord;
+		users.set(email, user);
+		const response = {
 			status: 200,
 			message: 'User registered successfully',
-			data: { id, name, email }
-		})
-	});
-	return true;
-}
-
-async function handleUserLogin(
-	route: Route,
-	req: ReturnType<Route['request']>,
-	url: string,
-	method: string,
-	users: Map<string, User>
-) {
-	if (!(url.endsWith('/user/login') && method === 'POST')) return false;
-	const body = (await req.postDataJSON()) as Record<string, unknown>;
-	const email = safeToString(body['email'] || '')
-		.trim()
-		.toLowerCase();
-	const password = safeToString(body['password'] || '');
-
-	const user = users.get(email);
-	if (user?.password !== password) {
-		await route.fulfill({
-			status: 401,
-			contentType: 'application/json',
-			body: JSON.stringify({ status: 401, message: 'Invalid credentials' })
+			data: publicUser(user)
+		} satisfies UserApiUserResponse;
+		await fulfill(route, 200, response, {
+			'Set-Cookie': `jwt=${user.id}; Path=/; HttpOnly; SameSite=Lax`
 		});
-		return true;
-	}
-
-	await route.fulfill({
-		status: 200,
-		headers: { 'Set-Cookie': `jwt=${user.id}; Path=/; HttpOnly` },
-		contentType: 'application/json',
-		body: JSON.stringify({
-			status: 200,
-			message: 'Login successful',
-			data: { id: user.id, name: user.name, email: user.email }
-		})
-	});
-	return true;
-}
-
-async function handleGetCurrentUser(
-	route: Route,
-	req: ReturnType<Route['request']>,
-	url: string,
-	method: string,
-	users: Map<string, User>
-) {
-	if (!(url.endsWith('/user/me') && method === 'GET')) return false;
-	const cookies = parseCookie(req.headers()['cookie']);
-	const jwt = cookies['jwt'];
-	if (!jwt) {
-		await route.fulfill({
-			status: 401,
-			contentType: 'application/json',
-			body: JSON.stringify({ status: 401, message: 'Unauthorized' })
-		});
-		return true;
-	}
-	const user = Array.from(users.values()).find((u) => u.id === jwt);
-	if (!user) {
-		await route.fulfill({
-			status: 401,
-			contentType: 'application/json',
-			body: JSON.stringify({ status: 401, message: 'Unauthorized' })
-		});
-		return true;
-	}
-	await route.fulfill({
-		status: 200,
-		contentType: 'application/json',
-		body: JSON.stringify({
-			status: 200,
-			data: { id: user.id, username: user.name, email: user.email }
-		})
-	});
-	return true;
-}
-
-async function handleUserSearch(
-	route: Route,
-	url: string,
-	method: string,
-	users: Map<string, User>
-) {
-	if (!(url.includes('/user/search') && method === 'GET')) return false;
-	const q = new URL(url).searchParams.get('q') || '';
-	const results = Array.from(users.values())
-		.filter(
-			(u) =>
-				u.name.toLowerCase().includes(q.toLowerCase()) ||
-				u.email.toLowerCase().includes(q.toLowerCase())
-		)
-		.map((u) => ({ _id: u.id, username: u.name, email: u.email }));
-	await route.fulfill({
-		status: 200,
-		contentType: 'application/json',
-		body: JSON.stringify({ status: 200, data: results })
-	});
-	return true;
-}
-
-// Module-level helper: chat route handler extracted from setupMockBackend
-async function chatRouteHandler(
-	route: Route,
-	conversationsByUser: Map<string, Array<Conversation>>,
-	messagesByConversation: Map<string, Array<Message>>
-) {
-	const req = route.request();
-	const url = req.url();
-	const method = req.method().toUpperCase();
-
-	const cookies = parseCookie(req.headers()['cookie']);
-	const currentUserId = cookies['jwt'] || null;
-	// Delegate to small handlers to reduce complexity
-	if (await handleGetConversations(route, url, method, conversationsByUser, currentUserId)) return;
-	if (
-		await handleGetMessages(
-			route,
-			url,
-			method,
-			conversationsByUser,
-			messagesByConversation,
-			currentUserId
-		)
-	)
 		return;
-	if (
-		await handlePostSend(
-			route,
-			url,
-			method,
-			conversationsByUser,
-			messagesByConversation,
-			currentUserId
-		)
-	)
+	}
+
+	if (pathname === '/user/login' && method === 'POST') {
+		const body = (await request.postDataJSON()) as Record<string, unknown>;
+		const user = users.get(
+			String(body.email ?? '')
+				.trim()
+				.toLowerCase()
+		);
+		if (!user || user.password !== String(body.password ?? '')) {
+			await fulfill(route, 401, { status: 401, message: 'Invalid credentials' });
+			return;
+		}
+
+		const response = { status: 200, message: 'Login successful' } satisfies UserApiStatusResponse;
+		await fulfill(route, 200, response, {
+			'Set-Cookie': `jwt=${user.id}; Path=/; HttpOnly; SameSite=Lax`
+		});
 		return;
+	}
 
-	return route.continue();
-}
-
-async function handleGetConversations(
-	route: Route,
-	url: string,
-	method: string,
-	conversationsByUser: Map<string, Array<Conversation>>,
-	currentUserId: string | null
-) {
-	if (!(url.endsWith('/chat/conversations') && method === 'GET')) return false;
-	if (!currentUserId) {
-		await route.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify({ status: 200, data: [] })
+	if (pathname === '/user/logout' && method === 'POST') {
+		const response = { status: 200, message: 'Logout successful' } satisfies UserApiStatusResponse;
+		await fulfill(route, 200, response, {
+			'Set-Cookie': 'jwt=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax'
 		});
-		return true;
+		return;
 	}
-	const convs = conversationsByUser.get(currentUserId) || [];
-	await route.fulfill({
-		status: 200,
-		contentType: 'application/json',
-		body: JSON.stringify({ status: 200, data: convs })
-	});
-	return true;
-}
 
-async function handleGetMessages(
-	route: Route,
-	url: string,
-	method: string,
-	conversationsByUser: Map<string, Array<Conversation>>,
-	messagesByConversation: Map<string, Array<Message>>,
-	currentUserId: string | null
-) {
-	const messagesMatch = /\/chat\/messages\//.exec(url);
-	if (!(messagesMatch && method === 'GET')) return false;
-	const parts = url.split('/');
-	const last = parts.at(-1) ?? '';
-	if (messagesByConversation.has(last)) {
-		await route.fulfill({
+	const currentUser = authenticatedUser(request, users);
+	if (pathname === '/user/me' && method === 'GET') {
+		if (!currentUser) return unauthorized(route);
+		const response = {
 			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify({ status: 200, data: messagesByConversation.get(last) })
-		});
-		return true;
+			message: 'Current user',
+			data: publicUser(currentUser)
+		} satisfies UserApiUserResponse;
+		await fulfill(route, 200, response);
+		return;
 	}
-	if (currentUserId) {
-		const convs = conversationsByUser.get(currentUserId) || [];
-		const conv = convs.find((c: Conversation) => c.participants.includes(last));
-		if (conv && messagesByConversation.has(conv._id)) {
-			await route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ status: 200, data: messagesByConversation.get(conv._id) })
-			});
-			return true;
-		}
+
+	if (pathname === '/user/search' && method === 'GET') {
+		if (!currentUser) return unauthorized(route);
+		const query = (searchParams.get('q') ?? '').toLowerCase();
+		const data = Array.from(users.values())
+			.filter(
+				(user) =>
+					user.id !== currentUser.id &&
+					(user.username.toLowerCase().includes(query) || user.email.toLowerCase().includes(query))
+			)
+			.map(
+				(user) =>
+					({ _id: user.id, username: user.username, email: user.email }) satisfies UserApiSearchUser
+			);
+		const response = { status: 200, data } satisfies UserApiUserListResponse;
+		await fulfill(route, 200, response);
+		return;
 	}
-	await route.fulfill({
-		status: 200,
-		contentType: 'application/json',
-		body: JSON.stringify({ status: 200, data: [] })
-	});
-	return true;
+
+	await route.continue();
 }
 
-async function handlePostSend(
+async function handleChatRoute(
 	route: Route,
-	url: string,
-	method: string,
-	conversationsByUser: Map<string, Array<Conversation>>,
-	messagesByConversation: Map<string, Array<Message>>,
-	currentUserId: string | null
+	users: Map<string, UserRecord>,
+	conversations: Map<string, ChatApiConversation[]>
 ) {
-	if (!(url.endsWith('/chat/send') && method === 'POST')) return false;
-	const req = route.request();
-	const body = (await req.postDataJSON()) as Record<string, unknown>;
-	const convIdFromBody = safeToString(body['conversationId'] || '');
-	const recipientId = safeToString(body['recipientId'] || body['to'] || '');
-	const text = safeToString(body['text'] || body['message'] || body['content'] || '');
+	const request = route.request();
+	const { pathname, searchParams } = new URL(request.url());
+	const method = request.method();
+	const currentUser = authenticatedUser(request, users);
 
-	let convIdToUse = convIdFromBody;
-	if (!convIdToUse && currentUserId && recipientId) {
-		const convs = conversationsByUser.get(currentUserId) || [];
-		const conv = convs.find((c: Conversation) => c.participants.includes(recipientId));
-		if (conv) convIdToUse = conv._id;
+	if (pathname === '/chat/conversations' && method === 'GET') {
+		if (!currentUser) return unauthorized(route);
+		const response = {
+			status: 200,
+			message: 'Conversations retrieved',
+			data: conversations.get(currentUser.id) ?? []
+		} satisfies ChatApiConversationListResponse;
+		await fulfill(route, 200, response);
+		return;
 	}
 
-	if (!convIdToUse) {
-		if (!currentUserId || !recipientId) {
-			await route.fulfill({
-				status: 400,
-				contentType: 'application/json',
-				body: JSON.stringify({ status: 400, message: 'Missing conversation or recipient' })
-			});
-			return true;
+	const messagesMatch = /^\/chat\/get\/([^/]+)$/.exec(pathname);
+	if (messagesMatch && method === 'GET') {
+		if (!currentUser) return unauthorized(route);
+		const receiverId = decodeURIComponent(messagesMatch[1]);
+		if (!(conversations.get(currentUser.id) ?? []).some((item) => item.id === receiverId)) {
+			await fulfill(route, 404, { status: 404, message: 'Conversation not found' });
+			return;
 		}
-		convIdToUse = `conv-${genId()}`;
-		const newConv: Conversation = {
-			_id: convIdToUse,
-			participants: [String(currentUserId), recipientId],
-			title: 'New Conversation',
-			otherUser: { _id: recipientId },
-			lastMessage: { text, timestamp: new Date().toISOString() },
-			unreadCount: 0
-		};
-		const list = conversationsByUser.get(String(currentUserId)) || [];
-		list.unshift(newConv);
-		conversationsByUser.set(String(currentUserId), list);
+
+		const limit = Number(searchParams.get('limit') ?? 50);
+		const offset = Number(searchParams.get('offset') ?? 0);
+		const response = {
+			status: 200,
+			message: 'Messages retrieved',
+			data: [],
+			pagination: { total: 0, limit, offset, hasMore: false }
+		} satisfies ChatApiMessagesPageResponse;
+		await fulfill(route, 200, response);
+		return;
 	}
 
-	const message: Message = {
-		_id: `msg-${genId()}`,
-		senderId: currentUserId ? String(currentUserId) : undefined,
-		senderUsername: 'You',
-		text,
-		timestamp: new Date().toISOString()
-	};
-	const msgs = messagesByConversation.get(convIdToUse) || [];
-	msgs.push(message);
-	messagesByConversation.set(convIdToUse, msgs);
+	const readMatch = /^\/chat\/messages\/read\/([^/]+)$/.exec(pathname);
+	if (readMatch && method === 'PUT') {
+		if (!currentUser) return unauthorized(route);
+		const senderId = decodeURIComponent(readMatch[1]);
+		const currentConversations = conversations.get(currentUser.id) ?? [];
+		if (!currentConversations.some((item) => item.id === senderId)) {
+			await fulfill(route, 404, { status: 404, message: 'Conversation not found' });
+			return;
+		}
 
-	await route.fulfill({
-		status: 200,
-		contentType: 'application/json',
-		body: JSON.stringify({ status: 200, data: message })
-	});
-	return true;
+		conversations.set(
+			currentUser.id,
+			currentConversations.map((item) =>
+				item.id === senderId ? { ...item, unreadCount: 0 } : item
+			)
+		);
+		const response = {
+			status: 200,
+			message: 'Messages marked as read',
+			data: { modifiedCount: 1 }
+		} satisfies ChatApiMarkReadResponse;
+		await fulfill(route, 200, response);
+		return;
+	}
+
+	await route.continue();
 }
 
 export default setupMockBackend;
