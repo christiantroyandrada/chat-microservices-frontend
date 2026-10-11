@@ -14,8 +14,8 @@
 #               OR: docker build --build-arg BUILD_ENV=production .
 ##############################################################################
 
-# Build stage - use Debian 12 (bookworm) for better security updates
-FROM node:22-bookworm-slim AS builder
+# Match the builder libc to the production runtime.
+FROM node:22-trixie-slim@sha256:154ba2f4d6fec323d28e4f4bb86bba4677f1223391a1979cf521304e03a98dfa AS builder
 
 # OCI Image Labels for traceability and security compliance
 LABEL org.opencontainers.image.title="Chat Frontend" \
@@ -24,7 +24,7 @@ LABEL org.opencontainers.image.title="Chat Frontend" \
       org.opencontainers.image.source="https://github.com/christiantroyandrada/chat-microservices-frontend" \
       org.opencontainers.image.documentation="https://github.com/christiantroyandrada/chat-microservices-frontend/blob/master/README.md" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.base.name="gcr.io/distroless/nodejs22-debian12:nonroot"
+      org.opencontainers.image.base.name="gcr.io/distroless/nodejs22-debian13:nonroot"
 
 # Install pnpm (pinned to match pnpm-lock.yaml lockfileVersion 9.0)
 RUN npm install -g pnpm@9.11.0
@@ -79,7 +79,7 @@ RUN set -e; \
     rm -rf /root/.npm /root/.local/share/pnpm /tmp/*
 
 # Production stage - use distroless for security
-FROM gcr.io/distroless/nodejs22-debian12:nonroot@sha256:c9a583e5754af75089ff573bff654001d882f02c923e18c4b8e365f12ac2aede
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:ec2313763dd43931543bd03830466e0c409ce73a487e8d46f10db72d3b816c1c
 
 WORKDIR /usr/src/app
 

@@ -196,8 +196,8 @@ describe('frontend immutable deployment workflow', () => {
 		const installIndex = buildAndTest.steps.findIndex((step) =>
 			step.run?.includes('pnpm install --frozen-lockfile')
 		);
-		const deploymentTestIndex = buildAndTest.steps.findIndex(
-			(step) => step.run === 'node --test scripts/__tests__/deployment-workflow.test.mjs'
+		const deploymentTestIndex = buildAndTest.steps.findIndex((step) =>
+			/^node --test scripts\/__tests__\/deployment-workflow\.test\.mjs(?:\s|$)/.test(step.run ?? '')
 		);
 		assert.ok(deploymentTestIndex > installIndex);
 	});

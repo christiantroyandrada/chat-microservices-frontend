@@ -1,5 +1,5 @@
 {
-	"backendCommit": "4b06b143e62ba433d50d1260f68e1599c9c10df4",
+	"backendCommit": "0d92ed12f9ef0aab8534fd3005357df2db3bf161",
 	"generatorVersion": 1,
 	"backendSources": {
 		"chat-service/openapi.json": "6545bf0b1fb8b955274777c9a0af298dca25ffd1dc902aa04a67e546ed433776",
