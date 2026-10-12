@@ -67,7 +67,7 @@ test('Sonar classifies deployment fixtures as tests while retaining contract scr
 	assert.equal(properties['sonar.tests'], 'tests,scripts/__tests__');
 	assert.equal(properties['sonar.test.inclusions'], 'tests/**,scripts/__tests__/**');
 	assert.equal(properties['sonar.exclusions'], 'tests/**,test/**,__mocks__/**,mocks/**');
-	assert.ok(properties['sonar.sources'] === undefined || properties['sonar.sources'] === '.');
+	assert.equal(properties['sonar.sources'], '.');
 });
 
 test('Sonar receives the generated TypeScript config from the tested build', () => {
@@ -78,6 +78,79 @@ test('Sonar receives the generated TypeScript config from the tested build', () 
 	assert.equal(upload.with['if-no-files-found'], 'error');
 	assert.equal(download.with.name, upload.with.name);
 	assert.equal(download.with.path, '.svelte-kit/');
+});
+
+test('Sonar rejects missing production and coverage measurements before publication', () => {
+	const ci = workflow('ci-main.yml');
+	const validate = auditStep('ci-main.yml', 'sonar', 'Verify production analysis');
+	assert.equal(validate['continue-on-error'], undefined);
+	assert.equal(validate.shell, 'bash');
+	const scanIndex = ci.jobs.sonar.steps.findIndex((step) => step.name === 'SonarCloud Scan');
+	assert.ok(scanIndex >= 0);
+	assert.ok(ci.jobs.sonar.steps.findIndex((step) => step.name === validate.name) > scanIndex);
+	for (const [measures, curlStatus, accepted] of [
+		[
+			[
+				{ metric: 'ncloc', value: '100' },
+				{ metric: 'coverage', value: '85.1' }
+			],
+			0,
+			true
+		],
+		[[], 0, false],
+		[
+			[
+				{ metric: 'ncloc', value: '0' },
+				{ metric: 'coverage', value: '85.1' }
+			],
+			0,
+			false
+		],
+		[[{ metric: 'ncloc', value: '100' }], 0, false],
+		[
+			[
+				{ metric: 'ncloc', value: '100' },
+				{ metric: 'coverage', value: 'invalid' }
+			],
+			0,
+			false
+		],
+		[
+			[
+				{ metric: 'ncloc', value: '100' },
+				{ metric: 'coverage', value: '85.1' }
+			],
+			22,
+			false
+		]
+	]) {
+		const result = spawnSync(
+			'bash',
+			[
+				'-e',
+				'-o',
+				'pipefail',
+				'-c',
+				`curl() { printf '%s' "$SONAR_RESPONSE"; return "$CURL_STATUS"; }; ${validate.run}`
+			],
+			{
+				encoding: 'utf8',
+				env: {
+					...process.env,
+					SONAR_RESPONSE: JSON.stringify({ component: { measures } }),
+					CURL_STATUS: String(curlStatus),
+					SONAR_TOKEN: 'fixture',
+					SONAR_PROJECT_KEY: 'fixture',
+					GITHUB_REF_NAME: 'master'
+				}
+			}
+		);
+		assert.equal(
+			result.status === 0,
+			accepted,
+			JSON.stringify({ measures, curlStatus, stdout: result.stdout, stderr: result.stderr })
+		);
+	}
 });
 
 test('coverage validation rejects absent and empty reports before accepting a real report', () => {

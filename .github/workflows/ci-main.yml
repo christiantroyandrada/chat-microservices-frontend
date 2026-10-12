@@ -126,11 +126,26 @@ jobs:
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
             -Dsonar.qualitygate.wait=true
+            -Dsonar.sources=.
             -Dsonar.tests=tests,scripts/__tests__
             -Dsonar.test.inclusions=tests/**,scripts/__tests__/**
             -Dsonar.exclusions=tests/**,test/**,__mocks__/**,mocks/**
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Verify production analysis
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+        run: |
+          curl --fail --silent --show-error --max-time 30 --get \
+            --header "Authorization: Bearer $SONAR_TOKEN" \
+            --data-urlencode "component=$SONAR_PROJECT_KEY" \
+            --data-urlencode "branch=$GITHUB_REF_NAME" \
+            --data-urlencode "metricKeys=ncloc,coverage" \
+            https://sonarcloud.io/api/measures/component |
+            jq -e '.component.measures | map({key: .metric, value: (.value | tonumber)}) | from_entries | .ncloc > 0 and .coverage >= 0 and .coverage <= 100'
 
   # Build and push Docker image to GHCR
   docker-build:
