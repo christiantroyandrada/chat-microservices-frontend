@@ -534,6 +534,55 @@ describe('contract publication atomicity', () => {
 		({ tempRoot, scriptsDir, backendDir, manifestPath } = fixture);
 	});
 
+	it('importing contract commands does not run the CLI or change exit status', async () => {
+		const previousExitCode = process.exitCode;
+		try {
+			await import('../../scripts/sync-api-contracts.mjs');
+			await import('../../scripts/gen-api-types.mjs');
+			expect(process.exitCode).toBe(previousExitCode);
+		} finally {
+			process.exitCode = previousExitCode;
+		}
+	});
+
+	it('runs imported publication and generation only in the supplied frontend directory', async () => {
+		const sync = await import('../../scripts/sync-api-contracts.mjs');
+		const generation = await import('../../scripts/gen-api-types.mjs');
+		expect(typeof generation.main).toBe('function');
+		await sync.main(['--backend-dir', backendDir], tempRoot);
+		const commit = execFileSync('/usr/bin/git', ['rev-parse', 'HEAD'], {
+			cwd: backendDir,
+			encoding: 'utf8'
+		}).trim();
+		const source = JSON.parse(readFileSync(resolve(tempRoot, 'contracts/source.json'), 'utf8'));
+		expect(source.backendCommit).toBe(commit);
+		const before = snapshotBytes(targetPathsForRoot(tempRoot));
+		await generation.main([], tempRoot);
+		initializeFrontendGit(tempRoot);
+		await generation.main(['--check'], tempRoot);
+		await sync.main(['--backend-dir', backendDir], tempRoot);
+		expectByteMap(targetPathsForRoot(tempRoot), before);
+	});
+
+	it('imported check rejects drift without writing and normal generation restores committed bytes', async () => {
+		const sync = await import('../../scripts/sync-api-contracts.mjs');
+		const generation = await import('../../scripts/gen-api-types.mjs');
+		expect(typeof generation.main).toBe('function');
+		await sync.main(['--backend-dir', backendDir], tempRoot);
+		initializeFrontendGit(tempRoot);
+		const operations = resolve(tempRoot, 'src/lib/generated/api.operations.ts');
+		const original = readFileSync(operations);
+		writeFileSync(operations, 'drift\n');
+		const before = snapshotBytes(targetPathsForRoot(tempRoot));
+		await expect(generation.main(['--check'], tempRoot)).rejects.toThrow('Modified artifact');
+		expectByteMap(targetPathsForRoot(tempRoot), before);
+		await generation.main([], tempRoot);
+		expect(readFileSync(operations)).toEqual(original);
+		await generation.main(['--check'], tempRoot);
+		await expect(generation.main(['--unknown'], tempRoot)).rejects.toThrow('Usage:');
+		await expect(sync.main([], tempRoot)).rejects.toThrow('Usage:');
+	});
+
 	it('sync reads committed backend blobs and rejects dirty backend contract while ignoring unrelated dirty file', () => {
 		const unrelatedFile = resolve(backendDir, 'unrelated.txt');
 		writeFileSync(unrelatedFile, 'dirty');
@@ -556,6 +605,27 @@ describe('contract publication atomicity', () => {
 
 		writeFileSync(userSpecPath, original);
 		rmSync(unrelatedFile);
+	});
+
+	it.each(['sync', 'check'])('does not execute PATH-injected Git during %s', (operation) => {
+		if (operation === 'check') {
+			expectSuccessful(
+				runNode(resolve(scriptsDir, 'sync-api-contracts.mjs'), ['--backend-dir', backendDir])
+			);
+			initializeFrontendGit(tempRoot);
+		}
+		const bin = makeTmpDir('contract-untrusted-path-');
+		const marker = join(bin, 'executed');
+		writeFileSync(join(bin, 'git'), `#!/bin/sh\nprintf hijacked > '${marker}'\nexit 9\n`, {
+			mode: 0o755
+		});
+		const script = operation === 'sync' ? 'sync-api-contracts.mjs' : 'gen-api-types.mjs';
+		const args = operation === 'sync' ? ['--backend-dir', backendDir] : ['--check'];
+		const result = runNode(resolve(scriptsDir, script), args, {
+			PATH: `${bin}:${process.env.PATH}`
+		});
+		expect(existsSync(marker)).toBe(false);
+		expectSuccessful(result);
 	});
 
 	it('repeating valid sync/generation is deterministic and produces no Git diff', () => {
@@ -1084,10 +1154,7 @@ describe('contract publication fix round 5 regressions', () => {
 
 		const lockPath = resolve(fixture.tempRoot, '.contract-publication.lock');
 		const open = fs.openSync;
-		const savedArgv = process.argv;
-		const savedExitCode = process.exitCode;
 		let intercepted = false;
-		let generatorExit = 0;
 		try {
 			fs.openSync = (path, flags, ...rest) => {
 				if (
@@ -1109,18 +1176,14 @@ describe('contract publication fix round 5 regressions', () => {
 				return open(path, flags, ...rest);
 			};
 			syncBuiltinESMExports();
-			process.argv = [process.execPath, generationScript];
-			await import(pathToFileURL(generationScript).href);
-			generatorExit = Number(process.exitCode ?? 0);
+			const generation = await import(pathToFileURL(generationScript).href);
+			await expect(generation.main([])).rejects.toThrow('Publication dependency changed');
 		} finally {
 			fs.openSync = open;
 			syncBuiltinESMExports();
-			process.argv = savedArgv;
-			process.exitCode = savedExitCode;
 		}
 
 		expect(intercepted).toBe(true);
-		expect(generatorExit).not.toBe(0);
 		for (const path of targetPaths) {
 			const relativePath =
 				path === resolve(fixture.tempRoot, MANIFEST_RELATIVE_PATH)

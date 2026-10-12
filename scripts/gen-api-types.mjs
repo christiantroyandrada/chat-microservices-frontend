@@ -21,10 +21,17 @@ import { LOCK_FILENAME, formatError, publishSnapshot } from './lib/atomic-contra
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+/** @typedef {import('./lib/openapi-to-types.mjs').OpenApiSpec} OpenApiSpec */
+/** @typedef {import('./lib/contract-snapshot.mjs').ContractSource} ContractSource */
+/** @typedef {{artifacts: Record<string, string>, manifest: string}} SnapshotPaths */
+/** @typedef {{bytes: Record<string, Buffer>, manifest: import('./lib/contract-snapshot.mjs').SnapshotManifest, manifestBytes: Buffer, chatSpec: OpenApiSpec, source: ContractSource, userSpec: OpenApiSpec, paths: SnapshotPaths}} SnapshotState */
+/** @typedef {Record<string, Buffer>} GeneratedArtifacts */
+
 function usageError() {
 	return new Error('Usage: node scripts/gen-api-types.mjs [--check]');
 }
 
+/** @param {string[]} args */
 function parseArgs(args) {
 	if (args.length > 1 || (args.length === 1 && args[0] !== '--check')) {
 		throw usageError();
@@ -32,50 +39,67 @@ function parseArgs(args) {
 	return { check: args[0] === '--check' };
 }
 
+/** @param {string} path @param {string} relativePath */
 function readArtifact(path, relativePath) {
 	if (!existsSync(path)) throw new Error(`Missing artifact: ${relativePath}`);
 	try {
 		return readFileSync(path);
 	} catch (error) {
-		throw new Error(`Failed to read artifact ${relativePath}: ${error.message}`, { cause: error });
+		throw new Error(
+			`Failed to read artifact ${relativePath}: ${error instanceof Error ? error.message : String(error)}`,
+			{ cause: error }
+		);
 	}
 }
 
+/** @param {string} label @param {unknown} error */
 function commandFailure(label, error) {
 	return new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`, {
 		cause: error
 	});
 }
 
+/** @param {string} rootPath @param {string} relativePath */
 function assertTracked(rootPath, relativePath) {
 	try {
-		execFileSync('git', ['-C', rootPath, 'ls-files', '--error-unmatch', '--', relativePath], {
-			stdio: ['ignore', 'pipe', 'pipe']
-		});
+		execFileSync(
+			'/usr/bin/git',
+			['-C', rootPath, 'ls-files', '--error-unmatch', '--', relativePath],
+			{
+				stdio: ['ignore', 'pipe', 'pipe']
+			}
+		);
 	} catch (error) {
 		throw commandFailure(`Artifact is not tracked: ${relativePath}`, error);
 	}
 }
 
-function validateCheckFiles(paths) {
+/** @param {SnapshotPaths} paths @param {string} rootPath */
+function validateCheckFiles(paths, rootPath) {
 	for (const relativePath of [...FRONTEND_ARTIFACT_PATHS, MANIFEST_RELATIVE_PATH]) {
 		const path =
 			relativePath === MANIFEST_RELATIVE_PATH ? paths.manifest : paths.artifacts[relativePath];
 		if (!existsSync(path)) {
 			try {
-				assertTracked(root, relativePath);
+				assertTracked(rootPath, relativePath);
 			} catch (error) {
-				if (error.cause?.status !== undefined) {
+				if (
+					error instanceof Error &&
+					error.cause &&
+					typeof error.cause === 'object' &&
+					'status' in error.cause
+				) {
 					throw new Error(`Missing artifact: ${relativePath}`, { cause: error });
 				}
 				throw error;
 			}
 			throw new Error(`Deleted tracked artifact: ${relativePath}`);
 		}
-		assertTracked(root, relativePath);
+		assertTracked(rootPath, relativePath);
 	}
 }
 
+/** @param {OpenApiSpec} userSpec @param {OpenApiSpec} chatSpec @param {ContractSource} source */
 function renderGenerated(userSpec, chatSpec, source) {
 	let types;
 	try {
@@ -97,6 +121,7 @@ function renderGenerated(userSpec, chatSpec, source) {
 	};
 }
 
+/** @param {SnapshotPaths} paths */
 function loadSnapshot(paths) {
 	const bytes = Object.fromEntries(
 		COPIED_CONTRACT_PATHS.map((relativePath) => [
@@ -105,16 +130,20 @@ function loadSnapshot(paths) {
 		])
 	);
 	const manifestBytes = readArtifact(paths.manifest, 'contracts/contract-snapshot.manifest.json');
-	const chatSpec = parseJsonBytes(
-		bytes['contracts/chat-service.openapi.json'],
-		'contracts/chat-service.openapi.json'
+	const chatSpec = /** @type {OpenApiSpec} */ (
+		parseJsonBytes(
+			bytes['contracts/chat-service.openapi.json'],
+			'contracts/chat-service.openapi.json'
+		)
 	);
 	const source = validateSource(
 		parseJsonBytes(bytes['contracts/source.json'], 'contracts/source.json')
 	);
-	const userSpec = parseJsonBytes(
-		bytes['contracts/user-service.openapi.json'],
-		'contracts/user-service.openapi.json'
+	const userSpec = /** @type {OpenApiSpec} */ (
+		parseJsonBytes(
+			bytes['contracts/user-service.openapi.json'],
+			'contracts/user-service.openapi.json'
+		)
 	);
 	const manifest = validateManifest(
 		parseJsonBytes(manifestBytes, 'contracts/contract-snapshot.manifest.json')
@@ -140,6 +169,7 @@ function loadSnapshot(paths) {
 	return { bytes, manifest, manifestBytes, chatSpec, source, userSpec };
 }
 
+/** @param {SnapshotState} state */
 function validateRetainedInputs(state) {
 	for (const relativePath of COPIED_CONTRACT_PATHS) {
 		const expectedHash = state.manifest.frontendArtifacts[relativePath];
@@ -152,6 +182,7 @@ function validateRetainedInputs(state) {
 	}
 }
 
+/** @param {SnapshotState} state @param {GeneratedArtifacts} generated */
 function frontendHashes(state, generated) {
 	return Object.fromEntries(
 		FRONTEND_ARTIFACT_PATHS.map((relativePath) => {
@@ -164,6 +195,7 @@ function frontendHashes(state, generated) {
 	);
 }
 
+/** @param {SnapshotState} state @param {GeneratedArtifacts} generated */
 async function checkSnapshot(state, generated) {
 	const expectedGenerated = {
 		[GENERATED_ARTIFACT_PATHS[0]]: generated[GENERATED_ARTIFACT_PATHS[0]],
@@ -196,7 +228,8 @@ async function checkSnapshot(state, generated) {
 	}
 }
 
-async function publishGenerated(state, generated) {
+/** @param {SnapshotState} state @param {GeneratedArtifacts} generated @param {string} rootPath */
+async function publishGenerated(state, generated, rootPath) {
 	const manifestContent = await renderSnapshotManifest(
 		{
 			backendCommit: state.manifest.backendCommit,
@@ -206,7 +239,7 @@ async function publishGenerated(state, generated) {
 		state.paths.manifest
 	);
 	publishSnapshot({
-		lockPath: resolve(root, LOCK_FILENAME),
+		lockPath: resolve(rootPath, LOCK_FILENAME),
 		artifacts: [
 			{
 				targetPath: state.paths.artifacts[GENERATED_ARTIFACT_PATHS[0]],
@@ -229,13 +262,13 @@ async function publishGenerated(state, generated) {
 	});
 }
 
-async function main(args = process.argv.slice(2)) {
+export async function main(args = process.argv.slice(2), rootPath = root) {
 	const { check } = parseArgs(args);
-	const paths = resolveSnapshotPaths(root);
+	const paths = resolveSnapshotPaths(rootPath);
 	if (check) {
-		const lockPath = resolve(root, LOCK_FILENAME);
+		const lockPath = resolve(rootPath, LOCK_FILENAME);
 		if (existsSync(lockPath)) throw new Error(`Publication lock exists: ${lockPath}`);
-		validateCheckFiles(paths);
+		validateCheckFiles(paths, rootPath);
 	}
 	const state = { ...loadSnapshot(paths), paths };
 	if (!check) validateRetainedInputs(state);
@@ -244,12 +277,14 @@ async function main(args = process.argv.slice(2)) {
 		await checkSnapshot(state, generated);
 		return;
 	}
-	await publishGenerated(state, generated);
+	await publishGenerated(state, generated, rootPath);
 }
 
-try {
-	await main();
-} catch (error) {
-	console.error(formatError(error));
-	process.exitCode = 1;
+if (import.meta.main) {
+	try {
+		await main();
+	} catch (error) {
+		console.error(formatError(error));
+		process.exitCode = 1;
+	}
 }

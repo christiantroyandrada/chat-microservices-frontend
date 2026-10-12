@@ -18,24 +18,35 @@ import { LOCK_FILENAME, formatError, publishSnapshot } from './lib/atomic-contra
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+/** @typedef {import('./lib/contract-snapshot.mjs').BackendSource} BackendSource */
+/** @typedef {import('./lib/openapi-to-types.mjs').OpenApiSpec} OpenApiSpec */
+/** @typedef {{rawBytes: Buffer, document: unknown}} BackendDocument */
+/** @typedef {{backendCommit: string, sources: Record<string, BackendDocument>}} BackendSnapshot */
+/** @typedef {{artifacts: Record<string, string>, manifest: string}} SnapshotPaths */
+/** @typedef {{beforeSourceReads?: (value: {backendCommit: string}) => void}} SnapshotHooks */
+/** @typedef {Record<string, Buffer>} ArtifactContents */
+
 function usageError() {
 	return new Error('Usage: node scripts/sync-api-contracts.mjs --backend-dir <path>');
 }
 
+/** @param {string[]} args */
 function parseArgs(args) {
 	if (args.length !== 2 || args[0] !== '--backend-dir') throw usageError();
 	return { backendDir: resolve(args[1]) };
 }
 
+/** @param {string} label @param {unknown} error */
 function commandFailure(label, error) {
 	return new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`, {
 		cause: error
 	});
 }
 
+/** @param {string} backendDir @param {string[]} args @param {string} label @returns {string} */
 function runGit(backendDir, args, label) {
 	try {
-		return execFileSync('git', ['-C', backendDir, ...args], {
+		return execFileSync('/usr/bin/git', ['-C', backendDir, ...args], {
 			encoding: 'utf8',
 			stdio: ['ignore', 'pipe', 'pipe']
 		});
@@ -44,28 +55,39 @@ function runGit(backendDir, args, label) {
 	}
 }
 
+/** @param {string} backendDir @param {string} backendCommit @param {string} backendPath @returns {Buffer} */
 function readGitBlob(backendDir, backendCommit, backendPath) {
 	try {
-		return execFileSync('git', ['-C', backendDir, 'show', `${backendCommit}:${backendPath}`], {
-			stdio: ['ignore', 'pipe', 'pipe']
-		});
+		return execFileSync(
+			'/usr/bin/git',
+			['-C', backendDir, 'show', `${backendCommit}:${backendPath}`],
+			{
+				stdio: ['ignore', 'pipe', 'pipe']
+			}
+		);
 	} catch (error) {
 		throw commandFailure(`Failed to read committed backend blob ${backendPath}`, error);
 	}
 }
 
+/** @param {string} backendDir */
 function assertBackendRepository(backendDir) {
 	try {
-		const topLevel = execFileSync('git', ['-C', backendDir, 'rev-parse', '--show-toplevel'], {
-			encoding: 'utf8',
-			stdio: ['ignore', 'pipe', 'pipe']
-		});
+		const topLevel = execFileSync(
+			'/usr/bin/git',
+			['-C', backendDir, 'rev-parse', '--show-toplevel'],
+			{
+				encoding: 'utf8',
+				stdio: ['ignore', 'pipe', 'pipe']
+			}
+		);
 		if (topLevel.trim().length === 0) throw new Error('empty repository root');
 	} catch (error) {
 		throw commandFailure(`Backend directory is not a Git repository: ${backendDir}`, error);
 	}
 }
 
+/** @param {string} backendDir @param {string} backendPath */
 function backendPathExists(backendDir, backendPath) {
 	const path = resolve(backendDir, backendPath);
 	try {
@@ -75,6 +97,7 @@ function backendPathExists(backendDir, backendPath) {
 	}
 }
 
+/** @param {string} backendDir @param {string} backendPath */
 function assertTrackedBackendPath(backendDir, backendPath) {
 	try {
 		runGit(
@@ -87,6 +110,7 @@ function assertTrackedBackendPath(backendDir, backendPath) {
 	}
 }
 
+/** @param {string} backendDir @param {string} backendPath */
 function backendStatus(backendDir, backendPath) {
 	return runGit(
 		backendDir,
@@ -95,6 +119,7 @@ function backendStatus(backendDir, backendPath) {
 	).trim();
 }
 
+/** @param {string} backendDir @param {string} backendPath */
 function assertCleanBackendPath(backendDir, backendPath) {
 	const status = backendStatus(backendDir, backendPath);
 	if (status.length === 0) return;
@@ -104,6 +129,7 @@ function assertCleanBackendPath(backendDir, backendPath) {
 	throw new Error(`Dirty backend contract: ${backendPath}`);
 }
 
+/** @param {string} backendDir @param {string} backendCommit @param {BackendSource} source */
 function readBackendSource(backendDir, backendCommit, source) {
 	assertTrackedBackendPath(backendDir, source.backendPath);
 	if (!backendPathExists(backendDir, source.backendPath)) {
@@ -117,6 +143,7 @@ function readBackendSource(backendDir, backendCommit, source) {
 	return { rawBytes, document };
 }
 
+/** @param {string} backendDir @param {SnapshotHooks} [hooks] */
 export function readBackendSnapshot(backendDir, hooks = {}) {
 	assertBackendRepository(backendDir);
 	const backendCommit = runGit(
@@ -138,6 +165,7 @@ export function readBackendSnapshot(backendDir, hooks = {}) {
 	return { backendCommit, sources };
 }
 
+/** @param {string} targetPath @param {() => string} render */
 function renderGeneratedArtifact(targetPath, render) {
 	try {
 		return Buffer.from(render());
@@ -146,6 +174,7 @@ function renderGeneratedArtifact(targetPath, render) {
 	}
 }
 
+/** @param {BackendSnapshot} snapshot @param {SnapshotPaths} paths @returns {Promise<ArtifactContents>} */
 async function buildArtifactContents(snapshot, paths) {
 	const backendSources = Object.fromEntries(
 		BACKEND_SOURCES.map(({ backendPath }) => [
@@ -158,8 +187,12 @@ async function buildArtifactContents(snapshot, paths) {
 		generatorVersion: GENERATOR_VERSION,
 		backendSources
 	};
-	const chatDocument = snapshot.sources['chat-service/openapi.json'].document;
-	const userDocument = snapshot.sources['user-service/openapi.json'].document;
+	const chatDocument = /** @type {OpenApiSpec} */ (
+		snapshot.sources['chat-service/openapi.json'].document
+	);
+	const userDocument = /** @type {OpenApiSpec} */ (
+		snapshot.sources['user-service/openapi.json'].document
+	);
 	const generatedTypes = renderGeneratedArtifact(
 		paths.artifacts['src/lib/generated/api.types.ts'],
 		() => generateApiTypes({ userSpec: userDocument, chatSpec: chatDocument, source })
@@ -187,6 +220,7 @@ async function buildArtifactContents(snapshot, paths) {
 	};
 }
 
+/** @param {BackendSnapshot} snapshot @param {ArtifactContents} artifactContents */
 function createManifestInput(snapshot, artifactContents) {
 	const frontendArtifacts = Object.fromEntries(
 		FRONTEND_ARTIFACT_PATHS.map((path) => [path, hashBytes(artifactContents[path])])
@@ -203,8 +237,9 @@ function createManifestInput(snapshot, artifactContents) {
 	};
 }
 
-async function publishFrontendSnapshot(snapshot) {
-	const paths = resolveSnapshotPaths(root);
+/** @param {BackendSnapshot} snapshot @param {string} rootPath */
+async function publishFrontendSnapshot(snapshot, rootPath) {
+	const paths = resolveSnapshotPaths(rootPath);
 	const artifactContents = await buildArtifactContents(snapshot, paths);
 	const manifestContent = await renderSnapshotManifest(
 		createManifestInput(snapshot, artifactContents),
@@ -216,22 +251,24 @@ async function publishFrontendSnapshot(snapshot) {
 	}));
 
 	publishSnapshot({
-		lockPath: resolve(root, LOCK_FILENAME),
+		lockPath: resolve(rootPath, LOCK_FILENAME),
 		artifacts,
 		manifestPath: paths.manifest,
 		manifestContent
 	});
 }
 
-export async function main(args = process.argv.slice(2)) {
+export async function main(args = process.argv.slice(2), rootPath = root) {
 	const { backendDir } = parseArgs(args);
 	const snapshot = readBackendSnapshot(backendDir);
-	await publishFrontendSnapshot(snapshot);
+	await publishFrontendSnapshot(snapshot, rootPath);
 }
 
-try {
-	await main();
-} catch (error) {
-	console.error(formatError(error));
-	process.exitCode = 1;
+if (import.meta.main) {
+	try {
+		await main();
+	} catch (error) {
+		console.error(formatError(error));
+		process.exitCode = 1;
+	}
 }

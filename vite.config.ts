@@ -1,6 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
@@ -41,9 +42,10 @@ export default defineConfig({
 			reporter: ['lcovonly', 'lcov', 'text', 'json', 'html'],
 			reportsDirectory: 'coverage',
 			all: true,
-			include: ['src/**/*.{ts,js,svelte}'],
+			include: ['src/**/*.{ts,js,svelte}', 'scripts/**/*.mjs'],
 			exclude: [
 				'tests/**',
+				'scripts/__tests__/**',
 				'node_modules/**',
 				'src/**/*.d.ts',
 				'src/**/types.ts',
@@ -51,8 +53,6 @@ export default defineConfig({
 				'src/**/*.test.ts',
 				'src/lib/types/**',
 				'src/**/index.{ts,js}',
-				// Service worker — browser-only runtime, not unit-testable
-				'src/service-worker.ts',
 				// Observability infrastructure — prom-client registry setup and /metrics
 				// endpoint. Covered by integration/e2e, not unit tests.
 				'src/lib/server/metrics.ts',
@@ -98,7 +98,10 @@ export default defineConfig({
 					name: 'server',
 					environment: 'node',
 					include: ['tests/unit/**/*.{test,spec}.{js,ts}'],
-					exclude: ['tests/unit/**/*.svelte.{test,spec}.{js,ts}'],
+					exclude: [
+						'tests/unit/**/*.svelte.{test,spec}.{js,ts}',
+						'tests/unit/service-worker.test.ts'
+					],
 					// Pool options to ensure proper cleanup - use forks in CI for better cleanup
 					pool: 'forks',
 					poolOptions: {
@@ -107,6 +110,20 @@ export default defineConfig({
 							isolate: true
 						}
 					}
+				}
+			},
+			{
+				resolve: {
+					alias: {
+						'$service-worker': fileURLToPath(
+							new URL('./tests/fixtures/service-worker-assets.ts', import.meta.url)
+						)
+					}
+				},
+				test: {
+					name: 'service-worker',
+					environment: 'node',
+					include: ['tests/unit/service-worker.test.ts']
 				}
 			}
 		]

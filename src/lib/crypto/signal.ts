@@ -73,7 +73,7 @@ export function isSignalInitialized(): boolean {
  */
 export async function initSignal(userId?: string): Promise<void> {
 	// If there's an ongoing initialization, wait for it to complete
-	if (initializationPromise) {
+	if (initializationPromise !== null) {
 		logger.info('[Signal] Waiting for ongoing initialization to complete...');
 		await initializationPromise;
 		if (userId && userId !== currentUserId) {
@@ -288,7 +288,7 @@ export async function initSignalWithRestore(
 	apiBase: string,
 	encryptionPassword?: string
 ): Promise<boolean> {
-	if (restorePromise) {
+	if (restorePromise !== null) {
 		logger.info('[Signal] Waiting for ongoing restore to complete...');
 		return await restorePromise;
 	}

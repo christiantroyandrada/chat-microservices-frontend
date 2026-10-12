@@ -38,7 +38,7 @@ function createAuthStore() {
 			}
 
 			// If already initializing, wait for existing init to complete
-			if (initPromise) {
+			if (initPromise !== null) {
 				return initPromise;
 			}
 

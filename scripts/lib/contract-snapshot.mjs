@@ -61,9 +61,8 @@ function isRecord(value) {
  */
 function expectExactKeys(value, keys, label) {
 	if (!isRecord(value)) throw new Error(`${label} must be an object`);
-	const actual = Object.keys(value).sort();
-	const expected = keys.slice().sort();
-	if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+	const actual = Object.keys(value);
+	if (actual.length !== keys.length || actual.some((key) => !keys.includes(key))) {
 		throw new Error(`${label} must contain exactly: ${keys.join(', ')}`);
 	}
 }

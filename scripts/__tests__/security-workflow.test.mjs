@@ -47,6 +47,39 @@ test('Sonar requires coverage and waits for the evaluated quality gate', () => {
 	);
 });
 
+test('registry writes are granted only to the image publication job', () => {
+	const ci = workflow('ci-main.yml');
+	for (const [name, job] of Object.entries(ci.jobs)) {
+		const permissions = job.permissions ?? ci.permissions;
+		assert.equal(
+			permissions.packages ?? 'none',
+			name === 'docker-build' ? 'write' : name === 'deploy' ? 'read' : 'none'
+		);
+		assert.equal(permissions.contents, 'read');
+	}
+});
+
+test('Sonar classifies deployment fixtures as tests while retaining contract scripts as sources', () => {
+	const args = auditStep('ci-main.yml', 'sonar', 'SonarCloud Scan').with.args;
+	const properties = Object.fromEntries(
+		[...args.matchAll(/-D([^=\s]+)=([^\s]+)/g)].map((match) => [match[1], match[2]])
+	);
+	assert.equal(properties['sonar.tests'], 'tests,scripts/__tests__');
+	assert.equal(properties['sonar.test.inclusions'], 'tests/**,scripts/__tests__/**');
+	assert.equal(properties['sonar.exclusions'], 'tests/**,test/**,__mocks__/**,mocks/**');
+	assert.ok(properties['sonar.sources'] === undefined || properties['sonar.sources'] === '.');
+});
+
+test('Sonar receives the generated TypeScript config from the tested build', () => {
+	const upload = auditStep('ci-main.yml', 'build-and-test', 'Upload Sonar TypeScript config');
+	const download = auditStep('ci-main.yml', 'sonar', 'Download Sonar TypeScript config');
+	assert.equal(upload.with.path, '.svelte-kit/tsconfig.json');
+	assert.equal(upload.with['include-hidden-files'], true);
+	assert.equal(upload.with['if-no-files-found'], 'error');
+	assert.equal(download.with.name, upload.with.name);
+	assert.equal(download.with.path, '.svelte-kit/');
+});
+
 test('coverage validation rejects absent and empty reports before accepting a real report', () => {
 	const validate = auditStep('ci-main.yml', 'sonar', 'Validate coverage file');
 	const directory = mkdtempSync(join(tmpdir(), 'frontend-coverage-'));
@@ -60,6 +93,9 @@ test('coverage validation rejects absent and empty reports before accepting a re
 			join(directory, 'coverage/lcov.info'),
 			'TN:\nSF:src/lib/services/api.ts\nDA:1,1\nend_of_record\n'
 		);
+		assert.notEqual(run().status, 0, 'missing generated TypeScript config must block analysis');
+		mkdirSync(join(directory, '.svelte-kit'));
+		writeFileSync(join(directory, '.svelte-kit/tsconfig.json'), '{"compilerOptions":{}}\n');
 		const accepted = run();
 		assert.equal(accepted.status, 0, accepted.stderr);
 	} finally {

@@ -1,6 +1,6 @@
 // Removed duplicate import
 // (imports consolidated)
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { IndexedDBSignalProtocolStore } from '$lib/crypto/signalStore';
 import { attachFakeStoreTo } from '../utils/fakeIndexedDB';
@@ -13,6 +13,40 @@ function abFrom(arr: number[]) {
 describe('IndexedDBSignalProtocolStore', () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
+	});
+
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('rejects a failed initial cache read, closes the connection and permits retry', async () => {
+		const primary = new Error('cursor read failed');
+		const cursor = { error: primary } as unknown as IDBRequest<IDBCursorWithValue | null>;
+		const close = vi.fn();
+		const db = {
+			close,
+			transaction: () => ({ objectStore: () => ({ openCursor: () => cursor }) })
+		};
+		const request = { result: db } as unknown as IDBOpenDBRequest;
+		const open = vi.fn(() => request);
+		vi.stubGlobal('indexedDB', { open });
+		const store = new IndexedDBSignalProtocolStore('failed-read');
+		const pending = store.init().then(
+			() => undefined,
+			(error: unknown) => error
+		);
+		request.onsuccess?.call(request, new Event('success'));
+		cursor.onerror?.call(cursor, new Event('error'));
+		const result = await Promise.race([
+			pending,
+			new Promise((resolve) => setTimeout(() => resolve('hung'), 50))
+		]);
+		expect(result).toBe(primary);
+		expect(close).toHaveBeenCalledTimes(1);
+		const retry = store.init();
+		request.onsuccess?.call(request, new Event('success'));
+		cursor.onsuccess?.call(cursor, { target: { result: null } } as unknown as Event);
+		await retry;
+		expect(open).toHaveBeenCalledTimes(2);
+		store.close();
 	});
 
 	it('stores and retrieves identity key pair and registration id', async () => {

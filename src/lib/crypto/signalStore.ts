@@ -49,7 +49,10 @@ export class IndexedDBSignalProtocolStore {
 			request.onerror = () => reject(toError(request.error));
 			request.onsuccess = () => {
 				this.db = request.result;
-				this.loadCache().then(() => resolve());
+				this.loadCache().then(resolve, (error) => {
+					this.close();
+					reject(error);
+				});
 			};
 
 			request.onupgradeneeded = (event) => {

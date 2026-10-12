@@ -99,37 +99,37 @@ sw.addEventListener('fetch', (event) => {
 	}
 
 	// ── Stale-while-revalidate for everything else ───────────────────
-	event.respondWith(staleWhileRevalidate(request));
+	event.respondWith(staleWhileRevalidate(request, event));
 });
 
 // ── Cache strategies ─────────────────────────────────────────────────────
 
 /** Cache-first: instant response from cache, fallback to network */
 async function cacheFirst(request: Request): Promise<Response> {
-	const cached = await caches.match(request);
+	const cached = await caches.match(request).catch(() => undefined);
 	if (cached) return cached;
 
 	const response = await fetch(request);
 	if (response.ok) {
-		const cache = await caches.open(STATIC_CACHE);
-		cache.put(request, response.clone());
+		const cache = await caches.open(STATIC_CACHE).catch(() => undefined);
+		await cache?.put(request, response.clone()).catch(() => undefined);
 	}
 	return response;
 }
 
 /** Network-first: try network, fall back to cache for offline support */
 async function networkFirst(request: Request): Promise<Response> {
-	const cache = await caches.open(RUNTIME_CACHE);
+	const cache = await caches.open(RUNTIME_CACHE).catch(() => undefined);
 	try {
 		const response = await fetch(request);
 		// Only cache successful responses (not auth redirects or errors)
 		if (response.ok) {
-			cache.put(request, response.clone());
+			await cache?.put(request, response.clone()).catch(() => undefined);
 		}
 		return response;
 	} catch {
 		// Offline — try to serve from cache
-		const cached = await cache.match(request);
+		const cached = await cache?.match(request).catch(() => undefined);
 		if (cached) return cached;
 
 		// No cache available — return a minimal offline indicator
@@ -141,19 +141,20 @@ async function networkFirst(request: Request): Promise<Response> {
 }
 
 /** Stale-while-revalidate: serve cache instantly, update in background */
-async function staleWhileRevalidate(request: Request): Promise<Response> {
-	const cache = await caches.open(RUNTIME_CACHE);
-	const cached = await cache.match(request);
+async function staleWhileRevalidate(request: Request, event: FetchEvent): Promise<Response> {
+	const cache = await caches.open(RUNTIME_CACHE).catch(() => undefined);
+	const cached = await cache?.match(request).catch(() => undefined);
 
 	// Fire off network request in background (don't await)
 	const networkPromise = fetch(request)
-		.then((response) => {
+		.then(async (response) => {
 			if (response.ok) {
-				cache.put(request, response.clone());
+				await cache?.put(request, response.clone()).catch(() => undefined);
 			}
 			return response;
 		})
 		.catch(() => cached ?? new Response('', { status: 503 }));
+	event.waitUntil(networkPromise);
 
 	// Return cached immediately if available, otherwise wait for network
 	return cached ?? networkPromise;

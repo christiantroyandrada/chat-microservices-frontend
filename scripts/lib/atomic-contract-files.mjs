@@ -108,7 +108,7 @@ function isBytes(value) {
 
 /** @param {ByteInput} value */
 function toBuffer(value) {
-	return Buffer.isBuffer(value) ? Buffer.from(value) : Buffer.from(value);
+	return Buffer.from(value);
 }
 
 /** @param {import('node:fs').Stats} stats */
