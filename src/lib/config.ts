@@ -41,7 +41,7 @@ export function getOrCreateDeviceId(): string {
 	let deviceId = localStorage.getItem(DEVICE_ID_KEY);
 	if (!deviceId) {
 		if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
-			throw new Error('crypto.randomUUID is required to create a device ID');
+			throw new TypeError('crypto.randomUUID is required to create a device ID');
 		}
 		deviceId = crypto.randomUUID();
 		localStorage.setItem(DEVICE_ID_KEY, deviceId);

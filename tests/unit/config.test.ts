@@ -74,6 +74,7 @@ describe('config', () => {
 				vi.stubGlobal('crypto', crypto);
 
 				expect(() => getOrCreateDeviceId()).toThrow(/crypto\.randomUUID/);
+				expect(() => getOrCreateDeviceId()).toThrow(TypeError);
 				expect(localStorage.getItem('chatapp_deviceId')).toBeNull();
 			}
 		);
