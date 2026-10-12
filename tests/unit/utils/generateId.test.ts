@@ -1,32 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { generateId } from '$lib/utils/generateId';
 
-type TestCrypto = {
-	randomUUID?: () => string;
-	getRandomValues?: (arr: Uint8Array) => Uint8Array;
-};
-
 describe('generateId', () => {
-	// Narrowed view of globalThis for tests to avoid `any` casts
-	const g = globalThis as unknown as { crypto?: TestCrypto };
-	let originalCrypto: TestCrypto | undefined;
-	let originalMathRandom: () => number;
-
-	beforeEach(() => {
-		originalCrypto = g.crypto;
-		originalMathRandom = Math.random;
-	});
-
 	afterEach(() => {
-		// restore
-		g.crypto = originalCrypto;
-		Math.random = originalMathRandom;
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
 	});
 
 	it('uses crypto.randomUUID when available', () => {
-		g.crypto = {
+		vi.stubGlobal('crypto', {
 			randomUUID: () => 'my-uuid-123'
-		};
+		});
 
 		const id = generateId(7);
 		expect(id).toContain('my-uuid-123');
@@ -34,12 +18,12 @@ describe('generateId', () => {
 	});
 
 	it('uses crypto.getRandomValues when randomUUID not available', () => {
-		g.crypto = {
+		vi.stubGlobal('crypto', {
 			getRandomValues: (arr: Uint8Array) => {
 				for (let i = 0; i < arr.length; i++) arr[i] = i + 1;
 				return arr;
 			}
-		};
+		});
 
 		const id = generateId(3);
 		// bytes 1..8 -> hex 0102030405060708
@@ -47,12 +31,24 @@ describe('generateId', () => {
 		expect(id.endsWith('-3')).toBe(true);
 	});
 
-	it('falls back to Math.random when no crypto', () => {
-		g.crypto = undefined;
-		Math.random = () => 0.123456;
-		const id = generateId(2);
-		expect(typeof id).toBe('string');
-		expect(id).toContain('-');
-		expect(id.endsWith('-2')).toBe(true);
+	it('keeps notification IDs distinct with no crypto and a frozen clock', () => {
+		vi.stubGlobal('crypto', undefined);
+		vi.spyOn(Math, 'random').mockReturnValue(0.5);
+		vi.spyOn(Date, 'now').mockReturnValue(123);
+		const first = generateId(2);
+		const second = generateId(2);
+		expect(first).not.toBe(second);
+		expect(first.startsWith('123-')).toBe(true);
+		expect(first.endsWith('-2')).toBe(true);
+	});
+
+	it('keeps notification IDs usable when crypto throws', () => {
+		vi.stubGlobal('crypto', {
+			randomUUID: () => {
+				throw new Error('unavailable');
+			}
+		});
+		const id = generateId(4);
+		expect(id.endsWith('-4')).toBe(true);
 	});
 });

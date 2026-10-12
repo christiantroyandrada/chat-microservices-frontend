@@ -22,8 +22,7 @@ const DEVICE_ID_KEY = 'chatapp_deviceId';
 /**
  * Get or create a stable device identifier.
  *
- * Uses crypto.randomUUID() when available, falls back to a timestamp-based ID.
- * The value is persisted in localStorage so it survives page reloads.
+ * New IDs require crypto.randomUUID() and are persisted in localStorage.
  */
 export function getOrCreateDeviceId(): string {
 	if (typeof localStorage === 'undefined') {
@@ -41,10 +40,10 @@ export function getOrCreateDeviceId(): string {
 
 	let deviceId = localStorage.getItem(DEVICE_ID_KEY);
 	if (!deviceId) {
-		deviceId =
-			typeof crypto !== 'undefined' && 'randomUUID' in crypto
-				? crypto.randomUUID()
-				: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+		if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
+			throw new Error('crypto.randomUUID is required to create a device ID');
+		}
+		deviceId = crypto.randomUUID();
 		localStorage.setItem(DEVICE_ID_KEY, deviceId);
 	}
 	return deviceId;

@@ -23,10 +23,7 @@ function createStorageStub(): Storage {
 const localStorageStub = createStorageStub();
 const sessionStorageStub = createStorageStub();
 
-vi.stubGlobal('localStorage', localStorageStub);
-vi.stubGlobal('sessionStorage', sessionStorageStub);
-
-// Import after mock + stubs
+// Import after the environment mock
 import {
 	API_BASE,
 	LOGO_URL,
@@ -38,12 +35,15 @@ import {
 
 describe('config', () => {
 	beforeEach(() => {
+		vi.stubGlobal('localStorage', localStorageStub);
+		vi.stubGlobal('sessionStorage', sessionStorageStub);
 		localStorageStub.clear();
 		sessionStorageStub.clear();
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
 	});
 
 	it('exports API_BASE from env', () => {
@@ -63,8 +63,31 @@ describe('config', () => {
 			const id = getOrCreateDeviceId();
 			expect(id).toBeTruthy();
 			expect(typeof id).toBe('string');
+			expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 			// Should persist
 			expect(getOrCreateDeviceId()).toBe(id);
+		});
+
+		it.each([undefined, {}])(
+			'does not persist an ID when crypto.randomUUID is unavailable (%j)',
+			(crypto) => {
+				vi.stubGlobal('crypto', crypto);
+
+				expect(() => getOrCreateDeviceId()).toThrow(/crypto\.randomUUID/);
+				expect(localStorage.getItem('chatapp_deviceId')).toBeNull();
+			}
+		);
+
+		it('preserves errors from crypto.randomUUID', () => {
+			const error = new Error('secure generator failed');
+			vi.stubGlobal('crypto', {
+				randomUUID: () => {
+					throw error;
+				}
+			});
+
+			expect(() => getOrCreateDeviceId()).toThrow(error);
+			expect(localStorage.getItem('chatapp_deviceId')).toBeNull();
 		});
 
 		it('migrates from legacy "deviceId" key', () => {
@@ -78,8 +101,17 @@ describe('config', () => {
 		});
 
 		it('returns existing device ID from namespaced key', () => {
+			vi.stubGlobal('crypto', undefined);
 			localStorage.setItem('chatapp_deviceId', 'existing-id');
 			expect(getOrCreateDeviceId()).toBe('existing-id');
+		});
+
+		it('migrates legacy device ID without crypto', () => {
+			vi.stubGlobal('crypto', undefined);
+			localStorage.setItem('deviceId', 'legacy-id');
+
+			expect(getOrCreateDeviceId()).toBe('legacy-id');
+			expect(localStorage.getItem('chatapp_deviceId')).toBe('legacy-id');
 		});
 	});
 

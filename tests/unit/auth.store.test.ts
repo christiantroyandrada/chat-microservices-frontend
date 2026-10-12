@@ -76,6 +76,60 @@ describe('authStore', () => {
 		expect(get(user)).toBeNull();
 	});
 
+	it('init resets loading and handles rejected cleanup without blocking authentication state', async () => {
+		vi.doMock('$app/environment', () => ({ browser: true }));
+		const failure = new Error('cleanup failed');
+		const warnings: unknown[] = [];
+		vi.doMock('$lib/services/auth.service', () => ({
+			authService: {
+				getCurrentUser: async () => {
+					throw new Error('unauthenticated');
+				},
+				logout: async () => {
+					throw failure;
+				}
+			}
+		}));
+		vi.doMock('$lib/services/dev-logger', () => ({
+			logger: { warning: (_message: string, error: unknown) => warnings.push(error) }
+		}));
+		const { authStore } = await import('$lib/stores/auth.store');
+		await authStore.init();
+		expect(get(authStore)).toEqual({ user: null, loading: false, error: null, initialized: true });
+		await vi.waitFor(() => expect(warnings).toEqual([failure]));
+	});
+
+	it('init completes while logout cleanup is still pending', async () => {
+		vi.doMock('$app/environment', () => ({ browser: true }));
+		let finishCleanup!: () => void;
+		const cleanup = new Promise<void>((resolve) => {
+			finishCleanup = resolve;
+		});
+		vi.doMock('$lib/services/auth.service', () => ({
+			authService: {
+				getCurrentUser: async () => {
+					throw new Error('unauthenticated');
+				},
+				logout: () => cleanup
+			}
+		}));
+		const { authStore } = await import('$lib/stores/auth.store');
+		const init = authStore.init();
+		try {
+			await vi.waitFor(() =>
+				expect(get(authStore)).toEqual({
+					user: null,
+					loading: false,
+					error: null,
+					initialized: true
+				})
+			);
+		} finally {
+			finishCleanup();
+			await init;
+		}
+	});
+
 	it('login success stores user and marks initialized', async () => {
 		vi.doMock('$app/environment', () => ({ browser: true }));
 		const login = vi.fn(() => Promise.resolve());

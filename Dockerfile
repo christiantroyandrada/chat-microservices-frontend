@@ -27,7 +27,7 @@ LABEL org.opencontainers.image.title="Chat Frontend" \
       org.opencontainers.image.base.name="gcr.io/distroless/nodejs22-debian13:nonroot"
 
 # Install pnpm (pinned to match pnpm-lock.yaml lockfileVersion 9.0)
-RUN npm install -g pnpm@9.11.0
+RUN npm install -g pnpm@9.11.0 --ignore-scripts
 
 WORKDIR /usr/src/app
 
@@ -45,11 +45,13 @@ COPY package.json pnpm-lock.yaml ./
 RUN apt-get update \
 	&& apt-get upgrade -y \
 	&& rm -rf /var/lib/apt/lists/* \
-	&& pnpm install --frozen-lockfile \
+	&& pnpm install --frozen-lockfile --ignore-scripts \
 	&& pnpm store prune
 
 # Copy source code
 COPY . .
+
+RUN pnpm exec svelte-kit sync
 
 # Build with environment-appropriate URLs
 # Priority: explicit ARG > BUILD_ENV default > fallback
@@ -75,7 +77,7 @@ RUN set -e; \
     export PUBLIC_API_URL="$API_URL" && \
     export PUBLIC_WS_URL="$WS_URL" && \
     pnpm run build && \
-    pnpm prune --prod && \
+    pnpm prune --prod --ignore-scripts && \
     rm -rf /root/.npm /root/.local/share/pnpm /tmp/*
 
 # Production stage - use distroless for security

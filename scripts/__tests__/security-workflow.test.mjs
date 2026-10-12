@@ -18,6 +18,99 @@ function auditStep(workflowFile, jobName, stepName) {
 	return found;
 }
 
+test('dependency installs disable lifecycle scripts and Svelte setup runs explicitly', () => {
+	for (const [file, job] of [
+		['ci-main.yml', 'build-and-test'],
+		['ci-feature.yml', 'build']
+	]) {
+		const steps = workflow(file).jobs[job].steps;
+		const install = steps.find((step) => step.name === 'Install dependencies');
+		assert.match(install.run, /pnpm install --frozen-lockfile --ignore-scripts/);
+		const sync = steps.findIndex((step) => step.name === 'Generate SvelteKit types');
+		const lint = steps.findIndex((step) => step.name.startsWith('Lint'));
+		assert.ok(sync > 0 && sync < lint, `${file} must sync SvelteKit before checks`);
+		assert.equal(steps[sync].run, 'pnpm exec svelte-kit sync');
+	}
+});
+
+test('workflow install flags suppress dependency lifecycle scripts', () => {
+	const directory = mkdtempSync(join(tmpdir(), 'frontend-install-hooks-'));
+	try {
+		const dependency = join(directory, 'lifecycle-fixture');
+		mkdirSync(dependency);
+		writeFileSync(
+			join(dependency, 'package.json'),
+			JSON.stringify({
+				name: 'lifecycle-fixture',
+				version: '1.0.0',
+				scripts: {
+					postinstall: `node -e "require('node:fs').writeFileSync(process.env.LIFECYCLE_MARKER, 'ran')"`
+				}
+			})
+		);
+		writeFileSync(
+			join(directory, 'package.json'),
+			JSON.stringify({
+				name: 'install-hook-check',
+				version: '1.0.0',
+				dependencies: { 'lifecycle-fixture': 'file:./lifecycle-fixture' },
+				pnpm: { onlyBuiltDependencies: ['lifecycle-fixture'] }
+			})
+		);
+
+		for (const [file, job] of [
+			['ci-main.yml', 'build-and-test'],
+			['ci-feature.yml', 'build']
+		]) {
+			const install = workflow(file).jobs[job].steps.find(
+				(step) => step.name === 'Install dependencies'
+			);
+			const args = install.run
+				.split(/\s+/)
+				.slice(2)
+				.filter((arg) => arg !== '--frozen-lockfile');
+			const command = process.env.PNPM_CLI ? process.execPath : 'pnpm';
+			const commandArgs = process.env.PNPM_CLI ? [process.env.PNPM_CLI] : [];
+			const result = spawnSync(
+				command,
+				[
+					...commandArgs,
+					'install',
+					...args,
+					'--offline',
+					'--config.only-built-dependencies=lifecycle-fixture'
+				],
+				{
+					cwd: directory,
+					encoding: 'utf8',
+					env: { ...process.env, LIFECYCLE_MARKER: join(directory, 'lifecycle-ran') }
+				}
+			);
+			assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
+			assert.equal(existsSync(join(directory, 'lifecycle-ran')), false);
+			rmSync(join(directory, 'node_modules'), { recursive: true, force: true });
+		}
+	} finally {
+		rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test('Docker disables install hooks in the builder and runs Svelte setup explicitly', () => {
+	const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+	assert.match(dockerfile, /npm install -g pnpm@9\.11\.0 --ignore-scripts/);
+	assert.match(dockerfile, /pnpm install --frozen-lockfile --ignore-scripts/);
+	assert.match(dockerfile, /pnpm prune --prod --ignore-scripts/);
+	assert.ok(dockerfile.indexOf('pnpm exec svelte-kit sync') < dockerfile.indexOf('pnpm run build'));
+});
+
+test('browser installation uses the installed Playwright CLI, not dependency installation flags', () => {
+	const install = auditStep('ci-main.yml', 'build-and-test', 'Install Playwright browsers');
+	assert.equal(
+		install.run,
+		'node node_modules/@playwright/test/cli.js install --with-deps chromium'
+	);
+});
+
 test('main and feature workflows fail on low-severity production advisories', () => {
 	const mainAudit = auditStep('ci-main.yml', 'build-and-test', 'Audit dependencies');
 	const featureAudit = auditStep('ci-feature.yml', 'build', 'Audit repo');

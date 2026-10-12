@@ -36,7 +36,10 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Generate SvelteKit types
+        run: pnpm exec svelte-kit sync
 
       - name: Lint (Prettier + ESLint)
         run: pnpm run lint
@@ -52,7 +55,7 @@ jobs:
 
       - name: Build FE
         run: |
-          pnpm run prepare && pnpm run build
+          pnpm run build
 
       - name: Audit repo
         run: pnpm audit --prod --audit-level=low

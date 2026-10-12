@@ -1,9 +1,6 @@
-/**
- * Secure-ish ID generator for client-side use.
- *
- * Uses the platform crypto API when available (randomUUID or getRandomValues).
- * Falls back to a Math.random-based hex when no crypto is present.
- */
+// Display-only fallback IDs need uniqueness within this module, not unpredictability.
+let fallbackId = 0;
+
 export function generateId(idx = 0): string {
 	try {
 		// Narrow globalThis to an object that may have a crypto implementation.
@@ -32,8 +29,8 @@ export function generateId(idx = 0): string {
 		// ignore and fall back
 	}
 
-	// Last-resort fallback (not cryptographically secure).
-	return `${Date.now()}-${Math.floor(Math.random() * 0xffffffff).toString(16)}-${idx}`;
+	// Display IDs stay usable without crypto; they are not security credentials.
+	return `${Date.now()}-${++fallbackId}-${idx}`;
 }
 
 export default generateId;
