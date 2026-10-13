@@ -1,57 +1,68 @@
 # Chat Application - Development Guide
 
-Full-featured **real-time chat application** with **end-to-end encryption** built using SvelteKit, TypeScript, and Tailwind CSS. Connects to microservices backend via nginx reverse proxy.
+This real-time chat application uses SvelteKit, TypeScript, and Tailwind CSS.
+It connects to the backend microservices through an nginx reverse proxy.
+
+The application uses end-to-end encryption (E2EE).
+E2EE prevents the server from reading message content.
+
+The feature and architecture descriptions below record the original development work.
+Their counts and security claims are historical records, not current release approval.
+Current hardening work remains incomplete.
 
 ---
 
-## ✨ Features Implemented
+<a id="-features-implemented"></a>
+## Features Implemented
 
-✅ **End-to-End Encryption (E2EE)**
+**End-to-End Encryption (E2EE):**
 
-- Signal Protocol implementation with X3DH and Double Ratchet
-- **Client-side AES-256-GCM key encryption** before backend storage
-- **PBKDF2 (100k iterations)** for password-based key derivation
-- Automatic prekey bundle generation and publishing
-- IndexedDB-based key storage with device isolation
-- Secure session establishment with prekey bundles
-- **Server never sees plaintext keys** - zero-knowledge architecture
-- Device-specific encrypted backups with rate limiting
+- The Signal Protocol uses X3DH key exchange and the Double Ratchet algorithm.
+- The client encrypts keys with AES-256-GCM before backend storage.
+- PBKDF2 uses 100k iterations for password-based key derivation.
+- The client generates and publishes prekey bundles automatically.
+- IndexedDB stores keys separately for each device.
+- Prekey bundles establish secure sessions.
+- The server never receives plaintext keys.
+  This is a zero-knowledge architecture.
+- Each device has encrypted backups with rate limiting.
 
-✅ **Authentication**
+**Authentication:**
 
-- User registration and login
-- JWT token management with httpOnly cookies
-- Protected routes with auth guards
-- Auto-redirect based on authentication status
-- Device ID management for E2EE
+- Users can register and log in.
+- The application manages JSON Web Tokens (JWT) with httpOnly cookies.
+- Authentication checks protect routes.
+- The application redirects users automatically according to their authentication status.
+- Device ID management supports E2EE.
 
-✅ **Real-time Chat**
+**Real-time Chat:**
 
-- WebSocket connections via Socket.IO
-- Instant message delivery
-- Typing indicators
-- Connection status monitoring
-- Auto-reconnection logic
-- Message history with encryption/decryption
+- Socket.IO provides WebSocket connections.
+- The application delivers messages immediately.
+- Typing indicators show user activity.
+- The application monitors connection status.
+- The application reconnects automatically.
+- Message history supports encryption and decryption.
 
-✅ **Notifications**
+**Notifications:**
 
-- Toast notifications for user feedback
-- Notification center integration
-- Unread count tracking
-- Real-time notification delivery
+- Toast notifications give users feedback.
+- The application includes a notification center.
+- The application tracks unread notification counts.
+- Notifications arrive in real time.
 
-✅ **Modern UI**
+**User Interface:**
 
-- Responsive design (mobile & desktop)
-- Tailwind CSS v4 styling
-- Theme toggle (dark/light mode)
-- Loading states and error handling
-- Smooth animations and transitions
+- The responsive layout supports mobile and desktop screens.
+- Tailwind CSS v4 provides styles.
+- Users can select dark or light mode.
+- The interface shows loading states and handles errors.
+- The interface includes smooth animations and transitions.
 
 ---
 
-## 📁 Project Structure
+<a id="-project-structure"></a>
+## Project Structure
 
 ```
 src/
@@ -108,9 +119,12 @@ src/
 
 ---
 
-## 🚀 Quick Start
+<a id="-quick-start"></a>
+## Quick Start
 
 ### 1. Install Dependencies
+
+Install the dependencies with the command below.
 
 ```bash
 pnpm install
@@ -124,7 +138,7 @@ Create a `.env` file in the project root:
 cp .env.example .env
 ```
 
-Default configuration for local development:
+These values are the default configuration for local development.
 
 ```env
 PUBLIC_API_URL=http://localhost:85
@@ -135,20 +149,20 @@ PUBLIC_APP_VERSION=0.0.1
 
 **Backend Connection:**
 
-- **Nginx (port 85)**: All API and WebSocket requests
-- Nginx proxies to user-service (8081), chat-service (8082), notification-service (8083)
-- Consistent origin for httpOnly cookie authentication
+- Nginx receives all API and WebSocket requests on port 85.
+- Nginx forwards requests to user-service (8081), chat-service (8082), and notification-service (8083).
+- All requests use the same origin for httpOnly cookie authentication.
 
 ### 3. Start Backend Services
 
-Ensure backend is running:
+Start the backend services.
 
 ```bash
 cd ../chat-microservices
 docker-compose up -d --build
 ```
 
-Verify backend health:
+Do a check of the backend health.
 
 ```bash
 curl http://localhost:85/api/user/health
@@ -156,39 +170,45 @@ curl http://localhost:85/api/user/health
 
 ### 4. Start Frontend
 
+Start the frontend with the command below.
+
 ```bash
 pnpm dev
 ```
 
-Open browser at: **http://localhost:5173**
+Open **http://localhost:5173** in a browser.
 
 ---
 
-## 🏗️ Architecture Deep Dive: Modular Signal Protocol
+<a id="-architecture-deep-dive-modular-signal-protocol"></a>
+## Architecture Deep Dive: Modular Signal Protocol
 
 ### The Problem: God Object Anti-Pattern
 
-Originally, the Signal Protocol implementation was a **monolithic file** (1,235 lines) with 8+ distinct responsibilities:
+The original Signal Protocol implementation used one file with 1,235 lines and 8+ responsibilities.
+These responsibilities were:
 
-- ❌ IndexedDB storage management
-- ❌ Key generation and management
-- ❌ Session establishment
-- ❌ Message encryption/decryption
-- ❌ Backend synchronization
-- ❌ Utility functions
-- ❌ Constants and configuration
-- ❌ Global state management
+- The file managed IndexedDB storage.
+- The file generated and managed keys.
+- The file established sessions.
+- The file encrypted and decrypted messages.
+- The file synchronized data with the backend.
+- The file supplied utility functions.
+- The file defined constants and configuration.
+- The file managed global state.
 
-This "God Object" made the code:
+The term "God Object" describes a component with many responsibilities.
+The original record identified these problems:
 
-- Hard to understand (high cognitive load)
-- Difficult to test (tightly coupled)
-- Impossible to reuse components
-- Prone to bugs (changes affect multiple concerns)
+- The code was difficult to understand.
+- Closely connected responsibilities made tests difficult.
+- Components could not be reused.
+- Changes affected multiple responsibilities and could cause errors.
 
 ### The Solution: Decomposition Pattern
 
-The codebase has been refactored into **7 focused modules**, each with a **single responsibility**:
+The recorded refactor divided the code into 7 modules.
+Each module has one responsibility.
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -238,7 +258,8 @@ The codebase has been refactored into **7 focused modules**, each with a **singl
 
 #### 1. `signal.ts` (388 lines) - Public API Facade
 
-**Purpose:** Maintains backward compatibility and orchestrates modules
+This module preserves compatibility with earlier callers and coordinates the other modules.
+A facade is a common public interface for those modules.
 
 ```typescript
 // Same public API as before!
@@ -250,15 +271,15 @@ const encrypted = await encryptMessage(recipientId, plaintext);
 
 **Key Functions:**
 
-- `initSignal()` - Initialize store for user
-- `generateSignalIdentity()` - Generate complete identity
-- `createSessionWithPrekeyBundle()` - Establish session
-- `encryptMessage()` / `decryptMessage()` - Encrypt/decrypt
-- `initSignalWithRestore()` - Auto-restore from backend
+- `initSignal()` initializes the store for a user.
+- `generateSignalIdentity()` generates a complete identity.
+- `createSessionWithPrekeyBundle()` establishes a session.
+- `encryptMessage()` and `decryptMessage()` encrypt and decrypt messages.
+- `initSignalWithRestore()` restores data from the backend automatically.
 
 #### 2. `signalStore.ts` (266 lines) - IndexedDB Storage
 
-**Purpose:** Persistent storage for keys and sessions
+This module stores keys and sessions persistently in IndexedDB.
 
 ```typescript
 import { IndexedDBSignalProtocolStore } from '$lib/crypto/signalStore';
@@ -267,19 +288,19 @@ const store = new IndexedDBSignalProtocolStore(userId);
 await store.init();
 ```
 
-**Manages:**
+The module manages these items:
 
-- Identity key pairs
-- Registration IDs
-- Prekeys & signed prekeys
-- Session records
-- In-memory cache for performance
+- It stores identity key pairs.
+- It stores registration IDs.
+- It stores prekeys and signed prekeys.
+- It stores session records.
+- It maintains a memory cache to improve performance.
 
-**Interface:** Implements Signal Protocol `StorageType`
+The module implements the Signal Protocol `StorageType` interface.
 
 #### 3. `signalSession.ts` (257 lines) - Session Management
 
-**Purpose:** Handle session establishment and message encryption
+This module establishes sessions and encrypts messages.
 
 ```typescript
 import { encryptMessage, decryptMessage } from '$lib/crypto/signalSession';
@@ -290,15 +311,15 @@ const plaintext = await decryptMessage(store, senderId, ciphertext);
 
 **Key Functions:**
 
-- `createSessionWithPrekeyBundle()` - Establish session with remote user
-- `encryptMessage()` - Signal Protocol encryption
-- `decryptMessage()` - Signal Protocol decryption
-- `hasSession()` - Check session existence
-- `removeSessionWith()` - Delete sessions
+- `createSessionWithPrekeyBundle()` establishes a session with a remote user.
+- `encryptMessage()` encrypts messages with the Signal Protocol.
+- `decryptMessage()` decrypts messages with the Signal Protocol.
+- `hasSession()` does a check for an existing session.
+- `removeSessionWith()` deletes sessions.
 
 #### 4. `signalKeyManager.ts` (232 lines) - Key Lifecycle
 
-**Purpose:** Generate, import, export, and publish keys
+This module generates, imports, exports, and publishes keys.
 
 ```typescript
 import { generateSignalIdentity, exportSignalKeys } from '$lib/crypto/signalKeyManager';
@@ -309,14 +330,14 @@ const keySet = await exportSignalKeys(store);
 
 **Key Functions:**
 
-- `generateSignalIdentity()` - Create identity + prekeys
-- `publishSignalPrekey()` - Publish to backend
-- `exportSignalKeys()` - Extract keys for backup
-- `importSignalKeys()` - Restore keys from backup
+- `generateSignalIdentity()` creates an identity and prekeys.
+- `publishSignalPrekey()` publishes keys to the backend.
+- `exportSignalKeys()` exports keys for backup.
+- `importSignalKeys()` restores keys from a backup.
 
 #### 5. `signalBackup.ts` (126 lines) - Backend Sync
 
-**Purpose:** Synchronize encrypted keys with backend
+This module synchronizes encrypted keys with the backend.
 
 ```typescript
 import { exportAndEncryptSignalKeys } from '$lib/crypto/signalBackup';
@@ -327,15 +348,15 @@ await authService.storeSignalKeys(deviceId, encrypted);
 
 **Key Functions:**
 
-- `hasLocalKeys()` - Check local key existence
-- `exportAndEncryptSignalKeys()` - Encrypted export (AES-256-GCM)
-- `decryptAndImportSignalKeys()` - Encrypted import
-- `clearSignalState()` - Database cleanup
-- `generateAndPublishIdentity()` - Complete setup flow
+- `hasLocalKeys()` does a check for local keys.
+- `exportAndEncryptSignalKeys()` exports keys with AES-256-GCM encryption.
+- `decryptAndImportSignalKeys()` decrypts and imports encrypted keys.
+- `clearSignalState()` performs database cleanup.
+- `generateAndPublishIdentity()` completes the setup procedure.
 
 #### 6. `signalUtils.ts` (53 lines) - Utilities
 
-**Purpose:** Data conversion and helper functions
+This module supplies data conversion and helper functions.
 
 ```typescript
 import { arrayBufferToBase64, base64ToArrayBuffer } from '$lib/crypto/signalUtils';
@@ -346,13 +367,13 @@ const buffer = base64ToArrayBuffer(base64);
 
 **Functions:**
 
-- `arrayBufferToBase64()` - Binary to base64
-- `base64ToArrayBuffer()` - Base64 to binary
-- `arrayBufferEquals()` - Safe buffer comparison
+- `arrayBufferToBase64()` converts binary data to base64.
+- `base64ToArrayBuffer()` converts base64 data to binary.
+- `arrayBufferEquals()` compares buffers safely.
 
 #### 7. `signalConstants.ts` (25 lines) - Configuration
 
-**Purpose:** Centralized constants
+This module supplies the shared constants.
 
 ```typescript
 import { DEFAULT_DEVICE_ID, PREKEY_COUNT } from '$lib/crypto/signalConstants';
@@ -369,37 +390,48 @@ import { DEFAULT_DEVICE_ID, PREKEY_COUNT } from '$lib/crypto/signalConstants';
 
 ### Design Principles Applied
 
-#### ✅ Single Responsibility Principle (SRP)
+<a id="-single-responsibility-principle-srp"></a>
+#### Single Responsibility Principle (SRP)
 
-Each module has ONE clear job:
+The Single Responsibility Principle assigns one responsibility to each module:
 
-- Storage → `signalStore`
-- Sessions → `signalSession`
-- Keys → `signalKeyManager`
-- Sync → `signalBackup`
+- `signalStore` manages storage.
+- `signalSession` manages sessions.
+- `signalKeyManager` manages keys.
+- `signalBackup` manages synchronization.
 
-#### ✅ Separation of Concerns
+<a id="-separation-of-concerns"></a>
+#### Separation of Concerns
 
-Clear boundaries between:
+The architecture separates these responsibilities:
 
-- **Data Layer**: signalStore
-- **Business Logic**: signalSession, signalKeyManager
-- **Integration**: signalBackup
-- **Utilities**: signalUtils
-- **Config**: signalConstants
+- signalStore handles data storage.
+- signalSession and signalKeyManager contain the processing logic.
+- signalBackup connects the client to the backend.
+- signalUtils supplies utility functions.
+- signalConstants supplies configuration constants.
 
-#### ✅ Dependency Inversion
+<a id="-dependency-inversion"></a>
+#### Dependency Inversion
 
-- Modules depend on abstractions (store interface)
-- Store instance passed as parameter
-- Easy to mock for testing
+The modules use these dependency rules:
 
-#### ✅ Open/Closed Principle
+- Modules use the store interface instead of a specific store implementation.
+- Callers pass the store instance as a parameter.
+- Tests can use a simulated store.
 
-- Open for extension (add new modules)
-- Closed for modification (existing modules stable)
+<a id="-openclosed-principle"></a>
+#### Open/Closed Principle
+
+The architecture supports these extension rules:
+
+- New modules can extend the architecture.
+- Existing modules remain stable during these extensions.
 
 ### Benefits: Before vs After
+
+The table below preserves the original refactor assessment.
+These estimates are historical claims, not new measurements.
 
 | Metric               | Before (God Object) | After (Modular) | Improvement     |
 | -------------------- | ------------------- | --------------- | --------------- |
@@ -413,7 +445,9 @@ Clear boundaries between:
 
 ### Security Features Preserved
 
-All 8 CVE fixes remain **100% intact**:
+The original record stated that all 8 CVE fixes remained 100% intact.
+The table preserves that security assessment.
+It does not confirm the current hardening status.
 
 | CVE     | Feature                     | Status |
 | ------- | --------------------------- | ------ |
@@ -430,7 +464,7 @@ All 8 CVE fixes remain **100% intact**:
 
 #### Unit Tests (Module-Level)
 
-Each module can be tested independently:
+Each module can be tested separately.
 
 ```typescript
 // signalUtils.test.ts
@@ -453,7 +487,7 @@ test('stores and retrieves identity key', async () => {
 
 #### Integration Tests
 
-Test module interactions:
+Do a test of the interactions between modules.
 
 ```typescript
 import { initSignal, encryptMessage, decryptMessage } from '$lib/crypto/signal';
@@ -468,7 +502,8 @@ test('complete encryption flow', async () => {
 
 ### Migration Guide
 
-**No code changes required!** The public API is 100% backward compatible:
+The refactor record states that the public API is 100% compatible with earlier callers.
+No code changes are necessary for existing callers.
 
 ```typescript
 // Old code - still works perfectly!
@@ -479,7 +514,7 @@ const encrypted = await encryptMessage(recipientId, plaintext);
 const plaintext = await decryptMessage(senderId, encrypted);
 ```
 
-**Advanced Usage** (optional):
+Direct module imports are optional.
 
 ```typescript
 // Direct module imports for specific functionality
@@ -494,13 +529,16 @@ const identity = await generateSignalIdentity(store);
 
 ### Future Enhancements
 
-The modular architecture makes it easy to:
+The architecture permits these possible extensions:
 
-- ✅ Add alternative storage backends (SQLite, LocalStorage)
-- ✅ Implement automatic key rotation module
-- ✅ Add multi-device sync extensions
-- ✅ Create monitoring/metrics module
-- ✅ Build mock implementations for testing
+- Alternative storage backends can use SQLite or LocalStorage.
+- A module can rotate keys automatically.
+- Extensions can synchronize multiple devices.
+- A module can monitor activity and collect measurements.
+- Tests can use simulated implementations.
+
+The fenced block below preserves the original workflow, test evidence, security checklist, and planned enhancements.
+Its recorded results do not give current release approval.
 
 ````
 
