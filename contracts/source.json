@@ -1,8 +1,8 @@
 {
-	"backendCommit": "489f00d003e2333fa9ba22783dee426af9eab0ee",
+	"backendCommit": "2831e9f32a1e563497a83aac819f39e7abf3a585",
 	"generatorVersion": 1,
 	"backendSources": {
-		"chat-service/openapi.json": "6545bf0b1fb8b955274777c9a0af298dca25ffd1dc902aa04a67e546ed433776",
+		"chat-service/openapi.json": "7476626c0ecebde7b48400e30eb33b4b17dcd053d1bd5f9cb271550b214002c9",
 		"user-service/openapi.json": "fe54c805c0619a94e7e48555ff28b715b2fd29867fc74b5e399986a47a5ff4d6"
 	}
 }

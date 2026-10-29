@@ -41,6 +41,13 @@ export interface Message {
 	status?: 'sent' | 'delivered' | 'read';
 	createdAt?: string;
 	updatedAt?: string;
+	clientMessageId?: string;
+	encryptedMessage?: string;
+	sendState?: 'pending' | 'failed' | 'accepted';
+	retryable?: boolean;
+	sendError?: string;
+	pendingNotification?: boolean;
+	recipientUsername?: string;
 }
 
 // Used by: chat/+page.svelte, MessageInput.svelte
@@ -167,6 +174,15 @@ export interface ServerMessage {
 	isRead?: boolean;
 	updatedAt?: string;
 	status: 'NotDelivered' | 'Delivered' | 'Seen';
+	clientMessageId?: string;
+}
+
+export interface EncryptedWireMessage {
+	_id: string;
+	senderId: string;
+	receiverId: string;
+	clientMessageId: string;
+	message: string;
 }
 
 // Toast/Alert Types

@@ -12,6 +12,26 @@ vi.mock('$lib/services/dev-logger', () => ({
 }));
 
 describe('MessageInput component (typing debounce)', () => {
+	it('preserves the draft until preparation commits and after a preparation failure', async () => {
+		let finish!: (saved: boolean) => void;
+		const send = vi.fn(
+			() =>
+				new Promise<boolean>((resolve) => {
+					finish = resolve;
+				})
+		);
+		const { container } = render(MessageInput, { send });
+		const textarea = container.querySelector('textarea')!;
+		await fireEvent.input(textarea, { target: { value: 'keep this draft' } });
+		await fireEvent.click(container.querySelector('button')!);
+		expect(textarea.value).toBe('keep this draft');
+		finish(false);
+		await vi.waitFor(() => expect(container.querySelector('button')!.disabled).toBe(false));
+		expect(textarea.value).toBe('keep this draft');
+		await fireEvent.click(container.querySelector('button')!);
+		finish(true);
+		await vi.waitFor(() => expect(textarea.value).toBe(''));
+	});
 	beforeEach(() => vi.clearAllMocks());
 	afterEach(() => cleanup());
 

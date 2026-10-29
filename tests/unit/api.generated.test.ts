@@ -20,6 +20,18 @@ const api = vi.hoisted(() => ({
 vi.mock('$lib/services/api', () => ({ apiClient: api }));
 
 describe('generated API helpers', () => {
+	it('binds chat reads and read receipts to the expected account query', async () => {
+		const { chatApi } = await import('$lib/services/api.generated');
+		const owner = 'f067bcfe-3c78-49c8-bf23-0a9edb0bc731';
+		await chatApi.getConversations(owner);
+		await chatApi.getMessages('recipient', 50, 0, owner);
+		await chatApi.markAsRead('sender', owner);
+		expect(
+			api.request.mock.calls.map(([path]) =>
+				new URL(path, 'http://localhost').searchParams.get('expectedUserId')
+			)
+		).toEqual([owner, owner, owner]);
+	});
 	beforeEach(() => {
 		vi.clearAllMocks();
 		api.request.mockResolvedValue({ success: true, data: {} });

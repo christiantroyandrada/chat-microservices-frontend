@@ -2,10 +2,23 @@ import { vi, describe, it, expect, beforeEach, afterEach, type MockedFunction } 
 import type { LoginCredentials, RegisterCredentials } from '$lib/types';
 import { get } from 'svelte/store';
 
+const lifecycle = vi.hoisted(() => ({
+	activateOwner: vi.fn(),
+	verifyOwner: vi.fn(),
+	disconnect: vi.fn()
+}));
+vi.mock('$lib/services/chat.service', () => ({
+	chatService: { activateOwner: lifecycle.activateOwner, verifyOwner: lifecycle.verifyOwner }
+}));
+vi.mock('$lib/services/websocket.service', () => ({
+	wsService: { disconnect: lifecycle.disconnect }
+}));
+
 // We'll reset modules each test so the store is re-created with our mocks
 beforeEach(() => {
 	vi.resetModules();
 	vi.restoreAllMocks();
+	lifecycle.verifyOwner.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -13,6 +26,30 @@ afterEach(() => {
 });
 
 describe('authStore', () => {
+	it('clears owner and disconnects before a pending logout request', async () => {
+		vi.doMock('$app/environment', () => ({ browser: true }));
+		let finish!: () => void;
+		vi.doMock('$lib/services/auth.service', () => ({
+			authService: {
+				login: async () => {},
+				getCurrentUser: async () => ({ _id: 'alice' }),
+				logout: vi.fn(() => {
+					expect(lifecycle.activateOwner).toHaveBeenLastCalledWith(null);
+					expect(lifecycle.disconnect).toHaveBeenCalled();
+					return new Promise<void>((resolve) => {
+						finish = resolve;
+					});
+				})
+			}
+		}));
+		vi.doMock('$app/navigation', () => ({ goto: vi.fn() }));
+		const { authStore, user } = await import('$lib/stores/auth.store');
+		await authStore.login({ email: 'a', password: 'password' });
+		const logout = authStore.logout();
+		expect(get(user)).toBeNull();
+		finish();
+		await logout;
+	});
 	it('init does nothing when not in browser', async () => {
 		vi.doMock('$app/environment', () => ({ browser: false }));
 

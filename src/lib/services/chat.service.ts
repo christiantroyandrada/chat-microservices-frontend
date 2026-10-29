@@ -1,4 +1,6 @@
 import { chatApi, userApi } from './api.generated';
+import { wsService } from './websocket.service';
+import { mergeDelivery, mergeMessages } from './message-merge';
 import {
 	initSignal,
 	hasSession as signalHasSession,
@@ -13,11 +15,11 @@ import type {
 	SendMessagePayload,
 	ChatConversation,
 	ServerMessage,
+	ReceiptEvent,
 	User
 } from '$lib/types';
 import type { EncryptedEnvelope } from '$lib/crypto/types';
 import type { ChatApiConversation, UserApiSearchUser } from '$lib/generated/api.types';
-import { logger } from './dev-logger';
 import {
 	ContractBoundaryError,
 	assertNonEmptyString,
@@ -32,37 +34,6 @@ import {
  * ServiceResult is imported from central types file.
  */
 
-/**
- * Session-scoped prekey bundle cache with LRU eviction.
- * Once a Signal session is established with a recipient, we don't need to
- * re-fetch their prekey bundle for subsequent messages in the same browser session.
- * Bounded to 100 entries to prevent unbounded memory growth in long-lived SPAs.
- * Key: recipientUserId, Value: prekey bundle data
- */
-const PREKEY_CACHE_MAX = 100;
-const prekeyBundleCache = new Map<string, { userId: string; deviceId: string; bundle: unknown }>();
-const prekeyAccessOrder: string[] = []; // Simple LRU tracking
-
-function prekeyBundleCacheSet(
-	key: string,
-	value: { userId: string; deviceId: string; bundle: unknown }
-) {
-	// Evict oldest entry if at capacity
-	if (prekeyBundleCache.size >= PREKEY_CACHE_MAX && !prekeyBundleCache.has(key)) {
-		const oldest = prekeyAccessOrder.shift();
-		if (oldest) prekeyBundleCache.delete(oldest);
-	}
-	// Update access order
-	const idx = prekeyAccessOrder.indexOf(key);
-	if (idx !== -1) prekeyAccessOrder.splice(idx, 1);
-	prekeyAccessOrder.push(key);
-	prekeyBundleCache.set(key, value);
-}
-
-/**
- * Helper to normalize server message shape -> frontend Message
- * Backend uses `message` field, frontend uses `content` field
- */
 function assertValidServerMessage(raw: unknown, context: string): asserts raw is ServerMessage {
 	const obj = assertObject(raw, context, 'message');
 	const id = (obj as Record<string, unknown>)._id ?? (obj as Record<string, unknown>).id;
@@ -100,17 +71,223 @@ function normalizeMessage(serverMsg: ServerMessage): Message {
 		status,
 		read,
 		createdAt: serverMsg.createdAt,
-		updatedAt: serverMsg.updatedAt
+		updatedAt: serverMsg.updatedAt,
+		clientMessageId: serverMsg.clientMessageId
 	} as Message;
 }
 
+let activeOwner: string | null = null;
+let ownerGeneration = 0;
+const sending = new Map<string, Promise<Message>>();
+const notifying = new Map<string, Promise<void>>();
+type ProcessedMessage = { message: Message; uncached: boolean };
+const receiving = new Map<string, Promise<ProcessedMessage>>();
+const receivedEvents = new Set<string>();
+
+function assertOwner(owner: string, generation: number) {
+	if (activeOwner !== owner || ownerGeneration !== generation)
+		throw new Error('Account changed. Message remains on this device.');
+}
+
+function authenticationFailure(error: unknown): boolean {
+	return [401, 403].includes((error as { status?: number })?.status ?? 0);
+}
+
+function unavailable(error: unknown): boolean {
+	const status = (error as { status?: number })?.status;
+	return !(error instanceof ContractBoundaryError) && (!status || status >= 500);
+}
+
+async function requireReauthentication(owner: string): Promise<void> {
+	if (activeOwner === owner) {
+		activeOwner = null;
+		ownerGeneration++;
+		receivedEvents.clear();
+		wsService.disconnect();
+	}
+	const store = getMessageStore(owner);
+	for (const message of await store.getUnfinishedMessages()) {
+		if (
+			message.senderId === owner &&
+			message.sendState !== 'accepted' &&
+			message.retryable !== false
+		) {
+			await store.failMessage({
+				...message,
+				sendState: 'failed',
+				retryable: false,
+				sendError: 'reauthentication_required'
+			});
+		}
+	}
+}
+
+async function processMessage(
+	message: Message,
+	owner: string,
+	generation: number
+): Promise<ProcessedMessage> {
+	const key = owner + ':' + message._id;
+	const inFlight = receiving.get(key);
+	if (inFlight) return inFlight;
+	const operation = (async () => {
+		assertOwner(owner, generation);
+		const store = getMessageStore(owner);
+		const existing = await store.getMessage(message._id);
+		assertOwner(owner, generation);
+		const meta = existing as
+			(Message & { _decryptionFailed?: boolean; _encryptedContent?: string }) | null;
+		let envelope: EncryptedEnvelope | undefined;
+		try {
+			envelope = JSON.parse(meta?._encryptedContent ?? message.content);
+		} catch {
+			/* Legacy plaintext. */
+		}
+		if (
+			existing &&
+			((!meta?._decryptionFailed && !existing.content.startsWith('🔒')) || envelope?.type === 3)
+		) {
+			const merged = mergeDelivery(existing, message);
+			if (merged.status !== existing.status || merged.read !== existing.read)
+				await store.saveMessage(merged);
+			return { message: merged, uncached: false };
+		}
+		if (message.senderId === owner && message.clientMessageId) {
+			const pending = await store.getMessage(message.clientMessageId);
+			assertOwner(owner, generation);
+			if (
+				pending?.senderId === owner &&
+				pending.receiverId === message.receiverId &&
+				pending.encryptedMessage === message.content
+			) {
+				const accepted: Message = {
+					...pending,
+					...message,
+					content: pending.content,
+					sendState: 'accepted',
+					retryable: false,
+					sendError: undefined,
+					pendingNotification: true
+				};
+				await store.settleMessage(pending._id, accepted);
+				void notifyAccepted(accepted, owner, generation).catch(() => {});
+				return { message: accepted, uncached: false };
+			}
+		}
+		let result = message;
+		if (envelope?.__encrypted && /^[A-Za-z0-9+/]+=*$/.test(envelope.body)) {
+			if (message.senderId === owner)
+				result = { ...message, content: '🔒 [Your encrypted message]' };
+			else {
+				try {
+					await initSignal(owner);
+					assertOwner(owner, generation);
+					const content = await decryptMessage(
+						message.senderId,
+						{ type: envelope.type, body: envelope.body },
+						owner
+					);
+					result = { ...message, content };
+				} catch (error) {
+					assertOwner(owner, generation);
+					result = {
+						...message,
+						content:
+							error instanceof SignalDecryptionError
+								? '🔒 ' + error.message
+								: '🔒 [Message could not be decrypted - encryption keys may be missing]',
+						_decryptionFailed: true,
+						_encryptedContent: meta?._encryptedContent ?? message.content
+					} as Message;
+				}
+			}
+		}
+		assertOwner(owner, generation);
+		await store.saveMessage(result);
+		return { message: result, uncached: !existing };
+	})();
+	receiving.set(key, operation);
+	try {
+		return await operation;
+	} finally {
+		receiving.delete(key);
+	}
+}
+
+async function notifyAccepted(message: Message, owner: string, generation: number): Promise<void> {
+	const key = owner + ':' + message._id;
+	const existing = notifying.get(key);
+	if (existing) return existing;
+	const operation = (async () => {
+		if (!message.pendingNotification || !message.encryptedMessage || !message.clientMessageId)
+			return;
+		const store = getMessageStore(owner);
+		assertOwner(owner, generation);
+		await wsService.sendMessage({
+			_id: message._id,
+			senderId: owner,
+			receiverId: message.receiverId,
+			clientMessageId: message.clientMessageId,
+			message: message.encryptedMessage
+		});
+		assertOwner(owner, generation);
+		const latest = await store.getMessage(message._id);
+		assertOwner(owner, generation);
+		if (latest) await store.saveMessage({ ...latest, pendingNotification: false });
+	})();
+	notifying.set(key, operation);
+	try {
+		await operation;
+	} finally {
+		notifying.delete(key);
+	}
+}
+
 export const chatService = {
+	activateOwner(owner: string | null) {
+		activeOwner = owner;
+		ownerGeneration++;
+		receivedEvents.clear();
+	},
+	async verifyOwner(owner: string): Promise<void> {
+		const generation = ownerGeneration;
+		assertOwner(owner, generation);
+		const store = getMessageStore(owner);
+		const rows = await store.getUnfinishedMessages();
+		assertOwner(owner, generation);
+		for (const message of rows) {
+			if (message.senderId === owner && message.sendError === 'reauthentication_required') {
+				await store.saveMessage({
+					...message,
+					retryable: true,
+					sendError: 'Message not confirmed. You can retry.'
+				});
+				assertOwner(owner, generation);
+			}
+		}
+	},
 	/**
 	 * Get all conversations for the current user
 	 * Pulls last message preview from local storage (already decrypted)
 	 */
-	async getConversations(currentUserId?: string): Promise<ChatConversation[]> {
-		const response = await chatApi.getConversations();
+	async getConversations(currentUserId = activeOwner ?? undefined): Promise<ChatConversation[]> {
+		if (!currentUserId) throw new Error('Current account is required');
+		const generation = ownerGeneration;
+		const pending = currentUserId
+			? await getMessageStore(currentUserId).getUnfinishedMessages()
+			: [];
+		if (currentUserId) assertOwner(currentUserId, generation);
+		let response;
+		try {
+			response = await chatApi.getConversations(currentUserId);
+		} catch (error) {
+			if (currentUserId && authenticationFailure(error))
+				await requireReauthentication(currentUserId);
+			if (!unavailable(error) || !pending.some((message) => message.senderId === currentUserId))
+				throw error;
+			response = { data: [] };
+		}
+		if (currentUserId) assertOwner(currentUserId, generation);
 		const data = assertArray(response.data, 'chat.getConversations', 'data');
 		for (const conv of data) {
 			const c = assertObject(conv, 'chat.getConversations', 'conversation');
@@ -146,6 +323,18 @@ export const chatService = {
 		// If we have currentUserId, try to get last message from local storage
 		if (currentUserId) {
 			const messageStore = getMessageStore(currentUserId);
+			for (const message of pending) {
+				if (
+					message.senderId === currentUserId &&
+					!conversations.some((c) => c.userId === message.receiverId)
+				) {
+					conversations.push({
+						userId: message.receiverId,
+						username: message.recipientUsername || 'User',
+						unreadCount: 0
+					});
+				}
+			}
 
 			const conversationsWithLocalMessages = await Promise.all(
 				conversations.map(async (conv) => {
@@ -182,288 +371,286 @@ export const chatService = {
 	 * 1. Try to load from local storage first (instant, plaintext)
 	 * 2. If not in cache, fetch from server, decrypt, and store locally
 	 */
+
 	async getMessages(
 		userId: string,
 		limit = 50,
 		offset = 0,
 		currentUserId?: string
 	): Promise<Message[]> {
-		if (!currentUserId) {
-			throw new Error('currentUserId is required for getMessages');
+		if (!currentUserId) throw new Error('currentUserId is required for getMessages');
+		const generation = ownerGeneration;
+		assertOwner(currentUserId, generation);
+		const store = getMessageStore(currentUserId);
+		const local = await store.getMessages(userId, currentUserId, limit);
+		assertOwner(currentUserId, generation);
+		let response;
+		try {
+			response = await chatApi.getMessages(userId, limit, offset, currentUserId);
+		} catch (error) {
+			if (authenticationFailure(error)) {
+				await requireReauthentication(currentUserId);
+				throw error;
+			}
+			assertOwner(currentUserId, generation);
+			if (unavailable(error) && local.length) return local;
+			throw error;
 		}
-
-		const messageStore = getMessageStore(currentUserId);
-
-		// Fetch from server to get latest messages (including any missed real-time broadcasts)
-		logger.info('[ChatService] Fetching messages from server...');
-		const response = await chatApi.getMessages(userId, limit, offset);
+		assertOwner(currentUserId, generation);
 		const data = assertArray(response.data, 'chat.getMessages', 'data');
-		for (const m of data) {
-			assertValidServerMessage(m, 'chat.getMessages');
+		const processed: Message[] = [];
+		for (const raw of data) {
+			assertValidServerMessage(raw, 'chat.getMessages');
+			if (!(
+				(raw.senderId === currentUserId && raw.receiverId === userId) ||
+				(raw.senderId === userId && raw.receiverId === currentUserId)
+			))
+				throw new ContractBoundaryError(
+					'chat.getMessages: message does not match the requested conversation'
+				);
 		}
-
-		if (data.length === 0) {
-			// No messages on server, check if we have anything locally
-			const localMessages = await messageStore.getMessages(userId, currentUserId, limit);
-			logger.info(
-				`[ChatService] Server has no messages, loaded ${localMessages.length} from local storage`
+		for (const raw of data as ServerMessage[])
+			processed.push(
+				(await processMessage(normalizeMessage(raw), currentUserId, generation)).message
 			);
-			return localMessages;
-		}
-
-		const normalized = (data as ServerMessage[]).map(normalizeMessage);
-
-		// Decrypt and store messages locally
-		await initSignal(currentUserId);
-
-		// Process messages in batches to avoid spawning 200 concurrent IndexedDB
-		// reads + Signal Protocol decrypt operations simultaneously. This reduces
-		// main-thread blocking and UI jank when loading large conversations.
-		const BATCH_SIZE = 20;
-		const decrypted: Message[] = [];
-		for (let i = 0; i < normalized.length; i += BATCH_SIZE) {
-			const batch = normalized.slice(i, i + BATCH_SIZE);
-			const batchResults = await Promise.all(
-				batch.map(async (msg) => {
-					// Check if already in local storage
-					const existing = await messageStore.getMessage(msg._id);
-					if (existing) {
-						// If the cached message is a decryption error, try to decrypt again
-						// This allows recovery when keys are restored after a failed attempt
-						const existingWithMeta = existing as Message & {
-							_decryptionFailed?: boolean;
-							_encryptedContent?: string;
-						};
-						const isDecryptionError =
-							existing.content.startsWith('🔒') || existingWithMeta._decryptionFailed === true;
-
-						if (!isDecryptionError) {
-							return existing; // Already have successfully decrypted version
-						}
-						// Do NOT retry PreKeyWhisperMessage (type 3) failures.
-						//
-						// A PreKeyWhisperMessage uses a one-time prekey (OPK) for X3DH session
-						// establishment.  When decryption succeeds, the Signal library permanently
-						// removes that OPK from the local store.  But the server still publishes
-						// the same OPK in the prekey bundle — so the next peer who fetches the
-						// bundle can pick that already-consumed OPK and send a message that can
-						// never be decrypted (Bad MAC).  WhisperMessages (type 1) don't use OPKs
-						// and are safe to retry.
-						//
-						// Check both _encryptedContent (set by current code) and msg.content
-						// (fresh server response) — older cached errors won't have the metadata
-						// field, so the server payload acts as a fallback.
-						const envelopeSource = existingWithMeta._encryptedContent || msg.content;
-						if (envelopeSource) {
-							try {
-								const parsedEnv = JSON.parse(envelopeSource) as {
-									__encrypted?: boolean;
-									type?: number;
-								};
-								if (parsedEnv.__encrypted && parsedEnv.type === 3) {
-									// Leave as-is — retrying would consume the OPK and break
-									// incoming messages that use the same server-published OPK ID.
-									return existing;
-								}
-							} catch {
-								// Not valid JSON — fall through and let the normal path handle it
-							}
-						}
-						logger.info(
-							'[ChatService] Found cached decryption error, attempting to decrypt again:',
-							msg._id
-						);
-
-						// Use preserved encrypted content if available, otherwise use server response
-						if (existingWithMeta._encryptedContent) {
-							msg = { ...msg, content: existingWithMeta._encryptedContent };
-						}
-						// Fall through to try decryption again with current keys
-					}
-
-					try {
-						// Check if content is an encrypted envelope
-						let parsed: EncryptedEnvelope | null = null;
-						try {
-							parsed = JSON.parse(msg.content) as EncryptedEnvelope;
-						} catch {
-							// Not JSON, store as-is
-							await messageStore.saveMessage(msg);
-							return msg;
-						}
-
-						if (!parsed?.__encrypted) {
-							// Not encrypted, store as-is
-							await messageStore.saveMessage(msg);
-							return msg;
-						}
-
-						// Additional check: if body doesn't look like base64, skip it
-						if (!/^[A-Za-z0-9+/]+=*$/.test(parsed.body)) {
-							logger.warning('[ChatService] Message body is not valid base64, skipping decryption');
-							await messageStore.saveMessage(msg);
-							return msg;
-						}
-
-						// Check if this is a message sent BY the current user
-						if (msg.senderId === currentUserId) {
-							// Cannot decrypt our own sent messages (encrypted with recipient's key)
-							// This shouldn't happen if we're caching sent messages properly
-							logger.warning('[ChatService] Found own sent message from server - cannot decrypt');
-							const placeholderMsg = {
-								...msg,
-								content: '🔒 [Your encrypted message]'
-							};
-							await messageStore.saveMessage(placeholderMsg);
-							return placeholderMsg;
-						}
-
-						logger.info('[ChatService] Decrypting message from sender:', {
-							sender_id: msg.senderId,
-							type: String(parsed.type)
-						});
-
-						// Decrypt the message using the sender's ID
-						const ctObj = { type: parsed.type, body: parsed.body };
-						const plaintext = await decryptMessage(msg.senderId, ctObj, currentUserId);
-
-						logger.info('[ChatService] Successfully decrypted, storing in local DB');
-
-						// Store decrypted message locally (plaintext)
-						const decryptedMsg = {
-							...msg,
-							content: plaintext
-						};
-						await messageStore.saveMessage(decryptedMsg);
-
-						return decryptedMsg;
-					} catch (decryptError) {
-						// Provide detailed error information for Signal-specific errors
-						let errorContent: string;
-						if (decryptError instanceof SignalDecryptionError) {
-							logger.error('[ChatService] Signal decryption error:', {
-								message: decryptError.message,
-								hasIdentityKey: String(decryptError.hasIdentityKey),
-								hasSignedPreKey: String(decryptError.hasSignedPreKey),
-								hasSession: String(decryptError.hasSession),
-								messageId: msg._id
-							});
-							errorContent = `🔒 ${decryptError.message}`;
-						} else {
-							logger.error('[ChatService] Failed to decrypt message:', decryptError);
-							logger.error('[ChatService] Message details:', {
-								messageId: msg._id,
-								senderId: msg.senderId,
-								timestamp: msg.timestamp
-							});
-							errorContent = '🔒 [Message could not be decrypted - encryption keys may be missing]';
-						}
-
-						// Store with error message AND mark for retry
-						// Keep original encrypted content so we can retry decryption later
-						const errorMsg = {
-							...msg,
-							content: errorContent,
-							_decryptionFailed: true,
-							_encryptedContent: msg.content // Preserve original for retry
-						} as Message & { _decryptionFailed: boolean; _encryptedContent: string };
-						await messageStore.saveMessage(errorMsg);
-						return errorMsg;
-					}
-				})
-			);
-			decrypted.push(...batchResults);
-		}
-
-		return decrypted;
+		const latest = await store.getMessages(userId, currentUserId, limit);
+		assertOwner(currentUserId, generation);
+		return mergeMessages(processed, latest);
 	},
 
-	/**
-	 * Send a message to another user
-	 */
-	async sendMessage(payload: SendMessagePayload, currentUserId?: string): Promise<Message> {
-		// Validate payload before sending
-		if (!payload.receiverId || !payload.content) {
+	async receiveMessage(
+		message: Message,
+		owner: string
+	): Promise<{ message: Message; fresh: boolean }> {
+		const generation = ownerGeneration;
+		if (
+			!message._id ||
+			!message.senderId ||
+			!message.receiverId ||
+			(message.receiverId !== owner && message.senderId !== owner)
+		)
+			throw new Error('Invalid incoming message');
+		const processed = await processMessage(message, owner, generation);
+		assertOwner(owner, generation);
+		const key = owner + ':' + message._id;
+		const fresh = processed.uncached && !receivedEvents.has(key);
+		receivedEvents.add(key);
+		return { message: processed.message, fresh };
+	},
+
+	async prepareMessage(
+		payload: SendMessagePayload,
+		owner: string,
+		recipientUsername?: string
+	): Promise<Message> {
+		const generation = ownerGeneration;
+		assertOwner(owner, generation);
+		if (!payload.receiverId || !payload.content || payload.content.length > 5000)
 			throw new Error('Invalid message payload');
+		await initSignal(owner);
+		assertOwner(owner, generation);
+		const sessionExists = await signalHasSession(payload.receiverId, owner);
+		assertOwner(owner, generation);
+		if (!sessionExists) {
+			const response = await userApi.getPrekeyBundle(payload.receiverId);
+			assertOwner(owner, generation);
+			if (!response.data)
+				throw new Error(
+					'Recipient does not have an available prekey bundle; cannot send encrypted message'
+				);
+			await createSessionWithPrekeyBundle(response.data, owner);
+			assertOwner(owner, generation);
 		}
+		const cipher = await encryptMessage(payload.receiverId, payload.content, owner);
+		assertOwner(owner, generation);
+		const encryptedMessage = JSON.stringify({
+			__encrypted: true,
+			type: cipher.type,
+			body: cipher.body
+		});
+		if (encryptedMessage.length > 5000)
+			throw new Error('Encrypted message too long. Please shorten the message.');
+		const clientMessageId = crypto.randomUUID();
+		const message: Message = {
+			_id: clientMessageId,
+			clientMessageId,
+			senderId: owner,
+			receiverId: payload.receiverId,
+			content: payload.content,
+			timestamp: new Date().toISOString(),
+			encryptedMessage,
+			sendState: 'pending',
+			retryable: true,
+			recipientUsername
+		};
+		const store = getMessageStore(owner);
+		await store.saveMessage(message);
+		assertOwner(owner, generation);
+		return message;
+	},
 
-		if (payload.content.length > 5000) {
-			throw new Error('Message too long');
-		}
+	retryMessage(clientMessageId: string, owner: string): Promise<Message> {
+		const generation = ownerGeneration;
+		const key = owner + ':' + clientMessageId;
+		const existing = sending.get(key);
+		if (existing) return existing;
+		const operation = (async () => {
+			assertOwner(owner, generation);
+			const store = getMessageStore(owner);
+			const pending = await store.getSendCommand(clientMessageId);
+			assertOwner(owner, generation);
+			if (
+				!pending ||
+				pending.senderId !== owner ||
+				!pending.clientMessageId ||
+				!pending.encryptedMessage
+			)
+				throw new Error('Stored send command is missing');
+			if (pending.sendState === 'accepted') {
+				try {
+					await notifyAccepted(pending, owner, generation);
+				} catch {
+					/* Retry on the next connection. */
+				}
+				return pending;
+			}
+			if (pending.retryable === false) return pending;
+			let accepted: Message;
+			try {
+				assertOwner(owner, generation);
+				const command = {
+					expectedSenderId: owner,
+					receiverId: pending.receiverId,
+					clientMessageId: pending.clientMessageId,
+					message: pending.encryptedMessage
+				};
+				const response = await chatApi.sendMessage(command);
+				assertValidServerMessage(response.data, 'chat.sendMessage');
+				const raw = response.data;
+				if (
+					raw.senderId !== owner ||
+					raw.receiverId !== pending.receiverId ||
+					raw.clientMessageId !== pending.clientMessageId ||
+					raw.message !== pending.encryptedMessage
+				)
+					throw new Error('Server response does not match the stored send command');
+				accepted = {
+					...pending,
+					...normalizeMessage(raw),
+					content: pending.content,
+					sendState: 'accepted',
+					retryable: false,
+					sendError: undefined,
+					pendingNotification: true
+				};
+				const cached = await store.getMessage(accepted._id);
+				if (cached)
+					accepted = {
+						...mergeDelivery(accepted, cached),
+						pendingNotification: cached.pendingNotification ?? true
+					};
+				await store.settleMessage(pending._id, accepted);
+			} catch (error) {
+				const conflict = (error as { status?: number })?.status === 409;
+				const unauthorized = authenticationFailure(error);
+				if (unauthorized) await requireReauthentication(owner);
+				const failed: Message = {
+					...pending,
+					sendState: 'failed',
+					retryable: !conflict && !unauthorized,
+					sendError: unauthorized
+						? 'reauthentication_required'
+						: conflict
+							? 'This message conflicts with an existing send command.'
+							: 'Message not confirmed. Retry uses the same encrypted message.'
+				};
+				await store.failMessage(failed);
+				const latest = await store.getSendCommand(pending.clientMessageId);
+				if (latest?.sendState === 'accepted') {
+					try {
+						await notifyAccepted(latest, owner, generation);
+					} catch {
+						/* REST acceptance remains durable. */
+					}
+				}
+				return latest ?? failed;
+			}
+			try {
+				await notifyAccepted(accepted, owner, generation);
+			} catch {
+				/* REST acceptance remains durable. */
+			}
+			return accepted;
+		})();
+		sending.set(key, operation);
+		void operation.finally(() => sending.delete(key)).catch(() => {});
+		return operation;
+	},
 
-		// Require end-to-end encryption: initialize Signal and encrypt before sending.
-		await initSignal(currentUserId);
+	async sendMessage(payload: SendMessagePayload, owner?: string): Promise<Message> {
+		if (!owner) throw new Error('currentUserId is required');
+		const pending = await this.prepareMessage(payload, owner);
+		return this.retryMessage(pending._id, owner);
+	},
 
-		// Check prekey bundle cache first (avoids redundant HTTP calls per message)
-		let prekeyBundleData = prekeyBundleCache.get(payload.receiverId) ?? null;
-
-		if (!prekeyBundleData) {
-			const resp = await userApi.getPrekeyBundle(payload.receiverId);
-			prekeyBundleData = resp.data ?? null;
-			// Cache for this session (LRU-bounded)
-			if (prekeyBundleData) {
-				prekeyBundleCacheSet(payload.receiverId, prekeyBundleData);
+	async flushNotifications(owner: string): Promise<void> {
+		const generation = ownerGeneration;
+		assertOwner(owner, generation);
+		const rows = await getMessageStore(owner).getUnfinishedMessages();
+		for (const message of rows) {
+			assertOwner(owner, generation);
+			if (
+				message.senderId === owner &&
+				message.sendState === 'accepted' &&
+				message.pendingNotification
+			) {
+				try {
+					await notifyAccepted(message, owner, generation);
+				} catch {
+					/* Retry on the next connection. */
+				}
 			}
 		}
+	},
 
-		if (!prekeyBundleData) {
-			throw new Error(
-				'Recipient does not have an available prekey bundle; cannot send encrypted message'
-			);
-		}
-
-		// Only establish a new session if one doesn't already exist.
-		// createSessionWithPrekeyBundle has internal dedup, but skipping it entirely
-		// avoids object construction, base64 decoding, and IndexedDB reads per message.
-		const hasExisting = currentUserId
-			? await signalHasSession(String(payload.receiverId), currentUserId)
-			: false;
-		if (!hasExisting) {
-			await createSessionWithPrekeyBundle(prekeyBundleData, currentUserId);
-		}
-
-		// encryptMessage returns {type: number, body: string} where body is already base64-encoded
-		const ct = await encryptMessage(String(payload.receiverId), payload.content, currentUserId);
-
-		// Create encrypted envelope - body is already base64, no conversion needed
-		const payloadCipher: EncryptedEnvelope & { __encrypted: true } = {
-			__encrypted: true,
-			type: ct.type,
-			body: ct.body // Already base64 from encryptMessage
-		};
-
-		const sendBody = { receiverId: payload.receiverId, message: JSON.stringify(payloadCipher) };
-
-		// backend exposes POST /send on the chat router
-		// backend expects `message` field, not `content`
-		const response = await chatApi.sendMessage(sendBody);
-
-		if (!response.data) {
-			throw new Error('Failed to send message');
-		}
-
-		// Normalize the response and return with the original plaintext content
-		// The server returns the encrypted message, but the sender should see their own plaintext
-		assertValidServerMessage(response.data, 'chat.sendMessage');
-		const normalizedResponse = normalizeMessage(response.data as ServerMessage);
-		normalizedResponse.content = payload.content; // Use original plaintext for sender's view
-
-		// Store the plaintext message in local IndexedDB (Signal-style approach)
-		// This allows us to see our own sent messages after page reload
-		if (currentUserId) {
-			const messageStore = getMessageStore(currentUserId);
-			await messageStore.saveMessage(normalizedResponse);
-			logger.info('[ChatService] Saved sent message to local storage');
-		}
-
-		return normalizedResponse;
+	async applyReceipt(event: ReceiptEvent, owner: string): Promise<void> {
+		const generation = ownerGeneration;
+		assertOwner(owner, generation);
+		const store = getMessageStore(owner);
+		const messages =
+			event.type === 'delivered' && event.messageId
+				? [await store.getMessage(event.messageId)]
+				: await store.getMessages(event.by, owner, Number.MAX_SAFE_INTEGER);
+		assertOwner(owner, generation);
+		await store.saveMessages(
+			messages
+				.filter(
+					(message): message is Message =>
+						!!message && message.senderId === owner && message.receiverId === event.by
+				)
+				.map((message) =>
+					mergeDelivery(message, {
+						...message,
+						status: event.type === 'read' ? 'read' : 'delivered'
+					})
+				)
+		);
 	},
 
 	/**
 	 * Mark messages as read
 	 */
-	async markAsRead(senderId: string): Promise<void> {
-		await chatApi.markAsRead(senderId);
+	async markAsRead(senderId: string, owner = activeOwner): Promise<void> {
+		if (!owner) throw new Error('Current account is required');
+		const generation = ownerGeneration;
+		assertOwner(owner, generation);
+		try {
+			await chatApi.markAsRead(senderId, owner);
+		} catch (error) {
+			if (authenticationFailure(error)) await requireReauthentication(owner);
+			throw error;
+		}
+		assertOwner(owner, generation);
 	},
 
 	/**

@@ -1,16 +1,16 @@
 {
 	"schemaVersion": 1,
-	"backendCommit": "489f00d003e2333fa9ba22783dee426af9eab0ee",
+	"backendCommit": "2831e9f32a1e563497a83aac819f39e7abf3a585",
 	"generatorVersion": 1,
 	"backendSources": {
-		"chat-service/openapi.json": "6545bf0b1fb8b955274777c9a0af298dca25ffd1dc902aa04a67e546ed433776",
+		"chat-service/openapi.json": "7476626c0ecebde7b48400e30eb33b4b17dcd053d1bd5f9cb271550b214002c9",
 		"user-service/openapi.json": "fe54c805c0619a94e7e48555ff28b715b2fd29867fc74b5e399986a47a5ff4d6"
 	},
 	"frontendArtifacts": {
-		"contracts/chat-service.openapi.json": "d6bc4369683cbbb5adedbfe3377404d6644fd0c4a453069efe85e1c757cbea47",
-		"contracts/source.json": "2b445766cc8e1af27ad164fa150a4f5b0eec8c8de27a9309bf83b6aa5491140f",
+		"contracts/chat-service.openapi.json": "011b5b0208ed571ecbdd4da3b8176800bb9f0803d1560819b4ae3cf8168fea42",
+		"contracts/source.json": "bc8e376edb7b1ba0b594f759f871ece3efe3ec155059ce7311e760fc8484bd26",
 		"contracts/user-service.openapi.json": "7eee975763547519d645ade900280f99f5e7bf44d479f5d8c6c30d6cbd1734d3",
-		"src/lib/generated/api.operations.ts": "fa82a7cede91a6f17d834f28a67f162ac2c3b7b1a0de9c974cd0881400046372",
-		"src/lib/generated/api.types.ts": "50937708b3f7d4e5a1c861d92b68354e4caa12852c315a55fee7cb37bf073686"
+		"src/lib/generated/api.operations.ts": "599341a5510f1586541e978003753877455def6e0e1f3cbefa62308ea230f20d",
+		"src/lib/generated/api.types.ts": "581ed5cd5ce4e9cbdeaf6e35bb806c777ee6e801e4e7a61bf8dc8770c872b206"
 	}
 }

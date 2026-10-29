@@ -56,7 +56,10 @@ vi.mock('$lib/services/websocket.service', () => ({
 
 // mock chatService; per-test we'll import and adjust the mocked methods
 vi.mock('$lib/services/chat.service', () => ({
+	mergeMessages: (_current: unknown[], updates: unknown[]) => updates,
 	chatService: {
+		flushNotifications: vi.fn().mockResolvedValue(undefined),
+		markAsRead: vi.fn().mockResolvedValue(undefined),
 		getConversations: vi.fn().mockResolvedValue([]),
 		getMessages: vi.fn().mockResolvedValue([]),
 		searchUsers: vi.fn().mockResolvedValue([])

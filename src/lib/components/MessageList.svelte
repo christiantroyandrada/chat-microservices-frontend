@@ -12,7 +12,8 @@
 		// typingUsers is a set of userIds currently typing (managed by parent)
 		typingUsers = new Set<string>(),
 		// typingUsername optionally provides a display name for the typing user
-		typingUsername = '' as string | undefined
+		typingUsername = '' as string | undefined,
+		retry = undefined as ((message: Message) => void) | undefined
 	} = $props();
 
 	let messagesContainer: HTMLDivElement;
@@ -253,7 +254,22 @@
 						class:time-received={message.senderId !== currentUserId}
 					>
 						{formatTime(message.timestamp)}
-						{#if message.senderId === currentUserId}
+						{#if message.senderId === currentUserId && (message.sendState === 'pending' || message.sendState === 'failed')}
+							<span role="status">{message.sendState === 'pending' ? 'Pending' : 'Failed'}</span>
+							{#if message.sendError}<span class="ml-1"
+									>{message.sendError === 'reauthentication_required'
+										? 'Log out and log in to retry this message.'
+										: message.sendError}</span
+								>{/if}
+							{#if message.retryable && retry}
+								<button
+									type="button"
+									class="ml-2 underline"
+									aria-label="Retry message"
+									onclick={() => retry?.(message)}>Retry</button
+								>
+							{/if}
+						{:else if message.senderId === currentUserId}
 							{@const receiptState = message.status ?? (message.read ? 'read' : 'sent')}
 							<span
 								role="img"

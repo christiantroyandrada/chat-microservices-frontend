@@ -7,13 +7,13 @@
 	import { notificationStore } from '$lib/stores/notification.store';
 	import { themeStore } from '$lib/stores/theme.store';
 	import { chatService } from '$lib/services/chat.service';
+	import { mergeMessages } from '$lib/services/message-merge';
 	import { wsService } from '$lib/services/websocket.service';
 	import { sanitizeMessage } from '$lib/utils';
 	import { initSignalWithRestore, isSignalInitialized } from '$lib/crypto/signal';
 	import { logger } from '$lib/services/dev-logger';
 	import { API_BASE, getOrCreateDeviceId } from '$lib/config';
-	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
-
+	import type { ChatConversation, Message, MessageListHandle, ReceiptEvent } from '$lib/types';
 	import ChatList from '$lib/components/ChatList.svelte';
 	import ChatHeader from '$lib/components/ChatHeader.svelte';
 	import MessageList from '$lib/components/MessageList.svelte';
@@ -24,485 +24,322 @@
 	let messages: Message[] = $state([]);
 	let selectedConversation: ChatConversation | null = $state(null);
 	let typingUsers = $state(new Set<string>());
-	let loading = $state({
-		conversations: false,
-		messages: false
-	});
+	let loading = $state({ conversations: false, messages: false });
 	let showNotificationModal = $state(false);
-
-	// Strongly-typed reference to MessageList component for programmatic scrolling
 	let messageListComponent: MessageListHandle | null = $state(null);
-
-	let unsubscribeWsMessage: (() => void) | null = null;
-	let unsubscribeWsTyping: (() => void) | null = null;
-	let unsubscribeWsStatus: (() => void) | null = null;
-	let unsubscribeWsPresence: (() => void) | null = null;
-	let unsubscribeWsReceipt: (() => void) | null = null;
-
-	// Track if we've done the initial message prefetch to avoid recursion
+	let accountGeneration = 0;
+	let conversationGeneration = 0;
+	let destroyed = false;
 	let hasPreloadedMessages = false;
-
-	// Store presence updates that arrive before conversations are loaded
+	let observedOwner: string | null = null;
+	let unsubscribeOwner: (() => void) | undefined;
+	let socketSubscriptions: Array<() => void> = [];
 	const pendingPresenceUpdates = new Map<string, { online: boolean; lastSeen?: string }>();
 
-	onMount(async () => {
-		// Check authentication
-		if (!$user) {
-			await authStore.init();
-			if (!$user) {
-				void goto('/login');
-				return;
-			}
-		}
+	function owns(owner: string, generation: number) {
+		return !destroyed && $user?._id === owner && generation === accountGeneration;
+	}
 
-		// Initialize Signal Protocol keys (MUST complete before loading messages)
-		// Skip if already initialized at login time — avoids redundant PBKDF2 + 429
-		if (typeof window !== 'undefined' && $user && !isSignalInitialized()) {
-			const userId = $user._id as string;
-			const deviceId = getOrCreateDeviceId();
+	function clearSocket() {
+		socketSubscriptions.forEach((unsubscribe) => unsubscribe());
+		socketSubscriptions = [];
+		wsService.disconnect();
+	}
 
-			// AWAIT initialization to prevent race conditions with message decryption.
-			// No password is cached anywhere; rely on the persistent IndexedDB key
-			// store (initSignalWithRestore "Path 2" reuses existing local keys). If
-			// local keys are absent (new device / cleared storage), success is false
-			// and the user is prompted to log in again (handled below).
-			try {
-				const success = await initSignalWithRestore(userId, deviceId, API_BASE, undefined);
-				if (success) {
-					logger.success('[Chat] Signal Protocol initialized successfully');
-				} else {
-					logger.warning('[Chat] Signal Protocol initialization failed - may need to re-login');
-					toastStore.warning('Encryption keys not found. Please log out and log in again.');
-				}
-			} catch (err) {
-				logger.error('[Chat] Signal Protocol initialization error:', err);
-				toastStore.error('Failed to initialize encryption');
-			}
-		} else if ($user) {
-			logger.info('[Chat] Signal Protocol already initialized, skipping duplicate init');
-		}
-
-		// Connect WebSocket (auth handled via httpOnly cookie)
-		wsService.connect();
-
-		// Set up WebSocket listeners
-		unsubscribeWsMessage = wsService.onMessage(handleIncomingMessage);
-		unsubscribeWsTyping = wsService.onTyping(handleTypingIndicator);
-		unsubscribeWsStatus = wsService.onStatusChange(handleConnectionStatus);
-		unsubscribeWsPresence = wsService.onPresence(handlePresenceUpdate);
-		unsubscribeWsReceipt = wsService.onReceipt(handleReceipt);
-
-		// Load initial data (Signal Protocol is now ready for decryption)
-		await loadConversations();
-		await notificationStore.fetch();
+	onMount(() => {
+		unsubscribeOwner = user.subscribe((account) => {
+			const owner = account?._id ?? null;
+			if (owner === observedOwner) return;
+			observedOwner = owner;
+			accountGeneration++;
+			conversationGeneration++;
+			conversations = [];
+			messages = [];
+			selectedConversation = null;
+			typingUsers = new Set();
+			pendingPresenceUpdates.clear();
+			hasPreloadedMessages = false;
+			clearSocket();
+			if (owner) void initializeAccount(owner, accountGeneration);
+		});
+		if (!$user)
+			void authStore.init().then(() => {
+				if (!$user && !destroyed) void goto('/login');
+			});
 	});
 
 	onDestroy(() => {
-		// Clean up WebSocket listeners
-		if (unsubscribeWsMessage) unsubscribeWsMessage();
-		if (unsubscribeWsTyping) unsubscribeWsTyping();
-		if (unsubscribeWsStatus) unsubscribeWsStatus();
-		if (unsubscribeWsPresence) unsubscribeWsPresence();
-		if (unsubscribeWsReceipt) unsubscribeWsReceipt();
-
-		wsService.disconnect();
+		destroyed = true;
+		accountGeneration++;
+		conversationGeneration++;
+		unsubscribeOwner?.();
+		clearSocket();
 	});
 
-	// Update receipt state on our own sent messages when the recipient's device
-	// confirms delivery or reads the conversation.
-	function handleReceipt(event: { type: 'delivered' | 'read'; messageId?: string; by: string }) {
-		const me = $user?._id as string | undefined;
-		if (event.type === 'delivered' && event.messageId) {
-			messages = messages.map((m) =>
-				m._id === event.messageId && m.status !== 'read' ? { ...m, status: 'delivered' } : m
-			);
-		} else if (event.type === 'read') {
-			// `by` is the reader; mark our messages addressed to them as read.
-			messages = messages.map((m) =>
-				m.senderId === me && m.receiverId === event.by ? { ...m, status: 'read', read: true } : m
-			);
+	async function initializeAccount(owner: string, generation: number) {
+		if (!isSignalInitialized()) {
+			try {
+				const success = await initSignalWithRestore(
+					owner,
+					getOrCreateDeviceId(),
+					API_BASE,
+					undefined
+				);
+				if (!owns(owner, generation)) return;
+				if (!success)
+					toastStore.warning('Encryption keys not found. Please log out and log in again.');
+			} catch (error) {
+				if (!owns(owner, generation)) return;
+				logger.error('[Chat] Signal Protocol initialization error:', error);
+				toastStore.error('Failed to initialize encryption');
+			}
 		}
+		if (!owns(owner, generation)) return;
+		socketSubscriptions = [
+			wsService.onMessage(handleIncomingMessage),
+			wsService.onTyping(handleTypingIndicator),
+			wsService.onStatusChange(handleConnectionStatus),
+			wsService.onPresence(handlePresenceUpdate),
+			wsService.onReceipt(handleReceipt)
+		];
+		wsService.connect();
+		void chatService.flushNotifications(owner).catch(() => {});
+		await loadConversations();
+		if (owns(owner, generation)) await notificationStore.fetch();
+	}
+
+	function handleReceipt(event: ReceiptEvent) {
+		const owner = $user?._id;
+		if (!owner) return;
+		void chatService
+			.applyReceipt(event, owner)
+			.catch((error) => logger.error('[Chat] Receipt storage failed:', error));
+		messages = messages.map((message) => {
+			if (message.senderId !== owner || message.receiverId !== event.by) return message;
+			if (event.type === 'read') return { ...message, status: 'read', read: true };
+			return message._id === event.messageId && message.status !== 'read'
+				? { ...message, status: 'delivered' }
+				: message;
+		});
 	}
 
 	async function loadConversations() {
+		const owner = $user?._id;
+		const generation = accountGeneration;
+		if (!owner || destroyed) return;
 		loading.conversations = true;
 		try {
-			const currentUserId = $user?._id as string | undefined;
-			const loadedConversations = await chatService.getConversations(currentUserId);
-
-			// Preserve existing presence data (online/lastSeen) from WebSocket updates
-			// Server doesn't send presence data, only WebSocket events do
-			const presenceMap = new Map<string, { online?: boolean; lastSeen?: string }>();
-			conversations.forEach((conv) => {
-				if (conv.online !== undefined || conv.lastSeen !== undefined) {
-					presenceMap.set(conv.userId, {
-						online: conv.online,
-						lastSeen: conv.lastSeen
-					});
-				}
-			});
-
-			// Normalize unreadCount to ensure it's always a number and merge presence data
-			conversations = loadedConversations.map((conv) => {
-				const existingPresence = presenceMap.get(conv.userId);
+			const loaded = await chatService.getConversations(owner);
+			if (!owns(owner, generation)) return;
+			conversations = loaded.map((conversation) => {
+				const previous = conversations.find((c) => c.userId === conversation.userId);
 				return {
-					...conv,
-					unreadCount: Number(conv.unreadCount || 0),
-					// Restore presence data from before the reload
-					...(existingPresence && existingPresence)
+					...conversation,
+					unreadCount: Number(conversation.unreadCount || 0),
+					online: previous?.online,
+					lastSeen: previous?.lastSeen,
+					...pendingPresenceUpdates.get(conversation.userId)
 				};
 			});
-
-			// Apply any pending presence updates that arrived before conversations loaded,
-			// then clear the queue so subsequent loadConversations() calls don't re-apply them.
-			if (pendingPresenceUpdates.size > 0) {
-				logger.debug(
-					'[Chat] Applying pending presence updates',
-					Array.from(pendingPresenceUpdates.entries())
-				);
-				conversations = conversations.map((conv) => {
-					const presenceData = pendingPresenceUpdates.get(conv.userId);
-					if (presenceData) {
-						return { ...conv, ...presenceData };
-					}
-					return conv;
-				});
-				pendingPresenceUpdates.clear();
-			}
-
-			// Proactively fetch the latest message for each conversation to populate
-			// local storage with decrypted content. This ensures conversation previews
-			// show the correct decrypted message on first load (e.g., after User B logs in).
-			// Only do this once on initial load to avoid infinite recursion.
-			if (currentUserId && conversations.length > 0 && !hasPreloadedMessages) {
+			pendingPresenceUpdates.clear();
+			if (!hasPreloadedMessages && conversations.length) {
 				hasPreloadedMessages = true;
-
-				// Fetch messages in background (don't await, don't block UI)
 				void Promise.all(
-					conversations.map(async (conv) => {
-						try {
-							// Fetch just 1 latest message to decrypt and cache it
-							await chatService.getMessages(conv.userId, 1, 0, currentUserId);
-						} catch (err) {
-							// Silently fail - non-critical background operation
-							logger.warning(`[Chat] Failed to prefetch messages for ${conv.userId}:`, err);
-						}
-					})
+					conversations.map((conversation) =>
+						chatService.getMessages(conversation.userId, 1, 0, owner).catch(() => {})
+					)
 				).then(() => {
-					// After all messages are fetched and decrypted, reload conversations
-					// to pick up the decrypted previews from local storage
-					void loadConversations();
+					if (owns(owner, generation)) void loadConversations();
 				});
 			}
-		} catch (error: unknown) {
-			const message = error instanceof Error ? error.message : 'Failed to load conversations';
-			toastStore.error(message);
+		} catch (error) {
+			if (owns(owner, generation))
+				toastStore.error(error instanceof Error ? error.message : 'Failed to load conversations');
 		} finally {
-			loading.conversations = false;
+			if (owns(owner, generation)) loading.conversations = false;
 		}
 	}
 
 	async function selectConversation(userId: string) {
 		const conversation = conversations.find((c) => c.userId === userId);
-		if (!conversation || !$user) return;
-
+		const owner = $user?._id;
+		if (!conversation || !owner) return;
+		const generation = accountGeneration;
+		const selection = ++conversationGeneration;
 		selectedConversation = conversation;
+		messages = [];
 		loading.messages = true;
-
-		// Immediately reset unread count for this conversation
 		conversations = conversations.map((c) => (c.userId === userId ? { ...c, unreadCount: 0 } : c));
-
-		const currentUserId = $user._id as string;
-
 		try {
-			messages = await chatService.getMessages(userId, 50, 0, currentUserId);
-			await chatService.markAsRead(userId);
-			// Notify the sender in real time that we've read their messages.
+			const loaded = await chatService.getMessages(userId, 50, 0, owner);
+			if (!owns(owner, generation) || selection !== conversationGeneration) return;
+			messages = mergeMessages(messages, loaded);
+			await chatService.markAsRead(userId, owner);
+			if (!owns(owner, generation) || selection !== conversationGeneration) return;
 			wsService.sendMarkRead(userId);
-
-			// After loading and decrypting messages, refresh conversation list
-			// to update the preview with the latest decrypted message from local storage
 			await loadConversations();
-
-			// Update selectedConversation reference to point to the refreshed object
-			// This ensures presence data from WebSocket is preserved
-			const refreshedConversation = conversations.find((c) => c.userId === userId);
-			if (refreshedConversation) {
-				selectedConversation = refreshedConversation;
-			}
-		} catch (error: unknown) {
-			const message = error instanceof Error ? error.message : 'Failed to load messages';
-			toastStore.error(message);
-			messages = [];
+			if (!owns(owner, generation) || selection !== conversationGeneration) return;
+			selectedConversation = conversations.find((c) => c.userId === userId) ?? conversation;
+		} catch (error) {
+			if (owns(owner, generation) && selection === conversationGeneration)
+				toastStore.error(error instanceof Error ? error.message : 'Failed to load messages');
 		} finally {
-			loading.messages = false;
+			if (owns(owner, generation) && selection === conversationGeneration) loading.messages = false;
 		}
 	}
 
-	async function sendMessage(content: string) {
-		if (!selectedConversation || !$user) return;
-
-		// Sanitize and validate message content
+	async function sendMessage(content: string): Promise<boolean> {
+		if (!selectedConversation || !$user) return false;
 		const sanitizedContent = sanitizeMessage(content);
 		if (!sanitizedContent) {
 			toastStore.error('Invalid message content');
-			return;
+			return false;
 		}
-
-		const receiverId = selectedConversation.userId;
-		const currentUserId = $user._id as string;
-
+		const recipient = selectedConversation;
+		const owner = $user._id;
+		const generation = accountGeneration;
+		const selection = conversationGeneration;
 		try {
-			const message = await chatService.sendMessage(
-				{
-					receiverId,
-					content: sanitizedContent
-				},
-				currentUserId
+			const pending = await chatService.prepareMessage(
+				{ receiverId: recipient.userId, content: sanitizedContent },
+				owner,
+				recipient.username
 			);
-
-			// Add message to local state
-			messages = [...messages, message];
-
-			// Update conversation list
+			if (!owns(owner, generation)) return false;
+			if (selection === conversationGeneration) messages = mergeMessages(messages, [pending]);
+			if (!conversations.some((c) => c.userId === recipient.userId))
+				conversations = [...conversations, recipient];
 			conversations = conversations.map((c) =>
-				c.userId === receiverId
-					? { ...c, lastMessage: sanitizedContent, lastMessageTime: message.timestamp }
+				c.userId === recipient.userId
+					? { ...c, lastMessage: sanitizedContent, lastMessageTime: pending.timestamp }
 					: c
 			);
-
-			// Broadcast via WebSocket for real-time delivery to receiver
-			// Pass the message ID so backend knows it's already saved
-			if (wsService.isConnected()) {
-				wsService.sendMessage({
-					...message,
-					_id: message._id // Include ID to prevent duplicate save
-				});
-			}
-		} catch (error: unknown) {
-			const message = error instanceof Error ? error.message : 'Failed to send message';
-			toastStore.error(message);
+			void transmitMessage(pending, owner, generation, selection);
+			return true;
+		} catch (error) {
+			if (owns(owner, generation))
+				toastStore.error(error instanceof Error ? error.message : 'Failed to prepare message');
+			return false;
 		}
 	}
 
-	async function handleIncomingMessage(message: Message) {
-		logger.debug('[Chat] handleIncomingMessage called:', {
-			_id: message._id,
-			senderId: message.senderId,
-			receiverId: message.receiverId,
-			contentLength: String(message.content?.length || 0),
-			currentUser: String($user?._id || '')
-		});
-
-		// Decrypt message content if encrypted
-		let displayContent = message.content;
-		let _decryptionFailed = false;
-
-		// Skip decryption for own messages — they were encrypted with the
-		// *recipient's* key, so attempting to decrypt with our key always fails.
-		// The plaintext is already cached locally from sendMessage().
-		const isOwnMessage = message.senderId === $user?._id;
-		if (isOwnMessage) {
-			// Nothing to decrypt — displayContent stays as-is
-		} else {
-			try {
-				const parsed = JSON.parse(message.content);
-				if (parsed && parsed.__encrypted && $user) {
-					logger.info('[Chat] Message is encrypted, attempting decryption...');
-					const currentUserId = $user._id as string;
-					const { decryptMessage, SignalDecryptionError } = await import('$lib/crypto/signal');
-					const ctObj = { type: parsed.type, body: parsed.body };
-					try {
-						displayContent = await decryptMessage(message.senderId, ctObj, currentUserId);
-						// Update the message object with decrypted content
-						message.content = displayContent;
-						logger.success('[Chat] Message decrypted successfully');
-					} catch (decryptErr) {
-						// Handle Signal-specific decryption errors with better messaging
-						if (decryptErr instanceof SignalDecryptionError) {
-							logger.error('[Chat] Signal decryption error:', {
-								message: decryptErr.message,
-								hasIdentityKey: String(decryptErr.hasIdentityKey),
-								hasSignedPreKey: String(decryptErr.hasSignedPreKey),
-								hasSession: String(decryptErr.hasSession)
-							});
-							_decryptionFailed = true;
-							message.content = `🔒 ${decryptErr.message}`;
-						} else {
-							throw decryptErr;
-						}
-					}
-				}
-			} catch (decryptError) {
-				logger.error('[Chat] Decryption failed:', decryptError);
-				_decryptionFailed = true;
-				// Show user-friendly error message instead of encrypted JSON
-				message.content =
-					'🔒 [Message could not be decrypted - encryption keys may be out of sync]';
-			}
-		} // end !isOwnMessage
-
-		// Save decrypted message to local storage (Signal-style)
-		if ($user) {
-			try {
-				const { getMessageStore } = await import('$lib/crypto/messageStore');
-				const messageStore = getMessageStore($user._id as string);
-				await messageStore.saveMessage(message);
-				logger.info('[Chat] Saved incoming message to local storage');
-			} catch (err) {
-				logger.error('[Chat] Failed to save message to local storage:', err);
+	async function transmitMessage(
+		message: Message,
+		owner: string,
+		generation: number,
+		selection: number
+	) {
+		try {
+			const result = await chatService.retryMessage(message.clientMessageId ?? message._id, owner);
+			if (owns(owner, generation) && selection === conversationGeneration)
+				messages = mergeMessages(messages, [result]);
+		} catch (error) {
+			if (owns(owner, generation) && selection === conversationGeneration) {
+				messages = messages.map((row) =>
+					row._id === message._id ? { ...row, sendState: 'failed', retryable: true } : row
+				);
+				toastStore.error(error instanceof Error ? error.message : 'Failed to send message');
 			}
 		}
+	}
 
-		// Acknowledge delivery to the sender — the message reached our device.
-		if (message._id) wsService.sendDelivered(message._id);
-
-		// Add message to the list if it's for current conversation
-		if (
-			selectedConversation &&
-			(message.senderId === selectedConversation.userId ||
-				message.receiverId === selectedConversation.userId)
-		) {
-			messages = [...messages, message];
-
-			// Mark as read if conversation is active
-			if (message.senderId === selectedConversation.userId) {
-				void chatService.markAsRead(message.senderId);
-				// Notify the sender in real time that we've read it.
-				wsService.sendMarkRead(message.senderId);
-			}
-		}
-
-		// Update conversations list with decrypted content
-		const existingConversation = conversations.find(
-			(c) => c.userId === message.senderId || c.userId === message.receiverId
+	function retryMessage(message: Message) {
+		if (!$user || message.senderId !== $user._id || !message.retryable) return;
+		messages = messages.map((row) =>
+			row._id === message._id ? { ...row, sendState: 'pending' } : row
 		);
+		void transmitMessage(message, $user._id, accountGeneration, conversationGeneration);
+	}
 
-		if (existingConversation) {
-			conversations = conversations.map((c) =>
-				c.userId === message.senderId || c.userId === message.receiverId
-					? {
-							...c,
-							lastMessage: displayContent,
-							lastMessageTime: message.timestamp,
-							unreadCount:
-								selectedConversation?.userId !== message.senderId
-									? Number(c.unreadCount || 0) + 1
-									: 0
-						}
-					: c
-			);
-		} else {
-			// New conversation - reload the full list from server and local storage
-			await loadConversations();
-		}
-
-		// Show notification with decrypted content
-		if (message.senderId !== $user?._id) {
-			toastStore.info(`New message from ${message.senderUsername || 'User'}`);
+	async function handleIncomingMessage(incoming: Message) {
+		const owner = $user?._id;
+		const generation = accountGeneration;
+		if (!owner) return;
+		try {
+			const result = await chatService.receiveMessage(incoming, owner);
+			if (!owns(owner, generation)) return;
+			const message = result.message;
+			const other = message.senderId === owner ? message.receiverId : message.senderId;
+			if (selectedConversation?.userId === other) messages = mergeMessages(messages, [message]);
+			if (message.senderId !== owner) {
+				wsService.sendDelivered(message._id);
+				if (selectedConversation?.userId === other) {
+					void chatService.markAsRead(other, owner).catch(() => {});
+					wsService.sendMarkRead(other);
+				}
+			}
+			if (!result.fresh) return;
+			const conversation = conversations.find((c) => c.userId === other) ?? {
+				userId: other,
+				username: message.senderUsername || 'User',
+				unreadCount: 0
+			};
+			const updated = {
+				...conversation,
+				lastMessage: message.content,
+				lastMessageTime: message.timestamp,
+				unreadCount:
+					message.senderId !== owner && selectedConversation?.userId !== other
+						? Number(conversation.unreadCount || 0) + 1
+						: conversation.unreadCount
+			};
+			conversations = [...conversations.filter((c) => c.userId !== other), updated];
+			if (message.senderId !== owner)
+				toastStore.info('New message from ' + (message.senderUsername || 'User'));
+		} catch (error) {
+			if (owns(owner, generation)) logger.error('[Chat] Incoming message failed:', error);
 		}
 	}
 
 	function handleTypingIndicator(userId: string, isTyping: boolean) {
-		if (isTyping) {
-			typingUsers.add(userId);
-		} else {
-			typingUsers.delete(userId);
-		}
+		if (isTyping) typingUsers.add(userId);
+		else typingUsers.delete(userId);
 		typingUsers = new Set(typingUsers);
 	}
-
 	function handleConnectionStatus(status: 'connected' | 'disconnected' | 'reconnecting') {
-		switch (status) {
-			case 'connected':
-				toastStore.success('Connected to chat');
-				break;
-			case 'disconnected':
-				toastStore.warning('Disconnected from chat');
-				break;
-			case 'reconnecting':
-				toastStore.info('Reconnecting...');
-				break;
-		}
+		if (status === 'connected') {
+			if ($user) void chatService.flushNotifications($user._id).catch(() => {});
+			toastStore.success('Connected to chat');
+		} else if (status === 'disconnected') toastStore.warning('Disconnected from chat');
+		else toastStore.info('Reconnecting...');
 	}
-
 	function handleTyping(isTyping: boolean) {
-		if (selectedConversation && wsService.isConnected()) {
+		if (selectedConversation && wsService.isConnected())
 			wsService.sendTyping(selectedConversation.userId, isTyping);
-		}
 	}
-
 	function handleBack() {
-		// Close the active conversation and show the conversation list (mobile behavior)
+		conversationGeneration++;
 		selectedConversation = null;
 		messages = [];
 	}
-
 	function handlePresenceUpdate(userId: string, online: boolean, lastSeen?: string) {
-		// Debug info (uses dev-logger which is a no-op in prod)
-		logger.debug('[Chat] handlePresenceUpdate', { userId, online, lastSeen });
-
-		// Store presence update for later if conversations haven't loaded yet
-		if (conversations.length === 0) {
-			logger.debug('[Chat] Conversations not loaded yet, storing presence update for later');
-			pendingPresenceUpdates.set(userId, { online, lastSeen });
-			return;
-		}
-
-		// Update the conversation's presence status
-		conversations = conversations.map((conv) =>
-			conv.userId === userId ? { ...conv, online, lastSeen } : conv
+		if (!conversations.length) pendingPresenceUpdates.set(userId, { online, lastSeen });
+		conversations = conversations.map((c) =>
+			c.userId === userId ? { ...c, online, lastSeen } : c
 		);
-
-		// If the updated user is the currently selected conversation, trigger a re-render
-		if (selectedConversation && selectedConversation.userId === userId) {
+		if (selectedConversation?.userId === userId)
 			selectedConversation = { ...selectedConversation, online, lastSeen };
-			logger.debug('[Chat] Updated selectedConversation to:', {
-				userId: selectedConversation.userId,
-				online: selectedConversation.online,
-				lastSeen: selectedConversation.lastSeen
-			});
-		}
-
-		logger.debug('[Chat] Presence updated:', { userId, online, lastSeen });
 	}
-
-	/**
-	 * Create a new conversation with a selected user (from ChatList create event).
-	 * If a conversation already exists, select it. Otherwise, optimistically open a new thread
-	 * and refresh the conversations list in the background.
-	 */
-	async function createConversation(user: unknown) {
-		const u = user as Record<string, unknown>;
-		const userId = String(u.userId ?? '');
+	async function createConversation(value: unknown) {
+		const account = value as Record<string, unknown>;
+		const userId = String(account.userId ?? '');
 		if (!userId) return;
-
-		const existing = conversations.find((c) => c.userId === userId);
-		if (existing) {
-			await selectConversation(existing.userId);
+		if (conversations.some((c) => c.userId === userId)) {
+			await selectConversation(userId);
 			return;
 		}
-
-		// Optimistically open a conversation UI for this user
-		selectedConversation = {
-			userId,
-			username: String(u.username ?? '')
-		};
+		conversationGeneration++;
+		selectedConversation = { userId, username: String(account.username ?? '') };
+		conversations = [...conversations, selectedConversation];
 		messages = [];
-
-		// Refresh conversations list in background to pick up server-side created threads
-		void loadConversations();
+		loading.messages = false;
 	}
-
 	function handleLogout() {
-		authStore.logout();
+		void authStore.logout();
 	}
-
 	function toggleNotificationModal() {
 		showNotificationModal = !showNotificationModal;
-		if (showNotificationModal) {
-			void notificationStore.fetch();
-		}
+		if (showNotificationModal) void notificationStore.fetch();
 	}
 </script>
 
@@ -642,12 +479,9 @@
 					conversationId={selectedConversation.userId}
 					{typingUsers}
 					typingUsername={selectedConversation.username}
+					retry={retryMessage}
 				/>
-				<MessageInput
-					send={sendMessage}
-					typing={handleTyping}
-					disabled={!wsService.isConnected()}
-				/>
+				<MessageInput send={sendMessage} typing={handleTyping} disabled={!$user} />
 			{:else}
 				<!-- Conversation list (full-width) as the default first interaction screen -->
 				<div class="w-full flex-1">

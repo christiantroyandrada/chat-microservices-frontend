@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import setupMockBackend from './mockBackend';
+import setupMockBackend, { mockContactOneId, mockContactTwoId } from './mockBackend';
 
 async function login(page: Page) {
 	await page.goto('/login');
@@ -28,15 +28,17 @@ test('enforces mocked API authentication and conversation membership', async ({
 }) => {
 	await page.goto('/login');
 
-	const unauthenticated = await page.evaluate(async () =>
-		Promise.all([
-			fetch('/chat/conversations').then((response) => response.status),
-			fetch('/chat/get/contact-one').then((response) => response.status),
-			fetch('/chat/messages/read/contact-one', { method: 'PUT' }).then(
-				(response) => response.status
-			),
-			fetch('/user/search?q=contact').then((response) => response.status)
-		])
+	const unauthenticated = await page.evaluate(
+		async (contact) =>
+			Promise.all([
+				fetch('/chat/conversations').then((response) => response.status),
+				fetch(`/chat/get/${contact}`).then((response) => response.status),
+				fetch(`/chat/messages/read/${contact}`, { method: 'PUT' }).then(
+					(response) => response.status
+				),
+				fetch('/user/search?q=contact').then((response) => response.status)
+			]),
+		mockContactOneId
 	);
 	expect(unauthenticated).toEqual([401, 401, 401, 401]);
 
@@ -46,14 +48,18 @@ test('enforces mocked API authentication and conversation membership', async ({
 	);
 	expect(forgedIdentity).toBe(401);
 
-	await context.addCookies([{ name: 'jwt', value: 'contact-two', url: 'http://localhost:4173' }]);
-	const nonparticipant = await page.evaluate(async () =>
-		Promise.all([
-			fetch('/chat/get/contact-one').then((response) => response.status),
-			fetch('/chat/messages/read/contact-one', { method: 'PUT' }).then(
-				(response) => response.status
-			)
-		])
+	await context.addCookies([
+		{ name: 'jwt', value: mockContactTwoId, url: 'http://localhost:4173' }
+	]);
+	const nonparticipant = await page.evaluate(
+		async (contact) =>
+			Promise.all([
+				fetch(`/chat/get/${contact}`).then((response) => response.status),
+				fetch(`/chat/messages/read/${contact}`, { method: 'PUT' }).then(
+					(response) => response.status
+				)
+			]),
+		mockContactOneId
 	);
 	expect(nonparticipant).toEqual([404, 404]);
 });

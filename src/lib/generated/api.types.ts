@@ -2,7 +2,7 @@
 
  * AUTO-GENERATED from committed OpenAPI contracts.
 
- * backendCommit: 489f00d003e2333fa9ba22783dee426af9eab0ee
+ * backendCommit: 2831e9f32a1e563497a83aac819f39e7abf3a585
 
  * generatorVersion: 1
 
@@ -110,6 +110,10 @@ export interface UserApiHealthCheck {
 
 export interface ChatApiSendMessageRequest {
 	receiverId: string;
+	/** Optional sender precondition. A mismatch with the authenticated sender returns 403 before submission. */
+	expectedSenderId?: string;
+	/** Optional stable send key. Reuse requires the same recipient and exact encrypted envelope. */
+	clientMessageId?: string;
 	/** Signal-protocol encrypted envelope (JSON string, max 5000 chars) */
 	message: string;
 }
@@ -118,6 +122,7 @@ export interface ChatApiMessage {
 	id: string;
 	senderId: string;
 	receiverId: string;
+	clientMessageId?: string | null;
 	/** Encrypted envelope JSON string */
 	message: string;
 	isEncrypted: boolean;

@@ -17,12 +17,39 @@ import type { Message } from '$lib/types';
 import { logger } from '$lib/services/dev-logger';
 import { toError } from './signalUtils';
 
+function transactionComplete(tx: IDBTransaction): Promise<void> {
+	return new Promise((resolve, reject) => {
+		tx.oncomplete = () => resolve();
+		tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Message transaction aborted'));
+	});
+}
+
+async function writeMessages(
+	db: IDBDatabase,
+	enqueue: (store: IDBObjectStore) => void
+): Promise<void> {
+	const tx = db.transaction('messages', 'readwrite');
+	const complete = transactionComplete(tx);
+	try {
+		enqueue(tx.objectStore('messages'));
+	} catch (error) {
+		void complete.catch(() => {});
+		try {
+			tx.abort();
+		} catch {
+			/* The transaction can already be inactive. */
+		}
+		throw error;
+	}
+	return complete;
+}
+
 class LocalMessageStore {
 	private readonly dbName: string;
 	private readonly version = 1;
 	private db: IDBDatabase | null = null;
 
-	constructor(userId: string) {
+	constructor(private readonly userId: string) {
 		// Each user gets their own database
 		this.dbName = `chat-messages-${userId}`;
 	}
@@ -67,13 +94,8 @@ class LocalMessageStore {
 		await this.init();
 		if (!this.db) throw new Error('DB not initialized');
 
-		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction('messages', 'readwrite');
-			const store = tx.objectStore('messages');
-			const request = store.put(message);
-
-			request.onerror = () => reject(toError(request.error));
-			request.onsuccess = () => resolve();
+		return writeMessages(this.db, (store) => {
+			store.put(message);
 		});
 	}
 
@@ -81,29 +103,76 @@ class LocalMessageStore {
 	 * Save multiple messages in a batch
 	 */
 	async saveMessages(messages: Message[]): Promise<void> {
+		if (!messages.length) return;
 		await this.init();
 		if (!this.db) throw new Error('DB not initialized');
 
+		return writeMessages(this.db, (store) => {
+			for (const message of messages) store.put(message);
+		});
+	}
+
+	async settleMessage(clientMessageId: string, message: Message): Promise<void> {
+		await this.init();
+		if (!this.db) throw new Error('DB not initialized');
+		return writeMessages(this.db, (store) => {
+			store.put(message);
+			if (clientMessageId !== message._id) store.delete(clientMessageId);
+		});
+	}
+
+	async failMessage(message: Message): Promise<void> {
+		await this.init();
+		if (!this.db) throw new Error('DB not initialized');
+		return writeMessages(this.db, (store) => {
+			const request = store.get(message._id);
+			request.onsuccess = () => {
+				const current = request.result as Message | undefined;
+				if (current && current.sendState !== 'accepted') store.put({ ...current, ...message });
+			};
+		});
+	}
+
+	async getSendCommand(clientMessageId: string): Promise<Message | null> {
+		const pending = await this.getMessage(clientMessageId);
+		if (pending?.senderId === this.userId && pending.clientMessageId === clientMessageId)
+			return pending;
 		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction('messages', 'readwrite');
-			const store = tx.objectStore('messages');
+			const tx = this.db!.transaction('messages', 'readonly');
+			const request = tx.objectStore('messages').openCursor();
+			request.onerror = () => reject(toError(request.error));
+			request.onsuccess = () => {
+				const cursor = request.result;
+				if (!cursor) return resolve(null);
+				const message = cursor.value as Message;
+				if (message.senderId === this.userId && message.clientMessageId === clientMessageId)
+					return resolve(message);
+				cursor.continue();
+			};
+		});
+	}
 
-			let completed = 0;
-			const total = messages.length;
-
-			if (total === 0) {
-				resolve();
-				return;
-			}
-
-			messages.forEach((message) => {
-				const request = store.put(message);
-				request.onsuccess = () => {
-					completed++;
-					if (completed === total) resolve();
-				};
-				request.onerror = () => reject(toError(request.error));
-			});
+	async getUnfinishedMessages(): Promise<Message[]> {
+		await this.init();
+		if (!this.db) throw new Error('DB not initialized');
+		return new Promise((resolve, reject) => {
+			const tx = this.db!.transaction('messages', 'readonly');
+			const request = tx.objectStore('messages').openCursor();
+			const messages: Message[] = [];
+			request.onerror = () => reject(toError(request.error));
+			request.onsuccess = () => {
+				const cursor = request.result;
+				if (!cursor) return resolve(messages);
+				const message = cursor.value as Message;
+				if (
+					message.sendState === 'pending' ||
+					message.sendState === 'failed' ||
+					message.pendingNotification
+				) {
+					messages.push(message);
+				}
+				cursor.continue();
+			};
 		});
 	}
 
@@ -150,7 +219,15 @@ class LocalMessageStore {
 							messages.sort(
 								(a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
 							);
-							resolve(messages.slice(-limit));
+							const recent = new Set(messages.slice(-limit).map((message) => message._id));
+							resolve(
+								messages.filter(
+									(message) =>
+										recent.has(message._id) ||
+										message.sendState === 'pending' ||
+										message.sendState === 'failed'
+								)
+							);
 						}
 					};
 				}
@@ -192,26 +269,9 @@ class LocalMessageStore {
 
 		const messages = await this.getMessages(otherUserId, currentUserId, Number.MAX_SAFE_INTEGER);
 
-		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction('messages', 'readwrite');
-			const store = tx.objectStore('messages');
-
-			let completed = 0;
-			const total = messages.length;
-
-			if (total === 0) {
-				resolve();
-				return;
-			}
-
-			messages.forEach((message) => {
-				const request = store.delete(message._id);
-				request.onsuccess = () => {
-					completed++;
-					if (completed === total) resolve();
-				};
-				request.onerror = () => reject(toError(request.error));
-			});
+		if (!messages.length) return;
+		return writeMessages(this.db, (store) => {
+			for (const message of messages) store.delete(message._id);
 		});
 	}
 
@@ -222,13 +282,8 @@ class LocalMessageStore {
 		await this.init();
 		if (!this.db) return;
 
-		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction('messages', 'readwrite');
-			const store = tx.objectStore('messages');
-			const request = store.clear();
-
-			request.onerror = () => reject(toError(request.error));
-			request.onsuccess = () => resolve();
+		return writeMessages(this.db, (store) => {
+			store.clear();
 		});
 	}
 }

@@ -1,6 +1,6 @@
 /**
  * AUTO-GENERATED from committed OpenAPI contracts.
- * backendCommit: 489f00d003e2333fa9ba22783dee426af9eab0ee
+ * backendCommit: 2831e9f32a1e563497a83aac819f39e7abf3a585
  * generatorVersion: 1
  */
 
@@ -26,14 +26,14 @@ export interface GeneratedApiOperation {
 }
 
 export const apiOperations = {
-	"chat.listConversations": { operationId: "chat.listConversations", service: "chat", method: "GET", path: "/chat/conversations", responseMode: "envelope", parameters: [  ], requestSchema: null, successSchema: "#/components/schemas/ConversationListResponse" } as const,
-	"chat.listMessages": { operationId: "chat.listMessages", service: "chat", method: "GET", path: "/chat/get/{receiverId}", responseMode: "envelope", parameters: [ { name: "receiverId", in: "path", required: true, schemaType: "string" }, { name: "limit", in: "query", required: false, schemaType: "integer" }, { name: "offset", in: "query", required: false, schemaType: "integer" } ], requestSchema: null, successSchema: "#/components/schemas/MessagesPageResponse" } as const,
+	"chat.listConversations": { operationId: "chat.listConversations", service: "chat", method: "GET", path: "/chat/conversations", responseMode: "envelope", parameters: [ { name: "expectedUserId", in: "query", required: false, schemaType: "string" } ], requestSchema: null, successSchema: "#/components/schemas/ConversationListResponse" } as const,
+	"chat.listMessages": { operationId: "chat.listMessages", service: "chat", method: "GET", path: "/chat/get/{receiverId}", responseMode: "envelope", parameters: [ { name: "receiverId", in: "path", required: true, schemaType: "string" }, { name: "expectedUserId", in: "query", required: false, schemaType: "string" }, { name: "limit", in: "query", required: false, schemaType: "integer" }, { name: "offset", in: "query", required: false, schemaType: "integer" } ], requestSchema: null, successSchema: "#/components/schemas/MessagesPageResponse" } as const,
 	"user.health": { operationId: "user.health", service: "user", method: "GET", path: "/user/health", responseMode: "raw", parameters: [  ], requestSchema: null, successSchema: "#/components/schemas/HealthCheck" } as const,
 	"chat.health": { operationId: "chat.health", service: "chat", method: "GET", path: "/chat/health", responseMode: "raw", parameters: [  ], requestSchema: null, successSchema: "#/components/schemas/HealthCheck" } as const,
 	"user.login": { operationId: "user.login", service: "user", method: "POST", path: "/user/login", responseMode: "envelope", parameters: [  ], requestSchema: "#/components/schemas/LoginRequest", successSchema: "#/components/schemas/StatusResponse" } as const,
 	"user.logout": { operationId: "user.logout", service: "user", method: "POST", path: "/user/logout", responseMode: "envelope", parameters: [  ], requestSchema: null, successSchema: "#/components/schemas/StatusResponse" } as const,
 	"user.getCurrentUser": { operationId: "user.getCurrentUser", service: "user", method: "GET", path: "/user/me", responseMode: "envelope", parameters: [  ], requestSchema: null, successSchema: "#/components/schemas/UserResponse" } as const,
-	"chat.markAsRead": { operationId: "chat.markAsRead", service: "chat", method: "PUT", path: "/chat/messages/read/{senderId}", responseMode: "envelope", parameters: [ { name: "senderId", in: "path", required: true, schemaType: "string" } ], requestSchema: null, successSchema: "#/components/schemas/MarkReadResponse" } as const,
+	"chat.markAsRead": { operationId: "chat.markAsRead", service: "chat", method: "PUT", path: "/chat/messages/read/{senderId}", responseMode: "envelope", parameters: [ { name: "senderId", in: "path", required: true, schemaType: "string" }, { name: "expectedUserId", in: "query", required: false, schemaType: "string" } ], requestSchema: null, successSchema: "#/components/schemas/MarkReadResponse" } as const,
 	"user.metrics": { operationId: "user.metrics", service: "user", method: "GET", path: "/user/metrics", responseMode: "raw", parameters: [  ], requestSchema: null, successSchema: null } as const,
 	"chat.metrics": { operationId: "chat.metrics", service: "chat", method: "GET", path: "/chat/metrics", responseMode: "raw", parameters: [  ], requestSchema: null, successSchema: null } as const,
 	"user.publishPrekey": { operationId: "user.publishPrekey", service: "user", method: "POST", path: "/user/prekeys", responseMode: "envelope", parameters: [  ], requestSchema: "#/components/schemas/PublishPrekeyRequest", successSchema: "#/components/schemas/StatusResponse" } as const,

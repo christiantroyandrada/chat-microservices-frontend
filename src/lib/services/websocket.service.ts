@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
 import type {
 	Message,
+	EncryptedWireMessage,
 	MessageCallback,
 	StatusCallback,
 	TypingCallback,
@@ -106,7 +107,11 @@ class WebSocketService {
 					})(),
 					read: Boolean(data.read ?? data.isRead ?? false),
 					createdAt: data.createdAt as string | undefined,
-					updatedAt: data.updatedAt as string | undefined
+					updatedAt: data.updatedAt as string | undefined,
+					clientMessageId:
+						typeof data.clientMessageId === 'string' ? data.clientMessageId : undefined,
+					status:
+						data.status === 'Seen' ? 'read' : data.status === 'Delivered' ? 'delivered' : 'sent'
 				} as Message;
 
 				logger.request('[WebSocket] Received message:', {
@@ -223,43 +228,31 @@ class WebSocketService {
 	/**
 	 * Send a message through Socket.IO
 	 */
-	sendMessage(message: Message): void {
-		if (this.socket?.connected) {
-			// Authentication is handled via httpOnly cookie on the backend
-			// No need to extract user ID from token client-side
-
-			// Normalize message content (server expects `message` field)
-			// Accept either `content` (frontend) or `message` (server) field
-			const m = message as unknown as Record<string, unknown>;
-			const msgContent = this.safeToString(m.content ?? m.message);
-
-			if (!msgContent || typeof msgContent !== 'string' || msgContent.trim().length === 0) {
-				logger.error('Failed to send message: Invalid message content (empty or non-string)');
-				return;
-			}
-
-			// Note: We don't validate if the message is encrypted here because:
-			// 1. Messages are already encrypted and sent via REST API (chat service)
-			// 2. WebSocket is used to broadcast the message for real-time delivery
-			// 3. The sender's local copy has plaintext content for display
-
-			this.socket.emit(
-				'sendMessage',
-				{
-					_id: m._id || m.id, // Include message ID if it exists
-					senderId: message.senderId, // Use senderId from message (or backend will set from JWT)
-					receiverId: message.receiverId,
-					message: msgContent
-				},
-				(response: { ok: boolean; id?: string; error?: string }) => {
-					if (!response.ok) {
-						logger.error('Failed to send message:', response.error);
-					}
-				}
-			);
-		} else {
-			logger.error('Socket.IO is not connected');
+	async sendMessage(message: EncryptedWireMessage): Promise<void> {
+		const socket = this.socket;
+		if (!socket?.connected) throw new Error('Socket.IO is not connected');
+		let envelope: { __encrypted?: boolean; type?: number; body?: string };
+		try {
+			envelope = JSON.parse(message.message);
+		} catch {
+			throw new Error('Encrypted envelope is required');
 		}
+		if (
+			!message._id ||
+			!message.clientMessageId ||
+			envelope.__encrypted !== true ||
+			typeof envelope.type !== 'number' ||
+			typeof envelope.body !== 'string' ||
+			!envelope.body ||
+			message.message.length > 5000
+		)
+			throw new Error('Encrypted envelope is required');
+		const response = (await socket.timeout(5000).emitWithAck('sendMessage', message)) as {
+			ok?: boolean;
+			id?: string;
+		};
+		if (response?.ok !== true || response.id !== message._id)
+			throw new Error('Message acknowledgement did not match');
 	}
 
 	/**

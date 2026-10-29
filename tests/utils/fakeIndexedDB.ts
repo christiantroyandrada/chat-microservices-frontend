@@ -1,140 +1,144 @@
-// Lightweight in-memory fake object store utilities for tests
-type IDBReq = { onsuccess?: (ev: { target: { result: unknown } }) => void };
+// Transaction completion is separate from request success. Aborts discard staged writes.
+type IDBReq = {
+	result?: unknown;
+	onsuccess?: (event: { target: { result: unknown } }) => void;
+	onerror?: () => void;
+};
+export type TransactionControl = {
+	autoComplete: boolean;
+	abortNext: boolean;
+	transactions: Array<{
+		oncomplete?: () => void;
+		onabort?: () => void;
+		onerror?: () => void;
+		error?: Error;
+		complete: () => void;
+		abort: () => void;
+	}>;
+};
 
-export function emitCursorResults(req: IDBReq, values: unknown[]) {
-	let idx = 0;
+export function emitCursorResults(req: IDBReq, values: unknown[], done = () => {}) {
+	let index = 0;
 	const next = () => {
-		if (idx < values.length) {
-			const cursor = { value: values[idx++], continue: next };
-			if (req.onsuccess) req.onsuccess({ target: { result: cursor } });
-			return;
-		}
-		if (req.onsuccess) req.onsuccess({ target: { result: undefined } });
+		const cursor =
+			index < values.length
+				? { value: structuredClone(values[index++]), continue: next }
+				: undefined;
+		req.result = cursor;
+		req.onsuccess?.({ target: { result: cursor } });
+		if (!cursor) done();
 	};
 	setTimeout(next, 0);
 }
 
-/**
- * Create a fake IDB index that filters data based on keyPath(s).
- * Supports compound indexes (array of field names) used by the 'conversation' index.
- * When openCursor is called with an IDBKeyRange.only([...]) equivalent object,
- * it filters records matching all fields in the key array.
- */
-function makeInMemoryIndex(data: Map<string, unknown>, keyPath: string | string[]) {
-	return {
-		openCursor(range?: unknown) {
-			const req: IDBReq = {};
-			setTimeout(() => {
-				const values = Array.from(data.values()) as Record<string, unknown>[];
-
-				let filtered: unknown[];
-				if (range !== undefined && range !== null) {
-					// IDBKeyRange.only produces { lower, upper, lowerOpen: false, upperOpen: false }
-					// where lower === upper === the key value passed to IDBKeyRange.only()
-					const rangeObj = range as { lower?: unknown };
-					const keyValue = rangeObj.lower !== undefined ? rangeObj.lower : range;
-					const keyArr = Array.isArray(keyValue) ? keyValue : [keyValue];
-
-					if (Array.isArray(keyPath)) {
-						filtered = values.filter((record) =>
-							keyPath.every((field, i) => record[field] === keyArr[i])
-						);
-					} else {
-						filtered = values.filter((record) => record[keyPath] === keyArr[0]);
-					}
-				} else {
-					filtered = values;
-				}
-
-				emitCursorResults(req, filtered);
-			}, 0);
-			return req;
-		}
-	};
-}
-
 export function makeInMemoryObjectStore() {
 	const data = new Map<string, unknown>();
-
-	const objectStore = {
-		put(value: { _id: string; [k: string]: unknown }) {
-			const req: IDBReq = {};
+	const control: TransactionControl = { autoComplete: true, abortNext: false, transactions: [] };
+	function transaction(_name?: string, mode?: string) {
+		const staged = new Map(data);
+		let pending = 0;
+		let ended = false;
+		const done = () => {
+			if (--pending) return;
 			setTimeout(() => {
-				data.set(value._id, value);
-				if (req.onsuccess) req.onsuccess({ target: { result: {} } });
+				if (control.abortNext) {
+					control.abortNext = false;
+					tx.abort();
+				} else if (control.autoComplete) tx.complete();
+			}, 0);
+		};
+		const request = (operation: () => unknown) => {
+			const req: IDBReq = {};
+			pending++;
+			setTimeout(() => {
+				req.result = operation();
+				req.onsuccess?.({ target: { result: req.result } });
+				done();
 			}, 0);
 			return req;
-		},
-		get(key: string) {
+		};
+		const cursor = (keyPath?: string | string[], range?: unknown) => {
 			const req: IDBReq = {};
-			setTimeout(() => {
-				if (req.onsuccess) req.onsuccess({ target: { result: data.get(key) } });
-			}, 0);
+			pending++;
+			const key = (range as { lower?: unknown })?.lower ?? range;
+			const keys = Array.isArray(key) ? key : [key];
+			const fields = Array.isArray(keyPath) ? keyPath : [keyPath!];
+			const values = [...staged.values()].filter(
+				(value) =>
+					!keyPath ||
+					range == null ||
+					fields.every((field, index) => (value as Record<string, unknown>)[field] === keys[index])
+			);
+			emitCursorResults(req, values, done);
 			return req;
-		},
-		openCursor() {
-			const req: IDBReq = {};
-			setTimeout(() => {
-				const values = Array.from(data.values());
-				emitCursorResults(req, values);
-			}, 0);
-			return req;
-		},
-		delete(key: string) {
-			const req: IDBReq = {};
-			setTimeout(() => {
-				data.delete(key);
-				if (req.onsuccess) req.onsuccess({ target: { result: {} } });
-			}, 0);
-			return req;
-		},
-		clear() {
-			const req: IDBReq = {};
-			setTimeout(() => {
-				data.clear();
-				if (req.onsuccess) req.onsuccess({ target: { result: {} } });
-			}, 0);
-			return req;
-		},
-		/**
-		 * Fake IDB index() — returns an in-memory index that filters records using the
-		 * compound 'conversation' index (['senderId', 'receiverId']) added in messageStore.ts.
-		 */
-		index(indexName: string) {
-			const indexMap: Record<string, string | string[]> = {
-				conversation: ['senderId', 'receiverId'],
-				timestamp: 'timestamp'
-			};
-			const keyPath = indexMap[indexName] ?? indexName;
-			return makeInMemoryIndex(data, keyPath);
-		}
-	};
-
-	const tx = { objectStore: () => objectStore };
-
-	return { objectStore, tx };
+		};
+		const objectStore = {
+			put: (value: { _id: string }) => request(() => staged.set(value._id, structuredClone(value))),
+			get: (key: string) => request(() => structuredClone(staged.get(key))),
+			delete: (key: string) => request(() => staged.delete(key)),
+			clear: () => request(() => staged.clear()),
+			openCursor: () => cursor(),
+			index: (name: string) => ({
+				openCursor: (range?: unknown) =>
+					cursor(name === 'conversation' ? ['senderId', 'receiverId'] : name, range)
+			})
+		};
+		const tx = {
+			objectStore: () => objectStore,
+			oncomplete: undefined as (() => void) | undefined,
+			onabort: undefined as (() => void) | undefined,
+			onerror: undefined as (() => void) | undefined,
+			error: undefined as Error | undefined,
+			complete() {
+				if (ended || pending) return;
+				ended = true;
+				if (mode !== 'readonly') {
+					data.clear();
+					for (const [key, value] of staged) data.set(key, value);
+				}
+				tx.oncomplete?.();
+			},
+			abort() {
+				if (ended) return;
+				ended = true;
+				tx.error = new Error('Transaction aborted');
+				tx.onabort?.();
+			}
+		};
+		control.transactions.push(tx);
+		return tx;
+	}
+	const tx = transaction();
+	return { objectStore: tx.objectStore(), tx, transaction, control };
 }
 
-/**
- * Polyfill IDBKeyRange for the Node/server test environment.
- * IDBKeyRange.only(value) returns { lower: value, upper: value, ... }.
- * This is the only IDBKeyRange method used in messageStore.ts.
- */
 function ensureIDBKeyRange() {
 	if (typeof globalThis.IDBKeyRange === 'undefined') {
 		(globalThis as Record<string, unknown>).IDBKeyRange = {
-			only(value: unknown) {
-				return { lower: value, upper: value, lowerOpen: false, upperOpen: false };
-			},
-			bound(lower: unknown, upper: unknown, lowerOpen = false, upperOpen = false) {
-				return { lower, upper, lowerOpen, upperOpen };
-			},
-			lowerBound(lower: unknown, open = false) {
-				return { lower, upper: undefined, lowerOpen: open, upperOpen: false };
-			},
-			upperBound(upper: unknown, open = false) {
-				return { lower: undefined, upper, lowerOpen: false, upperOpen: open };
-			}
+			only: (value: unknown) => ({
+				lower: value,
+				upper: value,
+				lowerOpen: false,
+				upperOpen: false
+			}),
+			bound: (lower: unknown, upper: unknown, lowerOpen = false, upperOpen = false) => ({
+				lower,
+				upper,
+				lowerOpen,
+				upperOpen
+			}),
+			lowerBound: (lower: unknown, open = false) => ({
+				lower,
+				upper: undefined,
+				lowerOpen: open,
+				upperOpen: false
+			}),
+			upperBound: (upper: unknown, open = false) => ({
+				lower: undefined,
+				upper,
+				lowerOpen: false,
+				upperOpen: open
+			})
 		};
 	}
 }
@@ -148,12 +152,10 @@ export function attachFakeStoreTo(
 		) => { mockImplementation: (fn: (...args: unknown[]) => unknown) => void };
 	}
 ) {
-	// Ensure IDBKeyRange is available in the Node test environment
 	ensureIDBKeyRange();
-
-	const { tx } = makeInMemoryObjectStore();
+	const { transaction, control } = makeInMemoryObjectStore();
 	vi.spyOn(storeInstance, 'init').mockImplementation(async function (this: { db?: unknown }) {
-		this.db = { transaction: () => tx };
+		this.db = { transaction };
 	});
-	return tx;
+	return control;
 }

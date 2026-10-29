@@ -68,6 +68,10 @@ vi.mock('$lib/crypto/signal', () => ({
 
 // Mock message store
 const mockMessageStore = {
+	getSendCommand: vi.fn().mockResolvedValue(null),
+	failMessage: vi.fn().mockResolvedValue(undefined),
+	getUnfinishedMessages: vi.fn().mockResolvedValue([]),
+	settleMessage: vi.fn().mockResolvedValue(undefined),
 	getMessages: vi.fn().mockResolvedValue([]),
 	getMessage: vi.fn().mockResolvedValue(null),
 	saveMessage: vi.fn().mockResolvedValue(undefined),
@@ -98,6 +102,8 @@ const toConversationWire = (conversations: typeof testConversations) =>
 describe('chatService', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		chatService.activateOwner('user-alice-123');
+		mockMessageStore.getMessages.mockResolvedValue([]);
 	});
 
 	afterEach(() => {
@@ -194,9 +200,8 @@ describe('chatService', () => {
 
 			const result = await chatService.getMessages(userId, 50, 0, currentUserId);
 
-			expect(result[0]).toEqual(testMessages[0]);
-			// Should not save if already cached
-			expect(mockMessageStore.saveMessage).not.toHaveBeenCalled();
+			expect(result[0]).toMatchObject({ ...testMessages[0], status: 'read', read: true });
+			expect(mockMessageStore.saveMessage).toHaveBeenCalledWith(result[0]);
 		});
 
 		it('should NOT retry cached PreKeyWhisperMessage (type 3) decryption failure', async () => {
@@ -226,7 +231,7 @@ describe('chatService', () => {
 			// decryptMessage must NOT be called — retrying would consume the OPK
 			expect(signal.decryptMessage).not.toHaveBeenCalled();
 			// The cached (failed) message is returned as-is
-			expect(result[0]).toEqual(cachedFailedMsg);
+			expect(result[0]).toMatchObject({ ...cachedFailedMsg, status: 'read', read: true });
 		});
 
 		it('should NOT retry type-3 even when _encryptedContent is missing (fallback to server content)', async () => {
@@ -258,7 +263,7 @@ describe('chatService', () => {
 
 			// decryptMessage must NOT be called — server content is type-3
 			expect(signal.decryptMessage).not.toHaveBeenCalled();
-			expect(result[0]).toEqual(cachedFailedMsg);
+			expect(result[0]).toMatchObject({ ...cachedFailedMsg, status: 'read', read: true });
 		});
 
 		it('should retry cached WhisperMessage (type 1) decryption failure', async () => {
@@ -391,6 +396,7 @@ describe('chatService', () => {
 				...testMessages[0],
 				status: 'Seen' as const,
 				senderId: currentUserId, // Current user sent this message
+				receiverId: userId,
 				content: encryptedContent,
 				message: encryptedContent
 			};
@@ -497,11 +503,7 @@ describe('chatService', () => {
 				content: 'Hello!'
 			};
 
-			const serverResponse = {
-				...testMessages[0],
-				status: 'NotDelivered' as const,
-				message: 'encrypted-content'
-			};
+			const serverResponse = { ...testMessages[0], status: 'NotDelivered' as const };
 
 			const prekeyBundle = {
 				userId: recipientId,
@@ -521,19 +523,29 @@ describe('chatService', () => {
 			};
 
 			mockUserApi.getPrekeyBundle.mockResolvedValueOnce(createSuccessResponse(prekeyBundle));
-			mockChatApi.sendMessage.mockResolvedValueOnce(createSuccessResponse(serverResponse));
+			mockMessageStore.getMessage.mockImplementation(
+				async () => mockMessageStore.saveMessage.mock.calls.at(-1)?.[0] ?? null
+			);
+			mockMessageStore.getSendCommand.mockImplementation(
+				async () => mockMessageStore.saveMessage.mock.calls.at(-1)?.[0] ?? null
+			);
+			mockChatApi.sendMessage.mockImplementationOnce(async (body) =>
+				createSuccessResponse({ ...serverResponse, ...body, senderId: currentUserId })
+			);
 
 			const result = await chatService.sendMessage(payload, currentUserId);
 
 			expect(mockChatApi.sendMessage).toHaveBeenCalledWith({
+				expectedSenderId: currentUserId,
 				receiverId: recipientId,
+				clientMessageId: expect.any(String),
 				message: JSON.stringify({ __encrypted: true, type: 3, body: 'encrypted-content' })
 			});
 			expect(result).toMatchObject({
 				_id: serverResponse._id,
 				content: 'Hello!'
 			});
-			expect(mockMessageStore.saveMessage).toHaveBeenCalledWith(result);
+			expect(mockMessageStore.settleMessage).toHaveBeenCalledWith(result.clientMessageId, result);
 		});
 
 		it('does not swallow a prekey request failure', async () => {
@@ -550,13 +562,6 @@ describe('chatService', () => {
 				receiverId: recipientId,
 				content: 'Hello!'
 			};
-
-			// When no currentUserId is passed, initSignal receives undefined
-			// which should fail in production — simulate by making the mock throw
-			const signal = await import('$lib/crypto/signal');
-			vi.mocked(signal.initSignal).mockRejectedValueOnce(
-				new Error('currentUserId is required for Signal init')
-			);
 
 			// Should throw error because initSignal rejects
 			await expect(chatService.sendMessage(payload)).rejects.toThrow();
@@ -703,8 +708,8 @@ describe('chatService', () => {
 
 		it('throws when server message missing id', async () => {
 			const badMsg = {
-				senderId: 'a',
-				receiverId: 'b',
+				senderId: currentUserId,
+				receiverId: userId,
 				status: 'Seen' as const,
 				message: 'hi',
 				createdAt: new Date().toISOString()
@@ -783,8 +788,8 @@ describe('chatService', () => {
 			} satisfies ChatApiConversation;
 			const validMsg = {
 				id: 'msg-1',
-				senderId: 'a',
-				receiverId: 'b',
+				senderId: currentUserId,
+				receiverId: userId,
 				message: 'encrypted',
 				isEncrypted: true,
 				status: 'Seen' as const,

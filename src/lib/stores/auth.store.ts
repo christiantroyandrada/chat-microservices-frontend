@@ -4,6 +4,8 @@ import type { LoginCredentials, RegisterCredentials, ApiError, AuthState } from 
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { logger } from '$lib/services/dev-logger';
+import { chatService } from '$lib/services/chat.service';
+import { wsService } from '$lib/services/websocket.service';
 
 // Extended auth state with initialization tracking
 interface ExtendedAuthState extends AuthState {
@@ -20,6 +22,14 @@ const initialState: ExtendedAuthState = {
 function createAuthStore() {
 	const { subscribe, set, update } = writable<ExtendedAuthState>(initialState);
 	let initPromise: Promise<void> | null = null;
+	let generation = 0;
+	function startTransition() {
+		generation++;
+		chatService.activateOwner(null);
+		wsService.disconnect();
+		set({ ...initialState, loading: true });
+		return generation;
+	}
 
 	return {
 		subscribe,
@@ -53,12 +63,22 @@ function createAuthStore() {
 		 * Internal initialization logic
 		 */
 		async _performInit() {
+			const attempt = generation;
 			update((state) => ({ ...state, loading: true }));
 
 			try {
 				const user = await authService.getCurrentUser();
+				if (attempt !== generation) return;
+				chatService.activateOwner(user._id);
+				await chatService
+					.verifyOwner(user._id)
+					.catch((error) => logger.warning('Message retry restore failed', error));
+				if (attempt !== generation) return;
 				update((state) => ({ ...state, user, loading: false, error: null, initialized: true }));
 			} catch {
+				if (attempt !== generation) return;
+				chatService.activateOwner(null);
+				wsService.disconnect();
 				// Failed logout must not block initialization.
 				void authService.logout().catch((e) => logger.warning('Logout during init failed', e));
 				// Always set initialized to true so the app can proceed
@@ -70,12 +90,20 @@ function createAuthStore() {
 		 * Login user
 		 */
 		async login(credentials: LoginCredentials) {
+			const attempt = startTransition();
 			update((state) => ({ ...state, loading: true, error: null }));
 
 			try {
 				// Perform login (stores token) then fetch full user profile to avoid timing/race issues
 				await authService.login(credentials);
+				if (attempt !== generation) throw new Error('Authentication changed');
 				const user = await authService.getCurrentUser();
+				if (attempt !== generation) throw new Error('Authentication changed');
+				chatService.activateOwner(user._id);
+				await chatService
+					.verifyOwner(user._id)
+					.catch((error) => logger.warning('Message retry restore failed', error));
+				if (attempt !== generation) throw new Error('Authentication changed');
 
 				// Mark initialized: true so the layout's showLoading gate clears immediately
 				// on client-side navigation to /chat without waiting for authStore.init().
@@ -86,6 +114,7 @@ function createAuthStore() {
 
 				return user;
 			} catch (error) {
+				if (attempt !== generation) throw error;
 				const apiError = error as ApiError;
 				update((state) => ({
 					...state,
@@ -99,18 +128,27 @@ function createAuthStore() {
 		 * Register new user
 		 */
 		async register(credentials: RegisterCredentials) {
+			const attempt = startTransition();
 			update((state) => ({ ...state, loading: true, error: null }));
 
 			try {
 				// Perform registration (stores token) then fetch full user profile to avoid timing/race issues
 				await authService.register(credentials);
+				if (attempt !== generation) throw new Error('Authentication changed');
 				const user = await authService.getCurrentUser();
+				if (attempt !== generation) throw new Error('Authentication changed');
+				chatService.activateOwner(user._id);
+				await chatService
+					.verifyOwner(user._id)
+					.catch((error) => logger.warning('Message retry restore failed', error));
+				if (attempt !== generation) throw new Error('Authentication changed');
 
 				// Same as login() — mark initialized so the layout gate clears on navigation
 				update((state) => ({ ...state, user, loading: false, error: null, initialized: true }));
 
 				return user;
 			} catch (error) {
+				if (attempt !== generation) throw error;
 				const apiError = error as ApiError;
 				update((state) => ({
 					...state,
@@ -125,6 +163,7 @@ function createAuthStore() {
 		 * Logout user
 		 */
 		async logout() {
+			const attempt = startTransition();
 			// Clear the cached encryption key from session storage
 			if (browser) {
 				try {
@@ -142,6 +181,7 @@ function createAuthStore() {
 				logger.warning('Logout API failed', e);
 			}
 			// Clear local auth state and navigate to login
+			if (attempt !== generation) return;
 			set({ ...initialState, initialized: true });
 			void goto('/login');
 		} /**

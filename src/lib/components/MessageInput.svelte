@@ -8,12 +8,13 @@
 		disabled = false,
 		placeholder = 'Write a message…',
 		maxLength = 5000,
-		send = null as ((msg: string) => void) | null,
+		send = null as ((msg: string) => void | boolean | Promise<void | boolean>) | null,
 		typing = null as ((isTyping: boolean) => void) | null
 	} = $props();
 
 	// Reactive state (runes)
 	let message = $state('');
+	let preparing = $state(false);
 	let textarea: HTMLTextAreaElement;
 	let wrapper: HTMLDivElement;
 
@@ -55,11 +56,11 @@
 		}
 	}
 
-	function handleSend() {
+	async function handleSend() {
 		const trimmedMessage = message.trim();
 
 		// Validation checks
-		if (!trimmedMessage || disabled) return;
+		if (!trimmedMessage || disabled || preparing || !send) return;
 
 		if (trimmedMessage.length > maxLength) {
 			toastStore.error(`Message too long. Maximum ${maxLength} characters allowed.`);
@@ -71,8 +72,16 @@
 			return;
 		}
 
-		send?.(trimmedMessage);
-		message = '';
+		const draft = message;
+		preparing = true;
+		try {
+			if ((await send(trimmedMessage)) === false) return;
+			if (message === draft) message = '';
+		} catch {
+			return;
+		} finally {
+			preparing = false;
+		}
 
 		// Reset textarea height
 		if (textarea) {
@@ -151,7 +160,8 @@
 		</div>
 		<button
 			onclick={handleSend}
-			disabled={!message.trim() || disabled || isOverLimit}
+			disabled={!message.trim() || disabled || isOverLimit || preparing}
+			aria-busy={preparing}
 			class="send-button flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-50"
 			aria-label="Seal and send message"
 		>

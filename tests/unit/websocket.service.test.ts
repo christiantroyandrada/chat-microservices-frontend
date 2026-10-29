@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Message } from '$lib/types';
+import type { EncryptedWireMessage } from '$lib/types';
 
 vi.mock('$lib/services/dev-logger', () => ({
 	logger: {
@@ -20,9 +20,11 @@ const fakeSocket: {
 	emit: (event: string, payload?: unknown, cb?: (...args: unknown[]) => void) => void;
 	removeAllListeners: () => void;
 	disconnect: () => void;
+	timeout: (milliseconds: number) => { emitWithAck: typeof acknowledge };
 } = {
 	connected: true,
 	id: 'socket-1',
+	timeout: () => ({ emitWithAck: acknowledge }),
 	on(event: string, cb: (...args: unknown[]) => void) {
 		const arr = listeners.get(event) || [];
 		arr.push(cb);
@@ -39,6 +41,11 @@ const fakeSocket: {
 		this.connected = false;
 	}
 };
+
+const acknowledge = vi.fn(async (event: string, payload: EncryptedWireMessage) => {
+	emitted.push({ event, payload });
+	return { ok: true, id: payload._id };
+});
 
 vi.mock('socket.io-client', () => ({
 	io: vi.fn(() => fakeSocket)
@@ -94,25 +101,38 @@ describe('WebSocketService', () => {
 		unsub();
 	});
 
-	it('sendMessage emits when connected and logs when not connected', () => {
+	it('sends only an encrypted wire payload and requires a matching acknowledgement', async () => {
 		wsService.connect();
 		// service reports connected once connected
 		expect(wsService.isConnected()).toBe(true);
 
 		// connected -> emit
-		const msg = { _id: 'm1', senderId: 's1', receiverId: 'r1', content: 'hello' } as Message;
+		const msg: EncryptedWireMessage = {
+			_id: 'm1',
+			senderId: 's1',
+			receiverId: 'r1',
+			clientMessageId: 'client-id',
+			message: JSON.stringify({ __encrypted: true, type: 1, body: 'QUJD' })
+		};
 		// Send when connected should not log an error
-		wsService.sendMessage(msg);
+		await wsService.sendMessage(msg);
 		expect(logger.error).not.toHaveBeenCalled();
 
 		// The fake socket collects emitted events in `emitted` — assert sendMessage was emitted
 		const sendEmit = emitted.find((e) => e.event === 'sendMessage');
 		expect(sendEmit).toBeTruthy();
+		expect(sendEmit?.payload).toEqual(msg);
+		acknowledge.mockResolvedValueOnce({ ok: true, id: 'wrong-message' });
+		await expect(wsService.sendMessage(msg)).rejects.toThrow('acknowledgement');
+		acknowledge.mockResolvedValueOnce({ ok: 'yes' as unknown as boolean, id: msg._id });
+		await expect(wsService.sendMessage(msg)).rejects.toThrow('acknowledgement');
+		await expect(wsService.sendMessage({ ...msg, message: 'plaintext' })).rejects.toThrow(
+			'Encrypted envelope'
+		);
 
 		// simulate disconnected -> should log error
 		fakeSocket.connected = false;
-		wsService.sendMessage(msg);
-		expect(logger.error).toHaveBeenCalled();
+		await expect(wsService.sendMessage(msg)).rejects.toThrow('not connected');
 	});
 
 	it('sendTyping emits when connected and does nothing when disconnected', () => {

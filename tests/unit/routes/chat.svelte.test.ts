@@ -27,7 +27,9 @@ vi.mock('$lib/stores/auth.store', () => ({
 }));
 
 vi.mock('$lib/services/chat.service', () => ({
+	mergeMessages: (_current: unknown[], updates: unknown[]) => updates,
 	chatService: {
+		flushNotifications: vi.fn().mockResolvedValue(undefined),
 		getConversations: vi.fn().mockResolvedValue([]),
 		getMessages: vi.fn().mockResolvedValue([])
 	}

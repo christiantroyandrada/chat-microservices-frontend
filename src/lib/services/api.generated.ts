@@ -82,21 +82,28 @@ export const chatApi = {
 	getMessages(
 		receiverId: string,
 		limit = 50,
-		offset = 0
+		offset = 0,
+		expectedUserId?: string
 	): Promise<ApiResponse<ChatApiMessage[], { pagination: ChatApiPagination }>> {
 		return executeOperation<ChatApiMessage[], { pagination: ChatApiPagination }>(
 			apiOperations['chat.listMessages'],
-			{ receiverId, limit, offset }
+			{ receiverId, limit, offset, expectedUserId }
 		);
 	},
 
-	getConversations(): Promise<ApiResponse<ChatApiConversation[]>> {
-		return executeOperation<ChatApiConversation[]>(apiOperations['chat.listConversations'], {});
+	getConversations(expectedUserId?: string): Promise<ApiResponse<ChatApiConversation[]>> {
+		return executeOperation<ChatApiConversation[]>(apiOperations['chat.listConversations'], {
+			expectedUserId
+		});
 	},
 
-	markAsRead(senderId: string): Promise<ApiResponse<{ modifiedCount: number }>> {
+	markAsRead(
+		senderId: string,
+		expectedUserId?: string
+	): Promise<ApiResponse<{ modifiedCount: number }>> {
 		return executeOperation<{ modifiedCount: number }>(apiOperations['chat.markAsRead'], {
-			senderId
+			senderId,
+			expectedUserId
 		});
 	}
 } as const;
