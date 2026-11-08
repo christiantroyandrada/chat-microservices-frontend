@@ -152,6 +152,44 @@ test('registry writes are granted only to the image publication job', () => {
 	}
 });
 
+test('publication requires the real stack and an exact checked-out contract pair', () => {
+	const ci = workflow('ci-main.yml');
+	const job = ci.jobs['full-stack'];
+	assert.ok(job, 'the real-stack release gate is missing');
+	assert.equal(job['runs-on'], 'ubuntu-24.04-arm');
+	assert.ok(ci.jobs['docker-build'].needs.includes('full-stack'));
+	assert.equal(job['continue-on-error'], undefined);
+	for (const step of job.steps) assert.equal(step['continue-on-error'], undefined);
+	const reference = auditStep('ci-main.yml', 'full-stack', 'Read pinned backend revision');
+	assert.equal(reference.id, 'backend-reference');
+	assert.ok(reference.run.includes('^[0-9a-f]{40}$'));
+	assert.ok(reference.run.includes('contracts/source.json'));
+	const checkout = auditStep('ci-main.yml', 'full-stack', 'Checkout pinned backend');
+	assert.match(checkout.uses, /^actions\/checkout@[a-f0-9]{40}$/);
+	assert.equal(checkout.with.repository, '${{ github.repository_owner }}/chat-microservices');
+	assert.equal(checkout.with.ref, '${{ steps.backend-reference.outputs.commit }}');
+	assert.equal(checkout.with.path, 'backend-fixture');
+	assert.equal(checkout.with['persist-credentials'], false);
+	const pair = auditStep('ci-main.yml', 'full-stack', 'Verify release contract pair');
+	assert.ok(
+		pair.run.includes(
+			'node backend-fixture/scripts/verify-release-contract-pair.mjs --backend-dir backend-fixture --frontend-dir .'
+		)
+	);
+	const flow = auditStep('ci-main.yml', 'full-stack', 'Run real encrypted chat flow');
+	assert.equal(flow['working-directory'], 'backend-fixture');
+	assert.ok(flow.run.includes('--check --frontend-dir "$GITHUB_WORKSPACE"'));
+	assert.ok(flow.run.includes('--start-fixture --frontend-dir "$GITHUB_WORKSPACE"'));
+	assert.ok(
+		job.steps.findIndex((step) => step.name === pair.name) <
+			job.steps.findIndex((step) => step.name === flow.name)
+	);
+	const evidence = auditStep('ci-main.yml', 'full-stack', 'Upload real-stack evidence');
+	assert.equal(evidence.if, 'always()');
+	assert.ok(evidence.with.path.includes('/evidence/'));
+	assert.ok(!evidence.with.path.includes('certificates'));
+});
+
 test('Sonar classifies deployment fixtures as tests while retaining contract scripts as sources', () => {
 	const args = auditStep('ci-main.yml', 'sonar', 'SonarCloud Scan').with.args;
 	const properties = Object.fromEntries(

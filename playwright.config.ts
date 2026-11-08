@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
 	webServer: {
-		command: 'npm run build && npm run preview',
+		command: `"${process.execPath}" node_modules/vite/bin/vite.js build && "${process.execPath}" node_modules/vite/bin/vite.js preview`,
 		env: {
 			PUBLIC_API_URL: 'http://localhost:4173',
 			PUBLIC_WS_URL: 'http://localhost:4173'
