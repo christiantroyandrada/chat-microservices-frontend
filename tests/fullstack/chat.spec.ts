@@ -14,7 +14,7 @@ const require = createRequire(
 const { Client } = require('pg');
 const password = 'FullstackPass2026!';
 
-test('real Signal delivery survives a lost REST response and one identical UI retry', async ({
+test('real Signal delivery preserves commands and account isolation across transport failures', async ({
 	browser
 }, testInfo) => {
 	const database = new Client({ connectionString: databaseUrl.href });
@@ -47,8 +47,8 @@ test('real Signal delivery survives a lost REST response and one identical UI re
 		await context.clearCookies();
 		return { id: account.id as string, username, email };
 	};
-	const login = async (page: Page, email: string) => {
-		await page.goto('/login');
+	const login = async (page: Page, email: string, navigate = true) => {
+		if (navigate) await page.goto('/login');
 		await page.getByLabel('Email address', { exact: true }).fill(email);
 		await page.getByLabel('Password', { exact: true }).fill(password);
 		const publication = page.waitForResponse(
@@ -62,6 +62,28 @@ test('real Signal delivery survives a lost REST response and one identical UI re
 		await expect(page).toHaveURL(`${origin}/chat`);
 		await expect(page.getByRole('heading', { name: 'Correspondence' })).toBeVisible();
 	};
+	const cachedMessages = (page: Page, owner: string): Promise<Array<Record<string, unknown>>> =>
+		page.evaluate(async (userId) => {
+			const name = `chat-messages-${userId}`;
+			if (!(await indexedDB.databases()).some((database) => database.name === name)) return [];
+			return new Promise((resolve, reject) => {
+				const request = indexedDB.open(name);
+				request.onerror = () => reject(request.error);
+				request.onsuccess = () => {
+					const db = request.result;
+					const transaction = db.transaction('messages', 'readonly');
+					const rows = transaction.objectStore('messages').getAll();
+					transaction.oncomplete = () => {
+						db.close();
+						resolve(rows.result);
+					};
+					transaction.onerror = transaction.onabort = () => {
+						db.close();
+						reject(transaction.error);
+					};
+				};
+			});
+		}, owner);
 	try {
 		await database.connect();
 		const identity = (
@@ -75,10 +97,52 @@ test('real Signal delivery survives a lost REST response and one identical UI re
 		const contextB = await createContext();
 		const accountA = await register(contextA, 'alice');
 		const accountB = await register(contextB, 'bob');
+		const accountC = await register(contextB, 'carol');
 		const pageA = await contextA.newPage();
 		const pageB = await contextB.newPage();
+		let senderConnections = 0;
+		const notificationFrames: string[] = [];
+		let interruptSender: (() => Promise<void>) | undefined;
+		await pageA.routeWebSocket('**/chat/socket.io/**', (socket) => {
+			const server = socket.connectToServer();
+			server.onMessage((frame) => {
+				if (typeof frame === 'string' && frame.startsWith('40')) senderConnections++;
+				socket.send(frame);
+			});
+			socket.onMessage(async (frame) => {
+				if (typeof frame === 'string' && /^42\d*\["sendMessage",/.test(frame)) {
+					notificationFrames.push(frame);
+					if (notificationFrames.length === 1) {
+						// Lose the first notification command after durable REST acceptance.
+						interruptSender = async () => {
+							await Promise.all([
+								socket.close({ code: 1012, reason: 'Fixture transport interruption' }),
+								server.close({ code: 1012, reason: 'Fixture transport interruption' })
+							]);
+						};
+						return;
+					}
+				}
+				// Forward Engine.IO heartbeat, Socket.IO handshake, events, and acknowledgements intact.
+				server.send(frame);
+			});
+		});
+		let duplicateFrames = 0;
+		let recipientConnections = 0;
+		await pageB.routeWebSocket('**/chat/socket.io/**', (socket) => {
+			const server = socket.connectToServer();
+			server.onMessage((frame) => {
+				if (typeof frame === 'string' && frame.startsWith('40')) recipientConnections++;
+				socket.send(frame);
+				if (typeof frame === 'string' && /^42\["receiveMessage",/.test(frame)) {
+					duplicateFrames++;
+					socket.send(frame);
+				}
+			});
+		});
 		await login(pageA, accountA.email);
 		await login(pageB, accountB.email);
+		await expect.poll(() => [senderConnections, recipientConnections]).toEqual([1, 1]);
 		await pageA.getByRole('button', { name: 'Start new conversation' }).click();
 		await pageA.getByPlaceholder('Search people by name or email').fill(accountB.username);
 		await pageA.getByRole('button', { name: new RegExp(accountB.username) }).click();
@@ -104,15 +168,46 @@ test('real Signal delivery survives a lost REST response and one identical UI re
 		expect(commands[0]).toMatchObject({ receiverId: accountB.id, expectedSenderId: accountA.id });
 		expect(commands[0].clientMessageId).toMatch(/^[0-9a-f-]{36}$/);
 		expect(commands[0].message).not.toContain(plaintext);
-		await pageB.getByRole('button', { name: new RegExp(`Chat with ${accountA.username}`) }).click();
-		await expect(
-			pageB.getByRole('log', { name: 'Messages' }).getByText(plaintext, { exact: true })
-		).toHaveCount(1);
 		await expect(messagesA.getByText(plaintext, { exact: true })).toHaveCount(1);
 		await expect(messagesA.getByRole('button', { name: 'Retry message' })).toHaveCount(0);
 
+		await test.step('reconnect replays the accepted notification and duplicates preserve one decrypted message', async () => {
+			expect(notificationFrames).toHaveLength(1);
+			expect(
+				(await cachedMessages(pageA, accountA.id)).filter(
+					(message) => message.clientMessageId === commands[0].clientMessageId
+				)
+			).toMatchObject([{ _id: acceptedId, sendState: 'accepted', pendingNotification: true }]);
+			expect(interruptSender).toBeDefined();
+			await interruptSender!();
+			await expect.poll(() => senderConnections).toBe(2);
+			await expect
+				.poll(
+					async () =>
+						(await cachedMessages(pageA, accountA.id)).find((message) => message._id === acceptedId)
+							?.pendingNotification
+				)
+				.toBe(false);
+			expect(notificationFrames).toHaveLength(2);
+			await expect.poll(() => duplicateFrames).toBeGreaterThan(0);
+			await pageB
+				.getByRole('button', { name: new RegExp(`Chat with ${accountA.username}`) })
+				.click();
+			// Socket.IO acknowledgement IDs differ between connections.
+			const payload = (frame: string) => JSON.parse(frame.slice(frame.indexOf('[')));
+			expect(payload(notificationFrames[1])).toEqual(payload(notificationFrames[0]));
+			expect(commands).toHaveLength(2);
+			expect(
+				(await cachedMessages(pageB, accountB.id)).filter((message) => message._id === acceptedId)
+			).toMatchObject([{ content: plaintext }]);
+			await expect(messagesA.getByText(plaintext, { exact: true })).toHaveCount(1);
+			await expect(
+				pageB.getByRole('log', { name: 'Messages' }).getByText(plaintext, { exact: true })
+			).toHaveCount(1);
+		});
+
 		let records: Record<string, unknown> = {};
-		const inspectDatabase = async () => {
+		const inspectDatabase = async (notificationCount = 1) => {
 			const messages = (
 				await database.query(
 					'SELECT * FROM messages WHERE "senderId"=$1 AND "clientMessageId"=$2',
@@ -149,7 +244,7 @@ test('real Signal delivery survives a lost REST response and one identical UI re
 				outbox[0].payload.envelope === commands[0].message &&
 				inbox.length === 1 &&
 				inbox[0].canonical.envelope === commands[0].message &&
-				notifications.length === 1
+				notifications.length === notificationCount
 			);
 		};
 		await expect.poll(inspectDatabase, { timeout: 30_000, intervals: [200, 500, 1000] }).toBe(true);
@@ -181,6 +276,158 @@ test('real Signal delivery survives a lost REST response and one identical UI re
 		await testInfo.attach('database-evidence-after-reload', {
 			body: JSON.stringify(records, null, 2),
 			contentType: 'application/json'
+		});
+		await test.step('shared-cookie changes reject stale sends, reads, and read mutations', async () => {
+			await pageB.close();
+			await pageA.unroute('**/chat/send');
+			const unreadResponse = pageA.waitForResponse(
+				(response) => new URL(response.url()).pathname === '/chat/send' && response.ok()
+			);
+			await pageA
+				.getByRole('textbox', { name: 'Message input' })
+				.fill('Unread before account change');
+			await pageA.getByRole('button', { name: 'Seal and send message' }).click();
+			const unread = (await (await unreadResponse).json()).data;
+			await expect(pageA.getByRole('log', { name: 'Messages' }).getByRole('status')).toHaveCount(0);
+			const sibling = await contextA.newPage();
+			await sibling.goto('/chat');
+			await sibling.getByRole('button', { name: 'Logout', exact: true }).click();
+			await expect(sibling).toHaveURL(`${origin}/login`);
+			await login(sibling, accountB.email, false);
+			const current = await contextA.request.get(`${origin}/user/me`);
+			expect(current.ok()).toBe(true);
+			expect((await current.json()).data.id).toBe(accountB.id);
+			await expect(pageA).toHaveTitle(`Secret · ${accountA.username}`);
+
+			const before = (await database.query('SELECT * FROM messages WHERE id=$1', [unread.id])).rows;
+			expect(before).toHaveLength(1);
+			expect(before[0]).toMatchObject({
+				senderId: accountA.id,
+				receiverId: accountB.id,
+				status: 'NotDelivered'
+			});
+			const staleRequest = pageA.waitForRequest(
+				(request) => new URL(request.url()).pathname === '/chat/send' && request.method() === 'POST'
+			);
+			const staleResponse = pageA.waitForResponse(
+				(response) => new URL(response.url()).pathname === '/chat/send' && response.status() === 403
+			);
+			await pageA.getByRole('textbox', { name: 'Message input' }).fill('Stale account command');
+			await pageA.getByRole('button', { name: 'Seal and send message' }).click();
+			const rejectedCommand = (await staleRequest).postDataJSON();
+			await staleResponse;
+			expect(rejectedCommand.expectedSenderId).toBe(accountA.id);
+			expect(
+				(
+					await database.query('SELECT id FROM messages WHERE "clientMessageId"=$1', [
+						rejectedCommand.clientMessageId
+					])
+				).rows
+			).toEqual([]);
+
+			const staleStatuses = await pageA.evaluate(
+				async ({ sender, owner }) => {
+					const paths = [
+						['GET', `/chat/get/${sender}`],
+						['GET', '/chat/conversations'],
+						['PUT', `/chat/messages/read/${sender}`]
+					];
+					return Promise.all(
+						paths.map(
+							async ([method, path]) =>
+								(await fetch(`${path}?expectedUserId=${owner}`, { method })).status
+						)
+					);
+				},
+				{ sender: accountA.id, owner: accountA.id }
+			);
+			expect(staleStatuses).toEqual([403, 403, 403]);
+			expect(
+				(await database.query('SELECT * FROM messages WHERE id=$1', [unread.id])).rows
+			).toEqual(before);
+
+			await sibling.getByRole('button', { name: 'Logout', exact: true }).click();
+			await expect(sibling).toHaveURL(`${origin}/login`);
+			await sibling.close();
+			await pageA.getByRole('button', { name: 'Logout', exact: true }).click();
+			await expect(pageA).toHaveURL(`${origin}/login`);
+			await login(pageA, accountA.email, false);
+			await pageA
+				.getByRole('button', { name: new RegExp(`Chat with ${accountB.username}`) })
+				.click();
+		});
+		await test.step('logout and another account login isolate an accepted in-flight response', async () => {
+			let lateCommand: Record<string, string> | undefined;
+			let lateId = '';
+			let release!: () => void;
+			const responseGate = new Promise<void>((resolve) => (release = resolve));
+			await pageA.route('**/chat/send', async (route) => {
+				lateCommand = route.request().postDataJSON();
+				const accepted = await route.fetch();
+				expect(accepted.ok()).toBe(true);
+				lateId = (await accepted.json()).data.id;
+				await responseGate;
+				await route.fulfill({ response: accepted });
+			});
+			const latePlaintext = `Accepted before logout ${process.env.FULLSTACK_RUN_ID}`;
+			await pageA.getByRole('textbox', { name: 'Message input' }).fill(latePlaintext);
+			await pageA.getByRole('button', { name: 'Seal and send message' }).click();
+			await expect.poll(() => lateId).not.toBe('');
+			await pageA.getByRole('button', { name: 'Logout', exact: true }).click();
+			await expect(pageA).toHaveURL(`${origin}/login`);
+			await login(pageA, accountC.email, false);
+			await expect(pageA).toHaveTitle(`Secret · ${accountC.username}`);
+			expect(await cachedMessages(pageA, accountC.id)).toEqual([]);
+			const lateResponse = pageA.waitForResponse(
+				(response) => new URL(response.url()).pathname === '/chat/send' && response.ok()
+			);
+			release();
+			await lateResponse;
+			await expect
+				.poll(
+					async () =>
+						(await cachedMessages(pageA, accountA.id)).find((message) => message._id === lateId)
+							?.sendState
+				)
+				.toBe('accepted');
+			expect(await cachedMessages(pageA, accountC.id)).toEqual([]);
+			await expect(pageA.getByText(latePlaintext, { exact: true })).toHaveCount(0);
+			await expect(
+				pageA.getByRole('button', { name: new RegExp(`Chat with ${accountB.username}`) })
+			).toHaveCount(0);
+			await pageA.reload();
+			await expect(pageA).toHaveTitle(`Secret · ${accountC.username}`);
+			expect(await cachedMessages(pageA, accountC.id)).toEqual([]);
+			await expect(pageA.getByText(latePlaintext, { exact: true })).toHaveCount(0);
+
+			await expect.poll(() => inspectDatabase(3), { timeout: 30_000 }).toBe(true);
+			const lateMessages = (
+				await database.query('SELECT * FROM messages WHERE "clientMessageId"=$1', [
+					lateCommand!.clientMessageId
+				])
+			).rows;
+			expect(lateMessages).toHaveLength(1);
+			expect(lateMessages[0]).toMatchObject({
+				id: lateId,
+				senderId: accountA.id,
+				receiverId: accountB.id,
+				message: lateCommand!.message
+			});
+			const lateEvents = (
+				await database.query(
+					`SELECT o.*, i."eventKey" FROM outbox_events o
+				 JOIN notification_inbox i ON i."eventKey"='event:' || o.id::text
+				 WHERE o.payload->>'envelope'=$1 AND o.payload->>'senderId'=$2`,
+					[lateCommand!.message, accountA.id]
+				)
+			).rows;
+			expect(lateEvents).toHaveLength(1);
+			expect(lateEvents[0].state).toBe('published');
+			expect(JSON.stringify({ lateMessages, lateEvents })).not.toContain(latePlaintext);
+			await testInfo.attach('database-evidence-after-account-change', {
+				body: JSON.stringify({ ...records, lateMessages, lateEvents }, null, 2),
+				contentType: 'application/json'
+			});
 		});
 		expect(
 			external.every(
