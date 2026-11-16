@@ -10,7 +10,7 @@ export default defineConfig({
 	testDir: 'tests/fullstack',
 	workers: 1,
 	retries: 0,
-	timeout: 120_000,
+	timeout: 150_000,
 	expect: { timeout: 20_000 },
 	outputDir: process.env.FULLSTACK_EVIDENCE,
 	use: {

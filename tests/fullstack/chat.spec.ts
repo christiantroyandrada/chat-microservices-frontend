@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserContext, Page } from '@playwright/test';
 
 const origin = process.env.FULLSTACK_ORIGIN!;
@@ -54,13 +55,14 @@ test('real Signal delivery preserves commands and account isolation across trans
 		const publication = page.waitForResponse(
 			(response) =>
 				new URL(response.url()).pathname === '/user/prekeys' &&
-				response.request().method() === 'POST' &&
-				response.ok()
+				response.request().method() === 'POST'
 		);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-		await publication;
+		const published = await publication;
+		expect(published.status(), 'Signal prekey publication').toBe(200);
 		await expect(page).toHaveURL(`${origin}/chat`);
 		await expect(page.getByRole('heading', { name: 'Correspondence' })).toBeVisible();
+		return published.headers();
 	};
 	const cachedMessages = (page: Page, owner: string): Promise<Array<Record<string, unknown>>> =>
 		page.evaluate(async (userId) => {
@@ -351,7 +353,16 @@ test('real Signal delivery preserves commands and account isolation across trans
 			await sibling.close();
 			await pageA.getByRole('button', { name: 'Logout', exact: true }).click();
 			await expect(pageA).toHaveURL(`${origin}/login`);
-			await login(pageA, accountA.email, false);
+			const headers = await login(pageA, accountA.email, false);
+			const remaining = Number(headers['ratelimit-remaining']);
+			expect(remaining).toBeGreaterThanOrEqual(0);
+			if (remaining < 2) {
+				const reset = Number(headers['ratelimit-reset']);
+				expect(reset).toBeGreaterThanOrEqual(0);
+				expect(reset).toBeLessThanOrEqual(60);
+				// A new account publishes prekeys and a key backup from the same fixture IP.
+				await delay((reset + 1) * 1000);
+			}
 			await pageA
 				.getByRole('button', { name: new RegExp(`Chat with ${accountB.username}`) })
 				.click();
