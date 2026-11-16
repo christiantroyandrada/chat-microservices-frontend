@@ -331,7 +331,7 @@ test('publication promotes only the scanned image and rejects malformed registry
 		(step) => step.id === 'build-image'
 	);
 	const digest = `sha256:${'3'.repeat(64)}`;
-	for (const manifest of [digest, 'sha256:malformed']) {
+	for (const manifest of [digest, 'sha256:malformed', 'missing', 'duplicate']) {
 		const directory = mkdtempSync(join(tmpdir(), 'frontend-publication-'));
 		try {
 			const tags = join(directory, 'tags');
@@ -342,8 +342,14 @@ test('publication promotes only the scanned image and rejects malformed registry
 				`#!/bin/sh
 case "$1" in
 tag) [ "$2" = chat-frontend:scan ] || exit 3; printf '%s\\n' "$3" >> "$FAKE_TAGS" ;;
-push) grep -Fxq "$2" "$FAKE_TAGS" || exit 4; printf '%s\\n' "$2" >> "$FAKE_PUSHED" ;;
-image) printf '%s\\n' "$IMAGE_FRONTEND@$FAKE_MANIFEST" ;;
+push)
+  grep -Fxq "$2" "$FAKE_TAGS" || exit 4
+  printf '%s\\n' "$2" >> "$FAKE_PUSHED"
+  case "$FAKE_MANIFEST" in
+    missing) printf 'latest: digest: %s size: 5228\\n' "$FAKE_DIGEST" ;;
+    duplicate) printf '%s: digest: %s size: 5228\\n' "$GITHUB_SHA" "$FAKE_DIGEST" "$GITHUB_SHA" "$FAKE_DIGEST" ;;
+    *) printf '%s: digest: %s size: 5228\\n' "$GITHUB_SHA" "$FAKE_MANIFEST" ;;
+  esac ;;
 *) exit 5 ;;
 esac
 `,
@@ -359,7 +365,8 @@ esac
 					GITHUB_OUTPUT: output,
 					FAKE_TAGS: tags,
 					FAKE_PUSHED: pushed,
-					FAKE_MANIFEST: manifest
+					FAKE_MANIFEST: manifest,
+					FAKE_DIGEST: digest
 				}
 			});
 			if (manifest === digest) {

@@ -291,9 +291,9 @@ jobs:
         run: |
           docker tag chat-frontend:scan "$IMAGE_FRONTEND:$GITHUB_SHA"
           docker tag chat-frontend:scan "$IMAGE_FRONTEND:latest"
-          docker push "$IMAGE_FRONTEND:$GITHUB_SHA"
-          digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE_FRONTEND:$GITHUB_SHA")"
-          digest="${digest##*@}"
+          push_output="$(docker push "$IMAGE_FRONTEND:$GITHUB_SHA")"
+          printf '%s\n' "$push_output"
+          digest="$(awk -v tag="$GITHUB_SHA:" '$1 == tag && $2 == "digest:" { print $3 }' <<< "$push_output")"
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid frontend registry digest" >&2; exit 1; }
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           docker push "$IMAGE_FRONTEND:latest"
