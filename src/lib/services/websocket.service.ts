@@ -10,10 +10,10 @@ import type {
 	PresenceCallback,
 	ReceiptCallback,
 	ReceiptEvent,
-	ReceiveMessagePayload,
 	TypingPayload
 } from '$lib/types';
 import { logger } from './dev-logger';
+import { assertValidServerMessage, normalizeMessage } from './server-message';
 import { safeToString } from '$lib/utils';
 
 class WebSocketService {
@@ -85,34 +85,15 @@ class WebSocketService {
 			});
 
 			// Listen for incoming messages
-			this.socket.on('receiveMessage', async (payload: unknown) => {
-				const data = payload as ReceiveMessagePayload;
-
-				// Normalize server message shape to frontend `Message`
-				const rawId = data._id ?? data.id ?? '';
-				const safeId = this.safeToString(rawId);
-
-				const normalized = {
-					_id: safeId,
-					senderId: this.safeToString(data.senderId),
-					senderUsername: ((): string | undefined => {
-						const s = this.safeToString(data.senderUsername ?? data.senderName);
-						return s || undefined;
-					})(),
-					receiverId: this.safeToString(data.receiverId),
-					content: this.safeToString(data.content ?? data.message),
-					timestamp: ((): string => {
-						const t = data.timestamp ?? data.createdAt;
-						return t ? this.safeToString(t) : new Date().toISOString();
-					})(),
-					read: Boolean(data.read ?? data.isRead ?? false),
-					createdAt: data.createdAt as string | undefined,
-					updatedAt: data.updatedAt as string | undefined,
-					clientMessageId:
-						typeof data.clientMessageId === 'string' ? data.clientMessageId : undefined,
-					status:
-						data.status === 'Seen' ? 'read' : data.status === 'Delivered' ? 'delivered' : 'sent'
-				} as Message;
+			this.socket.on('receiveMessage', (payload: unknown) => {
+				let normalized: Message;
+				try {
+					assertValidServerMessage(payload, 'socket.receiveMessage');
+					normalized = normalizeMessage(payload);
+				} catch {
+					logger.warning('[WebSocket] Ignored malformed message');
+					return;
+				}
 
 				logger.request('[WebSocket] Received message:', {
 					_id: normalized._id,

@@ -5,7 +5,8 @@ vi.mock('$lib/services/dev-logger', () => ({
 	logger: {
 		error: vi.fn(),
 		request: vi.fn(),
-		info: vi.fn()
+		info: vi.fn(),
+		warning: vi.fn()
 	}
 }));
 
@@ -90,6 +91,8 @@ describe('WebSocketService', () => {
 			senderUsername: 'bob',
 			receiverId: 'u2',
 			content: 'hi',
+			status: 'Seen',
+			read: false,
 			timestamp: new Date().toISOString()
 		};
 		const cbs = listeners.get('receiveMessage') || [];
@@ -97,8 +100,32 @@ describe('WebSocketService', () => {
 		// call the registered handler
 		cbs.forEach((cb) => cb(payload));
 
-		expect(handler).toHaveBeenCalled();
+		expect(handler).toHaveBeenCalledWith(
+			expect.objectContaining({ _id: 'm1', status: 'read', read: true })
+		);
 		unsub();
+	});
+
+	it('ignores malformed message frames', async () => {
+		const handler = vi.fn();
+		const unsubscribe = wsService.onMessage(handler);
+		wsService.connect();
+		const [receive] = listeners.get('receiveMessage') ?? [];
+		const valid = { id: 'm1', senderId: 'u1', receiverId: 'u2', message: 'hi' };
+		try {
+			for (const payload of [
+				valid,
+				{ ...valid, status: 'unknown' },
+				{ ...valid, status: 'Delivered', id: '' },
+				{ ...valid, status: 'Delivered', senderId: {} },
+				null
+			]) {
+				await receive(payload);
+				expect(handler).not.toHaveBeenCalled();
+			}
+		} finally {
+			unsubscribe();
+		}
 	});
 
 	it('sends only an encrypted wire payload and requires a matching acknowledgement', async () => {

@@ -130,8 +130,6 @@ export type ResponseShape = {
 };
 
 // WebSocket payload shapes
-// Used by: websocket.service.ts for incoming message payloads
-export type ReceiveMessagePayload = Record<string, unknown>;
 export type TypingPayload = { userId?: string; isTyping?: boolean };
 
 // Used by: api.ts for error handling
