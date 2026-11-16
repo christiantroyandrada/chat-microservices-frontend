@@ -174,7 +174,7 @@ test('real Signal delivery preserves commands and account isolation across trans
 		await expect(messagesA.getByRole('button', { name: 'Retry message' })).toHaveCount(0);
 
 		await test.step('reconnect replays the accepted notification and duplicates preserve one decrypted message', async () => {
-			expect(notificationFrames).toHaveLength(1);
+			await expect.poll(() => notificationFrames.length).toBe(1);
 			expect(
 				(await cachedMessages(pageA, accountA.id)).filter(
 					(message) => message.clientMessageId === commands[0].clientMessageId
