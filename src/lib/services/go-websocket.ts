@@ -7,12 +7,14 @@ export function connectGoWebSocket(
 		onMessage,
 		onReceipt,
 		onReady,
-		onTyping
+		onTyping,
+		onPresence
 	}: {
 		onMessage: (message: Message) => void;
 		onReceipt: (peerId: string) => void;
 		onReady: () => void;
 		onTyping: (peerId: string, isTyping: boolean) => void;
+		onPresence: (peerId: string, online: boolean | null) => void;
 	}
 ) {
 	const url = new URL('/ws/v1', window.location.href);
@@ -26,6 +28,13 @@ export function connectGoWebSocket(
 	let ready = false;
 	let typingPeer: string | undefined;
 	let lastTyping = 0;
+	let watchedPeer: string | undefined;
+
+	function sendWatch() {
+		if (ready && socket.readyState === WebSocket.OPEN) {
+			socket.send(JSON.stringify({ type: 'watchPresence', userId: watchedPeer ?? '' }));
+		}
+	}
 
 	function connect() {
 		const connection = new WebSocket(url);
@@ -46,6 +55,7 @@ export function connectGoWebSocket(
 				ready = true;
 				delay = 1000;
 				clearTimeout(handshakeTimer);
+				if (watchedPeer) sendWatch();
 				onReady();
 			}
 			if (!ready) return;
@@ -69,6 +79,13 @@ export function connectGoWebSocket(
 				}
 				return;
 			}
+			if (frame.type === 'presence' && frame.data && typeof frame.data === 'object') {
+				const { userId, online } = frame.data as Record<string, unknown>;
+				if (watchedPeer && userId === watchedPeer && typeof online === 'boolean') {
+					onPresence(watchedPeer, online);
+				}
+				return;
+			}
 			if (frame.type !== 'message') return;
 			try {
 				assertValidServerMessage(frame.data, 'go-websocket.message');
@@ -80,6 +97,7 @@ export function connectGoWebSocket(
 		connection.addEventListener('close', () => {
 			if (stopped || socket !== connection) return;
 			ready = false;
+			if (watchedPeer) onPresence(watchedPeer, null);
 			clearTimeout(handshakeTimer);
 			reconnectTimer = setTimeout(connect, delay + Math.random() * 250);
 			delay = Math.min(delay * 2, 15000);
@@ -88,6 +106,11 @@ export function connectGoWebSocket(
 
 	connect();
 	return {
+		watchPresence(peerId: string | undefined) {
+			if (stopped || peerId === watchedPeer) return;
+			watchedPeer = peerId;
+			sendWatch();
+		},
 		sendTyping(receiverId: string, isTyping: boolean) {
 			if (stopped || !ready || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > 2048)
 				return;

@@ -109,6 +109,9 @@ const deferred = <T>() => {
 
 const sockets: FakeSocket[] = [];
 class FakeSocket extends EventTarget {
+	static readonly OPEN = 1;
+	readonly readyState = FakeSocket.OPEN;
+	readonly send = vi.fn<(data: string) => void>();
 	constructor(readonly url: URL) {
 		super();
 		sockets.push(this);
@@ -183,6 +186,15 @@ describe('chat durable send UI', () => {
 		expect(sockets).toHaveLength(1);
 		expect(sockets[0].url.searchParams.get('expectedUserId')).toBe('alice');
 		sockets[0].frame({ type: 'ready' });
+		await waitFor(() =>
+			expect(sockets[0].send).toHaveBeenCalledWith(
+				JSON.stringify({ type: 'watchPresence', userId: 'bob' })
+			)
+		);
+		sockets[0].frame({ type: 'presence', data: { userId: 'carol', online: true } });
+		expect(view.getByText('Presence unavailable')).toBeTruthy();
+		sockets[0].frame({ type: 'presence', data: { userId: 'bob', online: false } });
+		await waitFor(() => expect(view.getByText('Offline', { exact: true })).toBeTruthy());
 
 		const live = { ...pending, _id: 'live', senderId: 'bob', receiverId: 'alice' };
 		mocks.receive.mockResolvedValue({ message: live, fresh: true });
@@ -205,7 +217,11 @@ describe('chat durable send UI', () => {
 		mocks.history.mockResolvedValue([live, missed]);
 		sockets[0].close();
 		await waitFor(() => expect(sockets).toHaveLength(2), { timeout: 2500 });
+		expect(view.getByText('Presence unavailable')).toBeTruthy();
 		sockets[1].frame({ type: 'ready' });
+		expect(sockets[1].send).toHaveBeenCalledWith(
+			JSON.stringify({ type: 'watchPresence', userId: 'bob' })
+		);
 		await waitFor(() => expect(view.getByText('missed text')).toBeTruthy());
 		expect(view.getAllByText('durable text')).toHaveLength(1);
 	});

@@ -6,6 +6,7 @@
 	let {
 		recipient = null as ChatConversation | null,
 		isTyping = false,
+		presence = undefined as boolean | null | undefined,
 		back = null as (() => void) | null
 	} = $props();
 
@@ -14,6 +15,8 @@
 
 		// Show typing indicator if user is actively typing
 		if (isTyping) return 'typing...';
+		if (presence === null) return 'Presence unavailable';
+		if (presence !== undefined) return presence ? 'Online' : 'Offline';
 
 		// Prioritize real-time presence data from websocket
 		if (recipient.online !== undefined) {

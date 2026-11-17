@@ -41,6 +41,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		const pageB = await contextB.newPage();
 		let senderReady = false;
 		const typing: Array<{ userId: string; isTyping: boolean }> = [];
+		const presence: Array<{ userId: string; online: boolean }> = [];
 		const receipts: Array<{ type: string; by: string; messageId?: string }> = [];
 		await pageA.routeWebSocket('**/ws/v1*', (client) => {
 			client.connectToServer().onMessage((data) => {
@@ -48,6 +49,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 				const frame = JSON.parse(data);
 				if (frame.type === 'ready') senderReady = true;
 				if (frame.type === 'receipt') receipts.push(frame.data);
+				if (frame.type === 'presence') presence.push(frame.data);
 				if (frame.type === 'typing') {
 					typing.push(frame.data);
 					if (frame.data.isTyping === false) return;
@@ -78,7 +80,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 				if (typeof data === 'string') {
 					if (data.startsWith('40')) legacyReady = true;
 					if (data.startsWith('42["messageDelivered",')) legacyDelivered++;
-					if (/^42\["message(Delivered|Read)",/.test(data)) return;
+					if (/^42\["(messageDelivered|messageRead|presence|presenceBulk)",/.test(data)) return;
 				}
 				client.send(data);
 			});
@@ -219,6 +221,41 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		).toHaveCount(1);
 		await expect(messages.getByText('Sent over the Go relay', { exact: true })).toHaveCount(1);
 		expect(wire).toHaveLength(1);
+
+		await test.step('presence follows the first and last Go tab with legacy presence blocked', async () => {
+			const header = pageA.getByRole('heading', { name: recipient, exact: true }).locator('..');
+			await expect(header.getByText('Online', { exact: true })).toBeVisible();
+			const baseline = presence.length;
+			const openRecipientTab = async () => {
+				const tab = await contextB.newPage();
+				await tab.route(
+					(url) => url.origin !== origin.origin,
+					(route) => route.abort()
+				);
+				let tabReady = false;
+				await tab.routeWebSocket('**/ws/v1*', (client) => {
+					client.connectToServer().onMessage((data) => {
+						if (typeof data === 'string' && JSON.parse(data).type === 'ready') tabReady = true;
+						client.send(data);
+					});
+				});
+				await tab.goto('/chat');
+				await expect.poll(() => tabReady).toBe(true);
+				return tab;
+			};
+			const sibling = await openRecipientTab();
+			await pageB.close();
+			await expect(header.getByText('Online', { exact: true })).toBeVisible();
+			await sibling.close();
+			await expect(header.getByText('Offline', { exact: true })).toBeVisible();
+			expect(presence.slice(baseline)).toEqual([{ userId: recipientId, online: false }]);
+			await openRecipientTab();
+			await expect(header.getByText('Online', { exact: true })).toBeVisible();
+			expect(presence.slice(baseline)).toEqual([
+				{ userId: recipientId, online: false },
+				{ userId: recipientId, online: true }
+			]);
+		});
 	} finally {
 		await Promise.all([contextA.close(), contextB.close()]);
 	}

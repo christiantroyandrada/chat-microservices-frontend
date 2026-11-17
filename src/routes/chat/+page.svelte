@@ -36,7 +36,14 @@
 	let observedOwner: string | null = null;
 	let unsubscribeOwner: (() => void) | undefined;
 	let socketSubscriptions: Array<() => void> = [];
-	let goSocket: ReturnType<typeof connectGoWebSocket> | undefined;
+	let goSocket = $state.raw<ReturnType<typeof connectGoWebSocket>>();
+	let goPresence = $state<{ peerId: string; online: boolean } | null>(null);
+	const presencePeer = $derived(selectedConversation?.userId);
+
+	$effect(() => {
+		goPresence = null;
+		goSocket?.watchPresence(presencePeer);
+	});
 	let goTypingExpiry: ReturnType<typeof setTimeout> | undefined;
 	const pendingPresenceUpdates = new Map<string, { online: boolean; lastSeen?: string }>();
 
@@ -102,10 +109,7 @@
 			}
 		}
 		if (!owns(owner, generation)) return;
-		socketSubscriptions = [
-			wsService.onStatusChange(handleConnectionStatus),
-			wsService.onPresence(handlePresenceUpdate)
-		];
+		socketSubscriptions = [wsService.onStatusChange(handleConnectionStatus)];
 		if (env.PUBLIC_GO_WS_ENABLED === 'true') {
 			goSocket = connectGoWebSocket(owner, {
 				onMessage: handleIncomingMessage,
@@ -117,6 +121,11 @@
 					}
 				},
 				onReady: () => void catchUp(owner, generation),
+				onPresence: (peerId, online) => {
+					if (owns(owner, generation) && selectedConversation?.userId === peerId) {
+						goPresence = online === null ? null : { peerId, online };
+					}
+				},
 				onTyping: (peerId, isTyping) => {
 					if (!owns(owner, generation) || selectedConversation?.userId !== peerId) return;
 					clearTimeout(goTypingExpiry);
@@ -128,6 +137,7 @@
 		} else {
 			socketSubscriptions.push(
 				wsService.onTyping(handleTypingIndicator),
+				wsService.onPresence(handlePresenceUpdate),
 				wsService.onMessage(handleIncomingMessage),
 				wsService.onReceipt(handleReceipt)
 			);
@@ -541,6 +551,11 @@
 			{#if selectedConversation}
 				<ChatHeader
 					recipient={selectedConversation}
+					presence={goSocket
+						? goPresence?.peerId === selectedConversation.userId
+							? goPresence.online
+							: null
+						: undefined}
 					isTyping={typingUsers.has(selectedConversation.userId)}
 					back={handleBack}
 				/>
