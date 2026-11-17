@@ -29,6 +29,8 @@ export function connectGoWebSocket(
 	let typingPeer: string | undefined;
 	let lastTyping = 0;
 	let watchedPeer: string | undefined;
+	let presenceKnown = false;
+	let presenceRetried = false;
 
 	function sendWatch() {
 		if (ready && socket.readyState === WebSocket.OPEN) {
@@ -41,6 +43,8 @@ export function connectGoWebSocket(
 		socket = connection;
 		ready = false;
 		typingPeer = undefined;
+		presenceKnown = false;
+		presenceRetried = false;
 		handshakeTimer = setTimeout(() => connection.close(), 5000);
 		connection.addEventListener('message', ({ data }) => {
 			if (stopped || socket !== connection || typeof data !== 'string') return;
@@ -81,7 +85,12 @@ export function connectGoWebSocket(
 			}
 			if (frame.type === 'presence' && frame.data && typeof frame.data === 'object') {
 				const { userId, online } = frame.data as Record<string, unknown>;
-				if (watchedPeer && userId === watchedPeer && typeof online === 'boolean') {
+				if (
+					watchedPeer &&
+					userId === watchedPeer &&
+					(typeof online === 'boolean' || online === null)
+				) {
+					presenceKnown = online !== null;
 					onPresence(watchedPeer, online);
 				}
 				return;
@@ -109,6 +118,13 @@ export function connectGoWebSocket(
 		watchPresence(peerId: string | undefined) {
 			if (stopped || peerId === watchedPeer) return;
 			watchedPeer = peerId;
+			presenceKnown = false;
+			presenceRetried = false;
+			sendWatch();
+		},
+		refreshPresence() {
+			if (stopped || !ready || !watchedPeer || presenceKnown || presenceRetried) return;
+			presenceRetried = true;
 			sendWatch();
 		},
 		sendTyping(receiverId: string, isTyping: boolean) {

@@ -300,8 +300,10 @@
 	) {
 		try {
 			const result = await chatService.retryMessage(message.clientMessageId ?? message._id, owner);
-			if (owns(owner, generation) && selection === conversationGeneration)
+			if (owns(owner, generation) && selection === conversationGeneration) {
 				messages = mergeMessages(messages, [result]);
+				if (result.sendState === 'accepted') goSocket?.refreshPresence();
+			}
 		} catch (error) {
 			if (owns(owner, generation) && selection === conversationGeneration) {
 				messages = messages.map((row) =>
@@ -329,7 +331,10 @@
 			if (!owns(owner, generation)) return;
 			const message = result.message;
 			const other = message.senderId === owner ? message.receiverId : message.senderId;
-			if (selectedConversation?.userId === other) messages = mergeMessages(messages, [message]);
+			if (selectedConversation?.userId === other) {
+				messages = mergeMessages(messages, [message]);
+				goSocket?.refreshPresence();
+			}
 			if (message.senderId !== owner) {
 				if (env.PUBLIC_GO_WS_ENABLED === 'true') {
 					void chatService.acknowledgeDelivery(message._id, owner).catch((error) => {

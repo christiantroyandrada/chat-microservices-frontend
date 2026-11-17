@@ -41,7 +41,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		const pageB = await contextB.newPage();
 		let senderReady = false;
 		const typing: Array<{ userId: string; isTyping: boolean }> = [];
-		const presence: Array<{ userId: string; online: boolean }> = [];
+		const presence: Array<{ userId: string; online: boolean | null }> = [];
 		const receipts: Array<{ type: string; by: string; messageId?: string }> = [];
 		await pageA.routeWebSocket('**/ws/v1*', (client) => {
 			client.connectToServer().onMessage((data) => {
@@ -116,6 +116,8 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		await pageA.getByPlaceholder('Search people by name or email').fill(recipient);
 		await pageA.getByRole('button', { name: new RegExp(recipient) }).click();
 		await pageA.getByRole('button', { name: 'Start chat', exact: true }).click();
+		await expect.poll(() => presence).toEqual([{ userId: recipientId, online: null }]);
+		await expect(pageA.getByText('Presence unavailable', { exact: true })).toBeVisible();
 
 		async function send(text: string) {
 			const acceptance = pageA.waitForResponse(
