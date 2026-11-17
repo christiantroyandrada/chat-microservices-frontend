@@ -3,10 +3,18 @@ import { assertValidServerMessage, normalizeMessage } from './server-message';
 
 export function connectGoWebSocket(
 	owner: string,
-	onMessage: (message: Message) => void,
-	onReceipt: (peerId: string) => void,
-	onReady: () => void
-): () => void {
+	{
+		onMessage,
+		onReceipt,
+		onReady,
+		onTyping
+	}: {
+		onMessage: (message: Message) => void;
+		onReceipt: (peerId: string) => void;
+		onReady: () => void;
+		onTyping: (peerId: string, isTyping: boolean) => void;
+	}
+) {
 	const url = new URL('/ws/v1', window.location.href);
 	url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
 	url.searchParams.set('expectedUserId', owner);
@@ -15,11 +23,15 @@ export function connectGoWebSocket(
 	let handshakeTimer: ReturnType<typeof setTimeout>;
 	let delay = 1000;
 	let stopped = false;
+	let ready = false;
+	let typingPeer: string | undefined;
+	let lastTyping = 0;
 
 	function connect() {
 		const connection = new WebSocket(url);
 		socket = connection;
-		let ready = false;
+		ready = false;
+		typingPeer = undefined;
 		handshakeTimer = setTimeout(() => connection.close(), 5000);
 		connection.addEventListener('message', ({ data }) => {
 			if (stopped || socket !== connection || typeof data !== 'string') return;
@@ -50,6 +62,13 @@ export function connectGoWebSocket(
 					onReceipt(by);
 				return;
 			}
+			if (frame.type === 'typing' && frame.data && typeof frame.data === 'object') {
+				const { userId, isTyping } = frame.data as Record<string, unknown>;
+				if (typeof userId === 'string' && userId !== owner && typeof isTyping === 'boolean') {
+					onTyping(userId, isTyping);
+				}
+				return;
+			}
 			if (frame.type !== 'message') return;
 			try {
 				assertValidServerMessage(frame.data, 'go-websocket.message');
@@ -60,6 +79,7 @@ export function connectGoWebSocket(
 		});
 		connection.addEventListener('close', () => {
 			if (stopped || socket !== connection) return;
+			ready = false;
 			clearTimeout(handshakeTimer);
 			reconnectTimer = setTimeout(connect, delay + Math.random() * 250);
 			delay = Math.min(delay * 2, 15000);
@@ -67,10 +87,24 @@ export function connectGoWebSocket(
 	}
 
 	connect();
-	return () => {
-		stopped = true;
-		clearTimeout(handshakeTimer);
-		clearTimeout(reconnectTimer);
-		socket.close();
+	return {
+		sendTyping(receiverId: string, isTyping: boolean) {
+			if (stopped || !ready || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > 2048)
+				return;
+			const now = performance.now();
+			if (
+				isTyping ? typingPeer === receiverId && now - lastTyping < 500 : typingPeer !== receiverId
+			)
+				return;
+			socket.send(JSON.stringify({ type: 'typing', receiverId, isTyping }));
+			typingPeer = isTyping ? receiverId : undefined;
+			lastTyping = now;
+		},
+		disconnect() {
+			stopped = true;
+			clearTimeout(handshakeTimer);
+			clearTimeout(reconnectTimer);
+			socket.close();
+		}
 	};
 }

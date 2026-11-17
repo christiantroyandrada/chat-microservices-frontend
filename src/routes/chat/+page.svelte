@@ -36,6 +36,8 @@
 	let observedOwner: string | null = null;
 	let unsubscribeOwner: (() => void) | undefined;
 	let socketSubscriptions: Array<() => void> = [];
+	let goSocket: ReturnType<typeof connectGoWebSocket> | undefined;
+	let goTypingExpiry: ReturnType<typeof setTimeout> | undefined;
 	const pendingPresenceUpdates = new Map<string, { online: boolean; lastSeen?: string }>();
 
 	function owns(owner: string, generation: number) {
@@ -43,6 +45,9 @@
 	}
 
 	function clearSocket() {
+		clearTimeout(goTypingExpiry);
+		goSocket?.disconnect();
+		goSocket = undefined;
 		socketSubscriptions.forEach((unsubscribe) => unsubscribe());
 		socketSubscriptions = [];
 		wsService.disconnect();
@@ -98,27 +103,31 @@
 		}
 		if (!owns(owner, generation)) return;
 		socketSubscriptions = [
-			wsService.onTyping(handleTypingIndicator),
 			wsService.onStatusChange(handleConnectionStatus),
 			wsService.onPresence(handlePresenceUpdate)
 		];
 		if (env.PUBLIC_GO_WS_ENABLED === 'true') {
-			socketSubscriptions.push(
-				connectGoWebSocket(
-					owner,
-					handleIncomingMessage,
-					(peerId) => {
-						if (owns(owner, generation) && selectedConversation?.userId === peerId) {
-							void refreshHistory(peerId, owner, generation, conversationGeneration).catch(
-								(error) => logger.error('[Chat] Receipt history failed:', error)
-							);
-						}
-					},
-					() => void catchUp(owner, generation)
-				)
-			);
+			goSocket = connectGoWebSocket(owner, {
+				onMessage: handleIncomingMessage,
+				onReceipt: (peerId) => {
+					if (owns(owner, generation) && selectedConversation?.userId === peerId) {
+						void refreshHistory(peerId, owner, generation, conversationGeneration).catch((error) =>
+							logger.error('[Chat] Receipt history failed:', error)
+						);
+					}
+				},
+				onReady: () => void catchUp(owner, generation),
+				onTyping: (peerId, isTyping) => {
+					if (!owns(owner, generation) || selectedConversation?.userId !== peerId) return;
+					clearTimeout(goTypingExpiry);
+					handleTypingIndicator(peerId, isTyping);
+					if (isTyping)
+						goTypingExpiry = setTimeout(() => handleTypingIndicator(peerId, false), 3000);
+				}
+			});
 		} else {
 			socketSubscriptions.push(
+				wsService.onTyping(handleTypingIndicator),
 				wsService.onMessage(handleIncomingMessage),
 				wsService.onReceipt(handleReceipt)
 			);
@@ -361,10 +370,17 @@
 		else toastStore.info('Reconnecting...');
 	}
 	function handleTyping(isTyping: boolean) {
-		if (selectedConversation && wsService.isConnected())
-			wsService.sendTyping(selectedConversation.userId, isTyping);
+		const peer = selectedConversation?.userId;
+		if (!peer) return;
+		if (goSocket) goSocket.sendTyping(peer, isTyping);
+		else if (wsService.isConnected()) wsService.sendTyping(peer, isTyping);
 	}
 	function handleBack() {
+		if (goSocket) {
+			handleTyping(false);
+			clearTimeout(goTypingExpiry);
+			typingUsers = new Set();
+		}
 		conversationGeneration++;
 		selectedConversation = null;
 		messages = [];

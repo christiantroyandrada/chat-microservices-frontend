@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { debounce } from '$lib/utils';
 	import { toastStore } from '$lib/stores/toast.store';
 
 	// Props in runes mode (accept callback props for events in Svelte 5)
@@ -27,11 +26,6 @@
 
 	let typingTimeout: ReturnType<typeof setTimeout> | undefined;
 
-	// Debounced typing indicator - only fires after user stops typing for 300ms
-	const debouncedStopTyping = debounce(() => {
-		typing?.(false);
-	}, 1000);
-
 	function handleInput() {
 		// Auto-resize textarea
 		if (textarea) {
@@ -45,8 +39,8 @@
 		// Emit typing indicator immediately when user starts typing via callback prop
 		typing?.(true);
 
-		// Reset the stop-typing timer
-		debouncedStopTyping();
+		clearTimeout(typingTimeout);
+		typingTimeout = setTimeout(() => typing?.(false), 1000);
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -128,6 +122,7 @@
 	});
 
 	onDestroy(() => {
+		clearTimeout(typingTimeout);
 		if (_ro) _ro.disconnect();
 		window.removeEventListener('resize', updateChatInputHeight);
 	});

@@ -40,6 +40,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		const pageA = await contextA.newPage();
 		const pageB = await contextB.newPage();
 		let senderReady = false;
+		const typing: Array<{ userId: string; isTyping: boolean }> = [];
 		const receipts: Array<{ type: string; by: string; messageId?: string }> = [];
 		await pageA.routeWebSocket('**/ws/v1*', (client) => {
 			client.connectToServer().onMessage((data) => {
@@ -47,17 +48,26 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 				const frame = JSON.parse(data);
 				if (frame.type === 'ready') senderReady = true;
 				if (frame.type === 'receipt') receipts.push(frame.data);
+				if (frame.type === 'typing') {
+					typing.push(frame.data);
+					if (frame.data.isTyping === false) return;
+				}
 				client.send(data);
 			});
 		});
 		let legacyReady = false;
 		let legacyDelivered = 0;
 		let legacyAckCommands = 0;
+		let legacyTypingCommands = 0;
 		await pageB.routeWebSocket('**/chat/socket.io/**', (client) => {
 			const server = client.connectToServer();
 			client.onMessage((data) => {
 				if (typeof data === 'string' && /^42\d*\["messageDelivered",/.test(data)) {
 					legacyAckCommands++;
+					return;
+				}
+				if (typeof data === 'string' && /^42\d*\["typing",/.test(data)) {
+					legacyTypingCommands++;
 					return;
 				}
 				server.send(data);
@@ -165,6 +175,22 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 					?.status;
 			})
 			.toBe('Seen');
+
+		await pageB
+			.getByRole('textbox', { name: 'Message input' })
+			.fill('A draft stays on this device');
+		const indicator = sentMessages
+			.getByRole('status')
+			.filter({ hasText: `${recipient} is typing` });
+		await expect(indicator).toBeAttached();
+		await expect
+			.poll(() => typing)
+			.toEqual([
+				{ userId: recipientId, isTyping: true },
+				{ userId: recipientId, isTyping: false }
+			]);
+		await expect(indicator).toHaveCount(0);
+		expect(legacyTypingCommands).toBe(0);
 
 		offline = true;
 		await closeRelay!();
