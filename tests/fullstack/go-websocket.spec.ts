@@ -41,7 +41,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		let ready = 0;
 		let offline = false;
 		let blocked = 0;
-		let closeRelay: (() => Promise<unknown>) | undefined;
+		let closeRelay: (() => Promise<void>) | undefined;
 		const wire: Array<{ id: string; message: string }> = [];
 		await pageB.routeWebSocket('**/ws/v1*', (client) => {
 			if (offline) {
@@ -50,7 +50,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 				return;
 			}
 			const server = client.connectToServer();
-			closeRelay = () => Promise.all([client.close({ code: 1012 }), server.close({ code: 1012 })]);
+			closeRelay = () => server.close({ code: 1012 });
 			server.onMessage((data) => {
 				if (typeof data !== 'string') return;
 				const frame = JSON.parse(data);
@@ -107,8 +107,15 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		await expect(
 			messages.getByText('Sent while the Go socket was offline', { exact: true })
 		).toHaveCount(0);
+		const catchUp = pageB.waitForResponse((response) => {
+			const url = new URL(response.url());
+			return url.pathname === `/chat/get/${senderId}` && url.searchParams.get('limit') === '50';
+		});
 		offline = false;
 		await expect.poll(() => ready).toBe(2);
+		expect((await (await catchUp).json()).data).toContainEqual(
+			expect.objectContaining({ id: missed.id, message: missed.message })
+		);
 		await expect(
 			messages.getByText('Sent while the Go socket was offline', { exact: true })
 		).toHaveCount(1);
