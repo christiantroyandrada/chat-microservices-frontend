@@ -15,6 +15,9 @@ test('the Go relay admits 128 connections through the fixture gateway and recove
 	const account = await request.post('/user/register', { data: { username, email, password } });
 	expect(account.status()).toBe(200);
 	const { id } = (await account.json()).data;
+	const publicSession = await request.get('/user/me');
+	expect(publicSession.status()).toBe(200);
+	expect(publicSession.headers()['ratelimit-limit']).toBe('100');
 	const session = (await request.storageState()).cookies.find((cookie) => cookie.name === 'jwt');
 	if (!session) throw new Error('Fixture registration did not set a session cookie');
 	const cookie = `jwt=${session.value}`;
