@@ -138,6 +138,7 @@ export function connectGoWebSocket(
 			socket.send(JSON.stringify({ type: 'typing', receiverId, isTyping }));
 			typingPeer = isTyping ? receiverId : undefined;
 			lastTyping = now;
+			return true;
 		},
 		disconnect() {
 			stopped = true;

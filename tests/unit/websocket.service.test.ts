@@ -178,6 +178,30 @@ describe('WebSocketService', () => {
 		expect(typingEmit2).toBeFalsy();
 	});
 
+	it('keeps mirrored typing for legacy subscribers and hides it from Go subscribers', () => {
+		const legacy = vi.fn();
+		const native = vi.fn();
+		wsService.onTyping(legacy);
+		wsService.onTyping(native, false);
+		wsService.connect();
+
+		wsService.sendTyping('peer', true, true);
+		expect(emitted.find((event) => event.event === 'typing')?.payload).toEqual({
+			receiverId: 'peer',
+			isTyping: true,
+			mirrored: true
+		});
+		for (const callback of listeners.get('typing') ?? []) {
+			callback({ userId: 'sender', isTyping: true, mirrored: true });
+			callback({ userId: 'sender', isTyping: false });
+		}
+		expect(legacy.mock.calls).toEqual([
+			['sender', true],
+			['sender', false]
+		]);
+		expect(native.mock.calls).toEqual([['sender', false]]);
+	});
+
 	it('subscription callbacks for status, typing and presence are invoked by server events', () => {
 		const statusCb = vi.fn();
 		const typingCb = vi.fn();

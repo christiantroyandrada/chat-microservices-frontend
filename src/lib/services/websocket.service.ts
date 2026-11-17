@@ -20,7 +20,7 @@ class WebSocketService {
 	private socket: Socket | null = null;
 	private readonly messageCallbacks: Set<MessageCallback> = new Set();
 	private readonly statusCallbacks: Set<StatusCallback> = new Set();
-	private readonly typingCallbacks: Set<TypingCallback> = new Set();
+	private readonly typingCallbacks = new Map<TypingCallback, boolean>();
 	private readonly presenceCallbacks: Set<PresenceCallback> = new Set();
 	private readonly receiptCallbacks: Set<ReceiptCallback> = new Set();
 	private readonly wsUrl: string;
@@ -113,7 +113,8 @@ class WebSocketService {
 			}); // Listen for typing indicators
 			this.socket.on('typing', (payload: unknown) => {
 				const d = payload as TypingPayload;
-				this.typingCallbacks.forEach((callback) => {
+				this.typingCallbacks.forEach((includeMirrored, callback) => {
+					if (d.mirrored === true && !includeMirrored) return;
 					try {
 						callback(String(d.userId ?? ''), Boolean(d.isTyping ?? false));
 					} catch (error) {
@@ -239,9 +240,9 @@ class WebSocketService {
 	/**
 	 * Send typing indicator
 	 */
-	sendTyping(receiverId: string, isTyping: boolean): void {
+	sendTyping(receiverId: string, isTyping: boolean, mirrored = false): void {
 		if (this.socket?.connected) {
-			this.socket.emit('typing', { receiverId, isTyping });
+			this.socket.emit('typing', { receiverId, isTyping, ...(mirrored ? { mirrored } : {}) });
 		}
 	}
 
@@ -314,8 +315,8 @@ class WebSocketService {
 	 * Subscribe to typing indicators
 	 * Returns unsubscribe function that MUST be called to prevent memory leaks
 	 */
-	onTyping(callback: TypingCallback): () => void {
-		this.typingCallbacks.add(callback);
+	onTyping(callback: TypingCallback, includeMirrored = true): () => void {
+		this.typingCallbacks.set(callback, includeMirrored);
 		return () => {
 			this.typingCallbacks.delete(callback);
 		};

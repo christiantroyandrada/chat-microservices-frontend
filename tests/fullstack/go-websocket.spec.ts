@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { io } from 'socket.io-client';
 import type { Page } from '@playwright/test';
 
 test('Go delivers ciphertext and the open conversation catches up after reconnect', async ({
@@ -57,6 +58,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 				client.send(data);
 			});
 		});
+		let blockLegacyPresence = true;
 		let legacyReady = false;
 		let legacyDelivered = 0;
 		let legacyAckCommands = 0;
@@ -80,7 +82,8 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 				if (typeof data === 'string') {
 					if (data.startsWith('40')) legacyReady = true;
 					if (data.startsWith('42["messageDelivered",')) legacyDelivered++;
-					if (/^42\["(messageDelivered|messageRead|presence|presenceBulk)",/.test(data)) return;
+					if (/^42\["(messageDelivered|messageRead)",/.test(data)) return;
+					if (blockLegacyPresence && /^42\["(presence|presenceBulk)",/.test(data)) return;
 				}
 				client.send(data);
 			});
@@ -194,7 +197,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 				{ userId: recipientId, isTyping: false }
 			]);
 		await expect(indicator).toHaveCount(0);
-		expect(legacyTypingCommands).toBe(0);
+		await expect.poll(() => legacyTypingCommands).toBe(2);
 
 		offline = true;
 		await closeRelay!();
@@ -251,12 +254,50 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 			await sibling.close();
 			await expect(header.getByText('Offline', { exact: true })).toBeVisible();
 			expect(presence.slice(baseline)).toEqual([{ userId: recipientId, online: false }]);
-			await openRecipientTab();
+			const reconnected = await openRecipientTab();
 			await expect(header.getByText('Online', { exact: true })).toBeVisible();
 			expect(presence.slice(baseline)).toEqual([
 				{ userId: recipientId, online: false },
 				{ userId: recipientId, online: true }
 			]);
+			await reconnected.close();
+		});
+		await test.step('Go and legacy clients exchange typing and see each other online', async () => {
+			const header = pageA.getByRole('heading', { name: recipient, exact: true }).locator('..');
+			await expect(header.getByText('Offline', { exact: true })).toBeVisible();
+			blockLegacyPresence = false;
+			const session = (await contextB.cookies(origin.origin)).find(
+				(cookie) => cookie.name === 'jwt'
+			);
+			if (!session) throw new Error('Recipient fixture has no session');
+			const legacy = io(origin.origin, {
+				path: '/chat/socket.io',
+				transports: ['websocket'],
+				autoConnect: false,
+				reconnection: false,
+				rejectUnauthorized: false,
+				extraHeaders: { Cookie: `jwt=${session.value}`, Origin: origin.origin }
+			});
+			const legacyOnline: string[] = [];
+			const legacyTyped: Array<{ userId: string; isTyping: boolean }> = [];
+			legacy.on('presenceBulk', ({ onlineUserIds }) => legacyOnline.push(...onlineUserIds));
+			legacy.on('typing', (event) => legacyTyped.push(event));
+			try {
+				legacy.connect();
+				await expect.poll(() => legacyOnline).toContain(senderId);
+				await expect(header.getByText('Online', { exact: true })).toBeVisible();
+				await pageA.getByRole('textbox', { name: 'Message input' }).fill('Go to legacy');
+				await expect
+					.poll(() => legacyTyped)
+					.toContainEqual(expect.objectContaining({ userId: senderId, isTyping: true }));
+				legacy.emit('typing', { receiverId: senderId, isTyping: true });
+				await expect(indicator).toBeAttached();
+				legacy.emit('typing', { receiverId: senderId, isTyping: false });
+				await expect(indicator).toHaveCount(0);
+			} finally {
+				legacy.disconnect();
+			}
+			await expect(header.getByText('Offline', { exact: true })).toBeVisible();
 		});
 	} finally {
 		await Promise.all([contextA.close(), contextB.close()]);

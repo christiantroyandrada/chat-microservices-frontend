@@ -130,7 +130,7 @@ export type ResponseShape = {
 };
 
 // WebSocket payload shapes
-export type TypingPayload = { userId?: string; isTyping?: boolean };
+export type TypingPayload = { userId?: string; isTyping?: boolean; mirrored?: boolean };
 
 // Used by: api.ts for error handling
 export interface ApiError {
