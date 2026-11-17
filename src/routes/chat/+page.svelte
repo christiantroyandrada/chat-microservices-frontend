@@ -38,7 +38,7 @@
 	let socketSubscriptions: Array<() => void> = [];
 	let goSocket = $state.raw<ReturnType<typeof connectGoWebSocket>>();
 	let goPresence = $state<{ peerId: string; online: boolean } | null>(null);
-	const presencePeer = $derived(selectedConversation?.userId);
+	const presencePeer = $derived.by(() => selectedConversation?.userId);
 
 	$effect(() => {
 		goPresence = null;
