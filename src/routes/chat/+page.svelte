@@ -100,17 +100,28 @@
 		socketSubscriptions = [
 			wsService.onTyping(handleTypingIndicator),
 			wsService.onStatusChange(handleConnectionStatus),
-			wsService.onPresence(handlePresenceUpdate),
-			wsService.onReceipt(handleReceipt)
+			wsService.onPresence(handlePresenceUpdate)
 		];
 		if (env.PUBLIC_GO_WS_ENABLED === 'true') {
 			socketSubscriptions.push(
-				connectGoWebSocket(owner, handleIncomingMessage, () => {
-					void catchUp(owner, generation);
-				})
+				connectGoWebSocket(
+					owner,
+					handleIncomingMessage,
+					(peerId) => {
+						if (owns(owner, generation) && selectedConversation?.userId === peerId) {
+							void refreshHistory(peerId, owner, generation, conversationGeneration).catch(
+								(error) => logger.error('[Chat] Receipt history failed:', error)
+							);
+						}
+					},
+					() => void catchUp(owner, generation)
+				)
 			);
 		} else {
-			socketSubscriptions.push(wsService.onMessage(handleIncomingMessage));
+			socketSubscriptions.push(
+				wsService.onMessage(handleIncomingMessage),
+				wsService.onReceipt(handleReceipt)
+			);
 		}
 		wsService.connect();
 		void chatService.flushNotifications(owner).catch(() => {});
@@ -170,15 +181,26 @@
 		}
 	}
 
+	async function refreshHistory(
+		userId: string,
+		owner: string,
+		generation: number,
+		selection: number
+	) {
+		const history = await chatService.getMessages(userId, 50, 0, owner);
+		if (!owns(owner, generation) || selection !== conversationGeneration) return false;
+		messages = mergeMessages(messages, history);
+		return true;
+	}
+
 	async function catchUp(owner: string, generation: number) {
 		if (!owns(owner, generation)) return;
 		const userId = selectedConversation?.userId;
 		const selection = conversationGeneration;
 		try {
 			if (userId) {
-				const history = await chatService.getMessages(userId, 50, 0, owner);
+				if (!(await refreshHistory(userId, owner, generation, selection))) return;
 				if (!owns(owner, generation) || selection !== conversationGeneration) return;
-				messages = mergeMessages(messages, history);
 				await chatService.markAsRead(userId, owner);
 				if (!owns(owner, generation) || selection !== conversationGeneration) return;
 				wsService.sendMarkRead(userId);
@@ -200,9 +222,8 @@
 		loading.messages = true;
 		conversations = conversations.map((c) => (c.userId === userId ? { ...c, unreadCount: 0 } : c));
 		try {
-			const loaded = await chatService.getMessages(userId, 50, 0, owner);
+			if (!(await refreshHistory(userId, owner, generation, selection))) return;
 			if (!owns(owner, generation) || selection !== conversationGeneration) return;
-			messages = mergeMessages(messages, loaded);
 			await chatService.markAsRead(userId, owner);
 			if (!owns(owner, generation) || selection !== conversationGeneration) return;
 			wsService.sendMarkRead(userId);

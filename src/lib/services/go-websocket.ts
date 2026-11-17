@@ -4,6 +4,7 @@ import { assertValidServerMessage, normalizeMessage } from './server-message';
 export function connectGoWebSocket(
 	owner: string,
 	onMessage: (message: Message) => void,
+	onReceipt: (peerId: string) => void,
 	onReady: () => void
 ): () => void {
 	const url = new URL('/ws/v1', window.location.href);
@@ -35,7 +36,21 @@ export function connectGoWebSocket(
 				clearTimeout(handshakeTimer);
 				onReady();
 			}
-			if (frame.type !== 'message' || !ready) return;
+			if (!ready) return;
+			if (frame.type === 'receipt' && frame.data && typeof frame.data === 'object') {
+				const { userId, by, type, messageId } = frame.data as Record<string, unknown>;
+				if (
+					userId === owner &&
+					typeof by === 'string' &&
+					by &&
+					by !== owner &&
+					((type === 'read' && messageId === undefined) ||
+						(type === 'delivered' && typeof messageId === 'string' && messageId))
+				)
+					onReceipt(by);
+				return;
+			}
+			if (frame.type !== 'message') return;
 			try {
 				assertValidServerMessage(frame.data, 'go-websocket.message');
 			} catch {

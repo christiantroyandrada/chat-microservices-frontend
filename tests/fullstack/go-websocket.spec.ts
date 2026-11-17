@@ -12,8 +12,9 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 	const contextA = await browser.newContext({ baseURL: origin.origin, ignoreHTTPSErrors: true });
 	const contextB = await browser.newContext({ baseURL: origin.origin, ignoreHTTPSErrors: true });
 	async function signIn(page: Page, username: string) {
-		await page.route('**/*', (route) =>
-			new URL(route.request().url()).origin === origin.origin ? route.continue() : route.abort()
+		await page.route(
+			(url) => url.origin !== origin.origin,
+			(route) => route.abort()
 		);
 		const email = `${username}@example.com`;
 		const registered = await page.request.post('/user/register', {
@@ -38,6 +39,23 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 	try {
 		const pageA = await contextA.newPage();
 		const pageB = await contextB.newPage();
+		let senderReady = false;
+		const receipts: Array<{ type: string; by: string; messageId?: string }> = [];
+		await pageA.routeWebSocket('**/ws/v1*', (client) => {
+			client.connectToServer().onMessage((data) => {
+				if (typeof data !== 'string') return;
+				const frame = JSON.parse(data);
+				if (frame.type === 'ready') senderReady = true;
+				if (frame.type === 'receipt') receipts.push(frame.data);
+				client.send(data);
+			});
+		});
+		await pageA.routeWebSocket('**/chat/socket.io/**', (client) => {
+			client.connectToServer().onMessage((data) => {
+				if (typeof data === 'string' && /^42\["message(Delivered|Read)",/.test(data)) return;
+				client.send(data);
+			});
+		});
 		let ready = 0;
 		let offline = false;
 		let blocked = 0;
@@ -64,7 +82,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		});
 		const senderId = await signIn(pageA, sender);
 		const recipientId = await signIn(pageB, recipient);
-		await expect.poll(() => ready).toBe(1);
+		await expect.poll(() => [senderReady, ready]).toEqual([true, 1]);
 		await pageA.getByRole('button', { name: 'Start new conversation' }).click();
 		await pageA.getByPlaceholder('Search people by name or email').fill(recipient);
 		await pageA.getByRole('button', { name: new RegExp(recipient) }).click();
@@ -81,7 +99,18 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		const live = await send('Sent over the Go relay');
 		await expect.poll(() => wire).toMatchObject([{ id: live.id, message: live.message }]);
 		expect(wire[0].message).not.toContain('Sent over the Go relay');
+		const sentMessages = pageA.getByRole('log', { name: 'Messages' });
+		await expect
+			.poll(() => receipts)
+			.toContainEqual(
+				expect.objectContaining({ type: 'delivered', by: recipientId, messageId: live.id })
+			);
+		await expect(sentMessages.getByLabel('Delivered', { exact: true })).toHaveCount(1);
 		await pageB.getByRole('button', { name: new RegExp(`Chat with ${sender}`) }).click();
+		await expect
+			.poll(() => receipts)
+			.toContainEqual(expect.objectContaining({ type: 'read', by: recipientId }));
+		await expect(sentMessages.getByLabel('Read', { exact: true })).toHaveCount(1);
 		const messages = pageB.getByRole('log', { name: 'Messages' });
 		await expect(messages.getByText('Sent over the Go relay', { exact: true })).toHaveCount(1);
 		await expect
