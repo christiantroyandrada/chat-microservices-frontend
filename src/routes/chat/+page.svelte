@@ -312,7 +312,14 @@
 			const other = message.senderId === owner ? message.receiverId : message.senderId;
 			if (selectedConversation?.userId === other) messages = mergeMessages(messages, [message]);
 			if (message.senderId !== owner) {
-				wsService.sendDelivered(message._id);
+				if (env.PUBLIC_GO_WS_ENABLED === 'true') {
+					void chatService.acknowledgeDelivery(message._id, owner).catch((error) => {
+						if (owns(owner, generation))
+							logger.error('[Chat] Delivery acknowledgement failed:', error);
+					});
+				} else {
+					wsService.sendDelivered(message._id);
+				}
 				if (selectedConversation?.userId === other) {
 					void chatService.markAsRead(other, owner).catch(() => {});
 					wsService.sendMarkRead(other);

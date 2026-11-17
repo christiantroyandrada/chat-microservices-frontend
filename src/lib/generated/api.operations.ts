@@ -1,6 +1,6 @@
 /**
  * AUTO-GENERATED from committed OpenAPI contracts.
- * backendCommit: 842066310bd1347390197cf5d6b02e6c96596762
+ * backendCommit: be8d3cd1b97d3b8641449ac8abc080db8f497617
  * generatorVersion: 1
  */
 
@@ -33,6 +33,7 @@ export const apiOperations = {
 	"user.login": { operationId: "user.login", service: "user", method: "POST", path: "/user/login", responseMode: "envelope", parameters: [  ], requestSchema: "#/components/schemas/LoginRequest", successSchema: "#/components/schemas/StatusResponse" } as const,
 	"user.logout": { operationId: "user.logout", service: "user", method: "POST", path: "/user/logout", responseMode: "envelope", parameters: [  ], requestSchema: null, successSchema: "#/components/schemas/StatusResponse" } as const,
 	"user.getCurrentUser": { operationId: "user.getCurrentUser", service: "user", method: "GET", path: "/user/me", responseMode: "envelope", parameters: [  ], requestSchema: null, successSchema: "#/components/schemas/UserResponse" } as const,
+	"chat.acknowledgeDelivery": { operationId: "chat.acknowledgeDelivery", service: "chat", method: "PUT", path: "/chat/messages/{messageId}/delivered", responseMode: "envelope", parameters: [ { name: "messageId", in: "path", required: true, schemaType: "string" }, { name: "expectedUserId", in: "query", required: true, schemaType: "string" } ], requestSchema: null, successSchema: "#/components/schemas/MarkReadResponse" } as const,
 	"chat.markAsRead": { operationId: "chat.markAsRead", service: "chat", method: "PUT", path: "/chat/messages/read/{senderId}", responseMode: "envelope", parameters: [ { name: "senderId", in: "path", required: true, schemaType: "string" }, { name: "expectedUserId", in: "query", required: false, schemaType: "string" } ], requestSchema: null, successSchema: "#/components/schemas/MarkReadResponse" } as const,
 	"user.metrics": { operationId: "user.metrics", service: "user", method: "GET", path: "/user/metrics", responseMode: "raw", parameters: [  ], requestSchema: null, successSchema: null } as const,
 	"chat.metrics": { operationId: "chat.metrics", service: "chat", method: "GET", path: "/chat/metrics", responseMode: "raw", parameters: [  ], requestSchema: null, successSchema: null } as const,

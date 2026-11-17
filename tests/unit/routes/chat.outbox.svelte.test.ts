@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 	error: vi.fn(),
 	disconnect: vi.fn(),
 	delivered: vi.fn(),
+	acknowledgeDelivery: vi.fn().mockResolvedValue(undefined),
 	env: { PUBLIC_API_URL: 'http://localhost', PUBLIC_GO_WS_ENABLED: '' }
 }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
@@ -38,7 +39,8 @@ vi.mock('$lib/services/chat.service', () => ({
 		receiveMessage: mocks.receive,
 		flushNotifications: mocks.flush,
 		markAsRead: vi.fn().mockResolvedValue(undefined),
-		applyReceipt: vi.fn().mockResolvedValue(undefined)
+		applyReceipt: vi.fn().mockResolvedValue(undefined),
+		acknowledgeDelivery: mocks.acknowledgeDelivery
 	}
 }));
 vi.mock('$lib/crypto/signal', () => ({
@@ -196,6 +198,8 @@ describe('chat durable send UI', () => {
 		sockets[0].frame({ type: 'message', data: wire });
 		await waitFor(() => expect(mocks.receive).toHaveBeenCalledTimes(1));
 		await waitFor(() => expect(view.getByText('durable text')).toBeTruthy());
+		expect(mocks.acknowledgeDelivery).toHaveBeenCalledWith('live', 'alice');
+		expect(mocks.delivered).not.toHaveBeenCalled();
 
 		const missed = { ...live, _id: 'missed', clientMessageId: 'missed', content: 'missed text' };
 		mocks.history.mockResolvedValue([live, missed]);

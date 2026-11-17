@@ -48,6 +48,18 @@ function assertOwner(owner: string, generation: number) {
 		throw new Error('Account changed. Message remains on this device.');
 }
 
+async function updateReceipt(owner: string, request: () => Promise<unknown>): Promise<void> {
+	const generation = ownerGeneration;
+	assertOwner(owner, generation);
+	try {
+		await request();
+	} catch (error) {
+		if (authenticationFailure(error)) await requireReauthentication(owner);
+		throw error;
+	}
+	assertOwner(owner, generation);
+}
+
 function authenticationFailure(error: unknown): boolean {
 	return [401, 403].includes((error as { status?: number })?.status ?? 0);
 }
@@ -596,20 +608,13 @@ export const chatService = {
 		);
 	},
 
-	/**
-	 * Mark messages as read
-	 */
+	async acknowledgeDelivery(messageId: string, owner: string): Promise<void> {
+		await updateReceipt(owner, () => chatApi.acknowledgeDelivery(messageId, owner));
+	},
+
 	async markAsRead(senderId: string, owner = activeOwner): Promise<void> {
 		if (!owner) throw new Error('Current account is required');
-		const generation = ownerGeneration;
-		assertOwner(owner, generation);
-		try {
-			await chatApi.markAsRead(senderId, owner);
-		} catch (error) {
-			if (authenticationFailure(error)) await requireReauthentication(owner);
-			throw error;
-		}
-		assertOwner(owner, generation);
+		await updateReceipt(owner, () => chatApi.markAsRead(senderId, owner));
 	},
 
 	/**

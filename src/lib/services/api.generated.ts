@@ -97,6 +97,16 @@ export const chatApi = {
 		});
 	},
 
+	acknowledgeDelivery(
+		messageId: string,
+		expectedUserId: string
+	): Promise<ApiResponse<{ modifiedCount: number }>> {
+		return executeOperation<{ modifiedCount: number }>(apiOperations['chat.acknowledgeDelivery'], {
+			messageId,
+			expectedUserId
+		});
+	},
+
 	markAsRead(
 		senderId: string,
 		expectedUserId?: string

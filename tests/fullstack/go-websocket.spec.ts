@@ -50,9 +50,26 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 				client.send(data);
 			});
 		});
+		let legacyReady = false;
+		let legacyDelivered = 0;
+		let legacyAckCommands = 0;
+		await pageB.routeWebSocket('**/chat/socket.io/**', (client) => {
+			const server = client.connectToServer();
+			client.onMessage((data) => {
+				if (typeof data === 'string' && /^42\d*\["messageDelivered",/.test(data)) {
+					legacyAckCommands++;
+					return;
+				}
+				server.send(data);
+			});
+		});
 		await pageA.routeWebSocket('**/chat/socket.io/**', (client) => {
 			client.connectToServer().onMessage((data) => {
-				if (typeof data === 'string' && /^42\["message(Delivered|Read)",/.test(data)) return;
+				if (typeof data === 'string') {
+					if (data.startsWith('40')) legacyReady = true;
+					if (data.startsWith('42["messageDelivered",')) legacyDelivered++;
+					if (/^42\["message(Delivered|Read)",/.test(data)) return;
+				}
 				client.send(data);
 			});
 		});
@@ -82,7 +99,7 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		});
 		const senderId = await signIn(pageA, sender);
 		const recipientId = await signIn(pageB, recipient);
-		await expect.poll(() => [senderReady, ready]).toEqual([true, 1]);
+		await expect.poll(() => [senderReady, ready, legacyReady]).toEqual([true, 1, true]);
 		await pageA.getByRole('button', { name: 'Start new conversation' }).click();
 		await pageA.getByPlaceholder('Search people by name or email').fill(recipient);
 		await pageA.getByRole('button', { name: new RegExp(recipient) }).click();
@@ -96,7 +113,18 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 			await pageA.getByRole('button', { name: 'Seal and send message' }).click();
 			return (await (await acceptance).json()).data;
 		}
+		const acknowledged = pageB.waitForResponse((response) => {
+			const path = new URL(response.url()).pathname;
+			return (
+				/^\/chat\/messages\/[^/]+\/delivered$/.test(path) && response.request().method() === 'PUT'
+			);
+		});
 		const live = await send('Sent over the Go relay');
+		const acknowledgement = await acknowledged;
+		const deliveryPath = `/chat/messages/${live.id}/delivered`;
+		expect(new URL(acknowledgement.url()).pathname).toBe(deliveryPath);
+		expect(new URL(acknowledgement.url()).searchParams.get('expectedUserId')).toBe(recipientId);
+		expect(acknowledgement.status()).toBe(200);
 		await expect.poll(() => wire).toMatchObject([{ id: live.id, message: live.message }]);
 		expect(wire[0].message).not.toContain('Sent over the Go relay');
 		const sentMessages = pageA.getByRole('log', { name: 'Messages' });
@@ -106,11 +134,26 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 				expect.objectContaining({ type: 'delivered', by: recipientId, messageId: live.id })
 			);
 		await expect(sentMessages.getByLabel('Delivered', { exact: true })).toHaveCount(1);
+		await expect.poll(() => legacyDelivered).toBe(1);
+		expect(legacyAckCommands).toBe(0);
+		expect((await pageB.request.put(deliveryPath)).status()).toBe(400);
+		expect(
+			(await pageA.request.put(`${deliveryPath}?expectedUserId=${recipientId}`)).status()
+		).toBe(403);
+		expect((await pageA.request.put(`${deliveryPath}?expectedUserId=${senderId}`)).status()).toBe(
+			404
+		);
 		await pageB.getByRole('button', { name: new RegExp(`Chat with ${sender}`) }).click();
 		await expect
 			.poll(() => receipts)
 			.toContainEqual(expect.objectContaining({ type: 'read', by: recipientId }));
 		await expect(sentMessages.getByLabel('Read', { exact: true })).toHaveCount(1);
+		const replay = await pageB.request.put(`${deliveryPath}?expectedUserId=${recipientId}`);
+		expect(replay.status()).toBe(200);
+		expect((await replay.json()).data.modifiedCount).toBe(0);
+		expect(
+			receipts.filter((receipt) => receipt.type === 'delivered' && receipt.messageId === live.id)
+		).toHaveLength(1);
 		const messages = pageB.getByRole('log', { name: 'Messages' });
 		await expect(messages.getByText('Sent over the Go relay', { exact: true })).toHaveCount(1);
 		await expect
