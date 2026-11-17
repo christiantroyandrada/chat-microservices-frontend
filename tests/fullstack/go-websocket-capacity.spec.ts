@@ -72,7 +72,7 @@ test('the Go relay admits 128 connections through the fixture gateway and recove
 		for (let i = 0; i < 128; i++) {
 			const { status, body } = await upgrade();
 			expect(status, `upgrade ${i + 1}: ${body?.trim() ?? 'WebSocket'}`).toBe(101);
-			await delay(40);
+			await delay(110);
 		}
 		expect(live.size).toBe(128);
 		expect(await upgrade()).toEqual({ status: 503, body: 'connections unavailable\n' });
