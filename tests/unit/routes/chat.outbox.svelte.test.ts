@@ -15,10 +15,11 @@ const mocks = vi.hoisted(() => ({
 	info: vi.fn(),
 	error: vi.fn(),
 	disconnect: vi.fn(),
-	delivered: vi.fn()
+	delivered: vi.fn(),
+	env: { PUBLIC_API_URL: 'http://localhost', PUBLIC_GO_WS_ENABLED: '' }
 }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
-vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_API_URL: 'http://localhost' } }));
+vi.mock('$env/dynamic/public', () => ({ env: mocks.env }));
 vi.mock('$lib/stores/auth.store', async () => {
 	const { writable } = await import('svelte/store');
 	const user = writable<User | null>(null);
@@ -104,9 +105,24 @@ const deferred = <T>() => {
 	return { promise, resolve };
 };
 
+const sockets: FakeSocket[] = [];
+class FakeSocket extends EventTarget {
+	constructor(readonly url: URL) {
+		super();
+		sockets.push(this);
+	}
+	close() {
+		this.dispatchEvent(new Event('close'));
+	}
+	frame(data: object) {
+		this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(data) }));
+	}
+}
+
 describe('chat durable send UI', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.incoming = undefined;
 		mocks.setUser(alice);
 		mocks.conversations.mockResolvedValue([
 			{ userId: 'bob', username: 'Bob', unreadCount: 0 },
@@ -117,7 +133,11 @@ describe('chat durable send UI', () => {
 		mocks.prepare.mockResolvedValue(pending);
 		mocks.retry.mockResolvedValue({ ...pending, sendState: 'failed', sendError: 'Try again.' });
 	});
-	afterEach(cleanup);
+	afterEach(() => {
+		cleanup();
+		vi.unstubAllGlobals();
+		mocks.env.PUBLIC_GO_WS_ENABLED = '';
+	});
 	async function openBob() {
 		const rendered = render(ChatPage);
 		await waitFor(() =>
@@ -151,6 +171,39 @@ describe('chat durable send UI', () => {
 		expect(view.container.querySelectorAll('.message-row')).toHaveLength(1);
 		expect(mocks.prepare).toHaveBeenCalledTimes(1);
 		expect(mocks.retry).toHaveBeenCalledTimes(2);
+	});
+
+	it('uses Go for inbound messages and refreshes the active thread after reconnect', async () => {
+		mocks.env.PUBLIC_GO_WS_ENABLED = 'true';
+		sockets.length = 0;
+		vi.stubGlobal('WebSocket', FakeSocket);
+		const view = await openBob();
+		expect(sockets).toHaveLength(1);
+		expect(sockets[0].url.searchParams.get('expectedUserId')).toBe('alice');
+		sockets[0].frame({ type: 'ready' });
+
+		const live = { ...pending, _id: 'live', senderId: 'bob', receiverId: 'alice' };
+		mocks.receive.mockResolvedValue({ message: live, fresh: true });
+		expect(mocks.incoming).toBeUndefined();
+		const wire = {
+			id: live._id,
+			senderId: 'bob',
+			receiverId: 'alice',
+			message: 'ciphertext',
+			status: 'NotDelivered'
+		};
+		sockets[0].frame({ type: 'message', data: { ...wire, receiverId: 'carol' } });
+		sockets[0].frame({ type: 'message', data: wire });
+		await waitFor(() => expect(mocks.receive).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(view.getByText('durable text')).toBeTruthy());
+
+		const missed = { ...live, _id: 'missed', clientMessageId: 'missed', content: 'missed text' };
+		mocks.history.mockResolvedValue([live, missed]);
+		sockets[0].close();
+		await waitFor(() => expect(sockets).toHaveLength(2), { timeout: 2500 });
+		sockets[1].frame({ type: 'ready' });
+		await waitFor(() => expect(view.getByText('missed text')).toBeTruthy());
+		expect(view.getAllByText('durable text')).toHaveLength(1);
 	});
 
 	it('keeps a late send result out of the next conversation', async () => {

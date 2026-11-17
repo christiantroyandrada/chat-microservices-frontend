@@ -2,6 +2,7 @@
 	import Seal from '$lib/components/Seal.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { env } from '$env/dynamic/public';
 	import { authStore, user } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { notificationStore } from '$lib/stores/notification.store';
@@ -9,6 +10,7 @@
 	import { chatService } from '$lib/services/chat.service';
 	import { mergeMessages } from '$lib/services/message-merge';
 	import { wsService } from '$lib/services/websocket.service';
+	import { connectGoWebSocket } from '$lib/services/go-websocket';
 	import { sanitizeMessage } from '$lib/utils';
 	import { initSignalWithRestore, isSignalInitialized } from '$lib/crypto/signal';
 	import { logger } from '$lib/services/dev-logger';
@@ -96,12 +98,20 @@
 		}
 		if (!owns(owner, generation)) return;
 		socketSubscriptions = [
-			wsService.onMessage(handleIncomingMessage),
 			wsService.onTyping(handleTypingIndicator),
 			wsService.onStatusChange(handleConnectionStatus),
 			wsService.onPresence(handlePresenceUpdate),
 			wsService.onReceipt(handleReceipt)
 		];
+		if (env.PUBLIC_GO_WS_ENABLED === 'true') {
+			socketSubscriptions.push(
+				connectGoWebSocket(owner, handleIncomingMessage, () => {
+					void catchUp(owner, generation);
+				})
+			);
+		} else {
+			socketSubscriptions.push(wsService.onMessage(handleIncomingMessage));
+		}
 		wsService.connect();
 		void chatService.flushNotifications(owner).catch(() => {});
 		await loadConversations();
@@ -157,6 +167,25 @@
 				toastStore.error(error instanceof Error ? error.message : 'Failed to load conversations');
 		} finally {
 			if (owns(owner, generation)) loading.conversations = false;
+		}
+	}
+
+	async function catchUp(owner: string, generation: number) {
+		if (!owns(owner, generation)) return;
+		const userId = selectedConversation?.userId;
+		const selection = conversationGeneration;
+		try {
+			if (userId) {
+				const history = await chatService.getMessages(userId, 50, 0, owner);
+				if (!owns(owner, generation) || selection !== conversationGeneration) return;
+				messages = mergeMessages(messages, history);
+				await chatService.markAsRead(userId, owner);
+				if (!owns(owner, generation) || selection !== conversationGeneration) return;
+				wsService.sendMarkRead(userId);
+			}
+			await loadConversations();
+		} catch (error) {
+			if (owns(owner, generation)) logger.error('[Chat] Reconnect history failed:', error);
 		}
 	}
 
