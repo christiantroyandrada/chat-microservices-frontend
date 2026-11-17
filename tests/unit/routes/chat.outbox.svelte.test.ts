@@ -194,6 +194,8 @@ describe('chat durable send UI', () => {
 		sockets[0].frame({ type: 'presence', data: { userId: 'carol', online: true } });
 		expect(view.getByText('Presence unavailable')).toBeTruthy();
 		sockets[0].frame({ type: 'presence', data: { userId: 'bob', online: false } });
+		expect(view.getByText('Presence unavailable')).toBeTruthy();
+		mocks.status!('connected');
 		await waitFor(() => expect(view.getByText('Offline', { exact: true })).toBeTruthy());
 
 		const live = { ...pending, _id: 'live', senderId: 'bob', receiverId: 'alice' };
