@@ -2,6 +2,38 @@ import { expect, test } from '@playwright/test';
 import { io } from 'socket.io-client';
 import type { Page } from '@playwright/test';
 
+async function signIn(page: Page, origin: URL, username: string, password: string) {
+	await page.route(
+		(url) => url.origin !== origin.origin,
+		(route) => route.abort()
+	);
+	const email = `${username}@example.com`;
+	const registered = await page.request.post('/user/register', {
+		data: { username, email, password }
+	});
+	expect(registered.ok()).toBe(true);
+	const { id } = (await registered.json()).data;
+	await page.context().clearCookies();
+	await page.goto('/login');
+	await page.getByLabel('Email address', { exact: true }).fill(email);
+	await page.getByLabel('Password', { exact: true }).fill(password);
+	const prekeys = page.waitForResponse(
+		(response) =>
+			new URL(response.url()).pathname === '/user/prekeys' && response.request().method() === 'POST'
+	);
+	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+	expect((await prekeys).ok()).toBe(true);
+	await expect(page.getByRole('heading', { name: 'Correspondence' })).toBeVisible();
+	return id as string;
+}
+
+async function startConversation(page: Page, recipient: string) {
+	await page.getByRole('button', { name: 'Start new conversation' }).click();
+	await page.getByPlaceholder('Search people by name or email').fill(recipient);
+	await page.getByRole('button', { name: new RegExp(recipient) }).click();
+	await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+}
+
 test('Go delivers ciphertext and the open conversation catches up after reconnect', async ({
 	browser
 }) => {
@@ -12,31 +44,6 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 	const recipient = `go_bob_${suffix}`;
 	const contextA = await browser.newContext({ baseURL: origin.origin, ignoreHTTPSErrors: true });
 	const contextB = await browser.newContext({ baseURL: origin.origin, ignoreHTTPSErrors: true });
-	async function signIn(page: Page, username: string) {
-		await page.route(
-			(url) => url.origin !== origin.origin,
-			(route) => route.abort()
-		);
-		const email = `${username}@example.com`;
-		const registered = await page.request.post('/user/register', {
-			data: { username, email, password }
-		});
-		expect(registered.ok()).toBe(true);
-		const { id } = (await registered.json()).data;
-		await page.context().clearCookies();
-		await page.goto('/login');
-		await page.getByLabel('Email address', { exact: true }).fill(email);
-		await page.getByLabel('Password', { exact: true }).fill(password);
-		const prekeys = page.waitForResponse(
-			(response) =>
-				new URL(response.url()).pathname === '/user/prekeys' &&
-				response.request().method() === 'POST'
-		);
-		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-		expect((await prekeys).ok()).toBe(true);
-		await expect(page.getByRole('heading', { name: 'Correspondence' })).toBeVisible();
-		return id as string;
-	}
 	try {
 		const pageA = await contextA.newPage();
 		const pageB = await contextB.newPage();
@@ -112,13 +119,10 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 				}
 			});
 		});
-		const senderId = await signIn(pageA, sender);
-		const recipientId = await signIn(pageB, recipient);
+		const senderId = await signIn(pageA, origin, sender, password);
+		const recipientId = await signIn(pageB, origin, recipient, password);
 		await expect.poll(() => [senderReady, ready, legacyReady]).toEqual([true, 1, true]);
-		await pageA.getByRole('button', { name: 'Start new conversation' }).click();
-		await pageA.getByPlaceholder('Search people by name or email').fill(recipient);
-		await pageA.getByRole('button', { name: new RegExp(recipient) }).click();
-		await pageA.getByRole('button', { name: 'Start chat', exact: true }).click();
+		await startConversation(pageA, recipient);
 		await expect.poll(() => presence).toEqual([{ userId: recipientId, online: null }]);
 		await expect(pageA.getByText('Presence unavailable', { exact: true })).toBeVisible();
 
@@ -301,5 +305,53 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		});
 	} finally {
 		await Promise.all([contextA.close(), contextB.close()]);
+	}
+});
+
+test('Socket.IO delivers after Go rollback', async ({ browser }) => {
+	const origin = new URL(process.env.FULLSTACK_ORIGIN ?? 'https://127.0.0.1:1');
+	const password = `FixtureOnly!${crypto.randomUUID()}`;
+	const suffix = process.env.FULLSTACK_RUN_ID!.slice(-8);
+	const sender = `rollback_alice_${suffix}`;
+	const recipient = `rollback_bob_${suffix}`;
+	const options = { baseURL: origin.origin, ignoreHTTPSErrors: true };
+	const pageA = await browser.newPage(options);
+	const pageB = await browser.newPage(options);
+	try {
+		let ready = false;
+		let delivered = 0;
+		const goConnections: string[] = [];
+		for (const page of [pageA, pageB]) {
+			page.on('websocket', (socket) => {
+				if (new URL(socket.url()).pathname === '/ws/v1') goConnections.push(socket.url());
+			});
+		}
+		await pageB.routeWebSocket('**/chat/socket.io/**', (client) => {
+			client.connectToServer().onMessage((data) => {
+				if (typeof data === 'string') {
+					if (data.startsWith('40')) ready = true;
+					if (data.startsWith('42["receiveMessage",')) delivered++;
+				}
+				client.send(data);
+			});
+		});
+		const senderId = await signIn(pageA, origin, sender, password);
+		const recipientId = await signIn(pageB, origin, recipient, password);
+		await expect.poll(() => ready).toBe(true);
+		await startConversation(pageA, recipient);
+		const plaintext = 'Sent over Socket.IO after rollback';
+		await pageA.getByRole('textbox', { name: 'Message input' }).fill(plaintext);
+		await pageA.getByRole('button', { name: 'Seal and send message' }).click();
+		await expect.poll(() => delivered).toBeGreaterThan(0);
+		await pageB.getByRole('button', { name: new RegExp(`Chat with ${sender}`) }).click();
+		await expect(pageB.getByRole('log', { name: 'Messages' }).getByText(plaintext)).toHaveCount(1);
+		const history = await pageB.request.get(`/chat/get/${senderId}?expectedUserId=${recipientId}`);
+		expect(history.ok()).toBe(true);
+		const { data } = await history.json();
+		expect(data).toHaveLength(1);
+		expect(data[0].message).not.toContain(plaintext);
+		expect(goConnections).toEqual([]);
+	} finally {
+		await Promise.all([pageA.close(), pageB.close()]);
 	}
 });
