@@ -46,11 +46,11 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		await pageB.routeWebSocket('**/ws/v1*', (client) => {
 			if (offline) {
 				blocked++;
-				void client.close({ code: 1012 });
+				void client.close({ code: 4000 });
 				return;
 			}
 			const server = client.connectToServer();
-			closeRelay = () => server.close({ code: 1012 });
+			closeRelay = () => server.close({ code: 4000 });
 			server.onMessage((data) => {
 				if (typeof data !== 'string') return;
 				const frame = JSON.parse(data);
