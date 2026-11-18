@@ -10,6 +10,8 @@ IMAGE_REF="${IMAGE_REF:-${1:-}}"
 REPO_OWNER="${REPO_OWNER:-}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-60}"
 HEALTH_POLL_SECONDS="${HEALTH_POLL_SECONDS:-2}"
+PUBLIC_GO_WS_ENABLED="${PUBLIC_GO_WS_ENABLED:-false}"
+runtime_go_ws="$PUBLIC_GO_WS_ENABLED"
 
 die() {
 	echo "deploy-frontend: $*" >&2
@@ -23,6 +25,7 @@ is_immutable_frontend_ref() {
 [[ -n "$IMAGE_REF" ]] || die 'IMAGE_REF is required'
 [[ "$REPO_OWNER" =~ ^[A-Za-z0-9_.-]+$ ]] || die 'REPO_OWNER is required and must be a valid GHCR owner'
 is_immutable_frontend_ref "$IMAGE_REF" || die "invalid immutable frontend image ref: $IMAGE_REF"
+[[ "$PUBLIC_GO_WS_ENABLED" == true || "$PUBLIC_GO_WS_ENABLED" == false ]] || die 'PUBLIC_GO_WS_ENABLED must be true or false'
 [[ "$HEALTH_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || die 'HEALTH_TIMEOUT_SECONDS must be a non-negative integer'
 [[ "$HEALTH_POLL_SECONDS" =~ ^[0-9]+$ ]] || die 'HEALTH_POLL_SECONDS must be a non-negative integer'
 [[ -d "$DEPLOY_ROOT" ]] || die "deployment root does not exist: $DEPLOY_ROOT"
@@ -81,6 +84,7 @@ prepare_compose() {
 		'      HOST_HEADER: x-forwarded-host' \
 		'      PUBLIC_API_URL: https://chat.ctaprojects.xyz' \
 		'      PUBLIC_WS_URL: https://chat.ctaprojects.xyz' \
+		'      PUBLIC_GO_WS_ENABLED: ${FRONTEND_GO_WS:-false}' \
 		'    expose:' \
 		'      - "3000"' \
 		'    healthcheck:' \
@@ -106,18 +110,32 @@ commit_compose() {
 # determined solely by STATE_FILE and the runtime image verified via
 # `docker inspect`. The file is prepared before replacement and committed
 # atomically before `up`, and its content is identical for every deployment.
-prepare_compose
-commit_compose
-
 frontend_current=''
 frontend_previous=''
+frontend_go_ws_current=false
+frontend_go_ws_previous=false
+backend_relay_current=''
 if [[ -f "$STATE_FILE" ]]; then
 	while IFS= read -r line || [[ -n "$line" ]]; do
 		case "$line" in
 			frontend.current=*) frontend_current="${line#frontend.current=}" ;;
 			frontend.previous=*) frontend_previous="${line#frontend.previous=}" ;;
+			frontend.go_ws.current=*) frontend_go_ws_current="${line#frontend.go_ws.current=}" ;;
+			frontend.go_ws.previous=*) frontend_go_ws_previous="${line#frontend.go_ws.previous=}" ;;
+			go-websocket.current=*) backend_relay_current="${line#go-websocket.current=}" ;;
 		esac
 	done < "$STATE_FILE"
+fi
+for flag in "$frontend_go_ws_current" "$frontend_go_ws_previous"; do
+	[[ "$flag" == true || "$flag" == false ]] || die 'release state contains an invalid Go WebSocket flag'
+done
+if [[ "$PUBLIC_GO_WS_ENABLED" == true ]]; then
+	[[ "$backend_relay_current" =~ ^ghcr\.io/$REPO_OWNER/chat-websocket@sha256:[0-9a-f]{64}$ ]] ||
+		die 'enable the backend relay release before the browser pilot'
+	relay_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 5 \
+		-H 'Host: chat.ctaprojects.xyz' -H 'Origin: https://chat.ctaprojects.xyz' https://chat.ctaprojects.xyz/ws/v1)" ||
+		die 'backend relay readiness probe failed'
+	[[ "$relay_status" == 401 ]] || die 'backend relay is not ready for the browser pilot'
 fi
 
 if [[ -n "$frontend_current" ]] && ! is_immutable_frontend_ref "$frontend_current"; then
@@ -126,10 +144,14 @@ fi
 if [[ -n "$frontend_previous" ]] && ! is_immutable_frontend_ref "$frontend_previous"; then
 	die "release state contains an invalid frontend.previous ref"
 fi
+prepare_compose
+commit_compose
 
 prepare_state() {
 	local current="$1"
 	local previous="$2"
+	local current_flag="${3:-$runtime_go_ws}"
+	local previous_flag="${4:-$frontend_go_ws_current}"
 	temporary_state="$(mktemp "$DEPLOY_ROOT/.release-state.env.XXXXXX")"
 	if [[ -f "$STATE_FILE" ]]; then
 		awk -v current="$current" -v previous="$previous" '
@@ -144,6 +166,7 @@ prepare_state() {
 				previous_seen = 1
 				next
 			}
+			/^frontend\.go_ws\.(current|previous)=/ { next }
 			{ print }
 			END {
 				if (!current_seen) print "frontend.current=" current
@@ -156,6 +179,7 @@ prepare_state() {
 			printf 'frontend.previous=%s\n' "$previous" >> "$temporary_state"
 		fi
 	fi
+	printf 'frontend.go_ws.current=%s\nfrontend.go_ws.previous=%s\n' "$current_flag" "$previous_flag" >> "$temporary_state"
 	if [[ "${DEPLOY_TEST_FAIL_BEFORE_RENAME:-0}" == '1' ]]; then
 		die 'injected failure before release-state rename'
 	fi
@@ -169,7 +193,7 @@ commit_state() {
 }
 
 docker_compose() {
-	FRONTEND_IMAGE="$IMAGE_REF" docker compose -f "$COMPOSE_FILE" -p chat-microservices "$@"
+	FRONTEND_IMAGE="$IMAGE_REF" FRONTEND_GO_WS="$runtime_go_ws" docker compose -f "$COMPOSE_FILE" -p chat-microservices "$@"
 }
 
 wait_for_frontend() {
@@ -185,7 +209,12 @@ wait_for_frontend() {
 			if [[ "$status" == 'healthy' ]]; then
 				runtime_image="$(EXPECTED_IMAGE_REF="$expected_ref" docker inspect --format '{{.Config.Image}}' "$container_id" 2>/dev/null || true)"
 				if [[ "$runtime_image" == "$expected_ref" ]]; then
-					return 0
+					local runtime_env
+					runtime_env="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container_id" 2>/dev/null)" || return 1
+					if grep -Fxq "PUBLIC_GO_WS_ENABLED=$runtime_go_ws" <<< "$runtime_env" ||
+						{ [[ "$runtime_go_ws" == false ]] && ! grep -q '^PUBLIC_GO_WS_ENABLED=' <<< "$runtime_env"; }; then
+						return 0
+					fi
 				fi
 			fi
 		fi
@@ -206,6 +235,7 @@ wait_for_frontend() {
 
 rollback_frontend() {
 	local rollback_ref="$1"
+	runtime_go_ws="${2:-$frontend_go_ws_current}"
 	[[ -n "$rollback_ref" ]] || die 'frontend health check failed and no previous immutable release is recorded'
 	echo "deploy-frontend: health check failed; rolling back to $rollback_ref" >&2
 	if ! docker image inspect "$rollback_ref" >/dev/null; then
@@ -216,8 +246,8 @@ rollback_frontend() {
 			die "rollback image acquisition failed; unrecorded candidate removed"
 		fi
 	fi
-	prepare_state "$rollback_ref" "$frontend_previous"
-	if ! FRONTEND_IMAGE="$rollback_ref" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend; then
+	prepare_state "$rollback_ref" "$frontend_previous" "$runtime_go_ws" "$frontend_go_ws_previous"
+	if ! FRONTEND_IMAGE="$rollback_ref" FRONTEND_GO_WS="$runtime_go_ws" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend; then
 		rm -f -- "$temporary_state"
 		temporary_state=''
 		die "rollback container replacement failed"
@@ -235,10 +265,10 @@ rollback_frontend() {
 	die "frontend release rolled back to $rollback_ref"
 }
 
-if [[ "$frontend_current" == "$IMAGE_REF" ]]; then
+if [[ "$frontend_current" == "$IMAGE_REF" && "$frontend_go_ws_current" == "$PUBLIC_GO_WS_ENABLED" ]]; then
 	# Reconcile compose/env changes without rotating release state or pulling an image.
 	if ! docker_compose up -d --no-deps frontend; then
-		rollback_frontend "$frontend_previous"
+		rollback_frontend "$frontend_previous" "$frontend_go_ws_previous"
 	fi
 	if wait_for_frontend "$IMAGE_REF"; then
 		echo "deploy-frontend: $IMAGE_REF is already reconciled"
@@ -246,10 +276,10 @@ if [[ "$frontend_current" == "$IMAGE_REF" ]]; then
 	fi
 	# A stale container can survive an otherwise idempotent compose up; bound recovery to one recreate.
 	if ! docker_compose up -d --no-deps --force-recreate frontend; then
-		rollback_frontend "$frontend_previous"
+		rollback_frontend "$frontend_previous" "$frontend_go_ws_previous"
 	fi
 	if ! wait_for_frontend "$IMAGE_REF"; then
-		rollback_frontend "$frontend_previous"
+		rollback_frontend "$frontend_previous" "$frontend_go_ws_previous"
 	fi
 	echo "deploy-frontend: reconciled $IMAGE_REF"
 	exit 0
@@ -290,8 +320,9 @@ if wait_for_frontend "$IMAGE_REF"; then
 					die "state commit failed and rollback image acquisition failed; unrecorded candidate removed"
 				fi
 			fi
-			prepare_state "$frontend_current" "$frontend_previous"
-			if ! FRONTEND_IMAGE="$frontend_current" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend; then
+			runtime_go_ws="$frontend_go_ws_current"
+			prepare_state "$frontend_current" "$frontend_previous" "$runtime_go_ws" "$frontend_go_ws_previous"
+			if ! FRONTEND_IMAGE="$frontend_current" FRONTEND_GO_WS="$runtime_go_ws" docker compose -f "$COMPOSE_FILE" -p chat-microservices up -d --no-deps --force-recreate frontend; then
 				rm -f -- "$temporary_state"
 				temporary_state=''
 				die "state commit failed and rollback container replacement failed"

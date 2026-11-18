@@ -67,7 +67,7 @@ function fakeDocker(binDir, logPath, health = 'healthy') {
 		join(binDir, 'docker'),
 		`#!/bin/sh
 set -eu
-printf '%s FRONTEND_IMAGE=%s\\n' "$*" "\${FRONTEND_IMAGE:-}" >> "$FAKE_DOCKER_LOG"
+printf '%s FRONTEND_IMAGE=%s FRONTEND_GO_WS=%s\\n' "$*" "\${FRONTEND_IMAGE:-}" "\${FRONTEND_GO_WS:-false}" >> "$FAKE_DOCKER_LOG"
 if [ "$1" = pull ]; then
   [ "$2" = "\${FAKE_MISSING_IMAGE:-}" ] && exit 44
   exit 0
@@ -92,7 +92,8 @@ fi
 if [ "$1" = compose ]; then
   if [ "\${FAKE_COMPOSE_FORCE_RECREATE_FAIL:-0}" = "1" ]; then
     case "$*" in *force-recreate*)
-      if [ -z "\${FAKE_COMPOSE_FAIL_IMAGE:-}" ] || [ "\${FRONTEND_IMAGE:-}" = "\${FAKE_COMPOSE_FAIL_IMAGE}" ]; then
+      if { [ -z "\${FAKE_COMPOSE_FAIL_IMAGE:-}" ] || [ "\${FRONTEND_IMAGE:-}" = "\${FAKE_COMPOSE_FAIL_IMAGE}" ]; } &&
+         { [ -z "\${FAKE_COMPOSE_FAIL_GO_WS:-}" ] || [ "\${FRONTEND_GO_WS:-false}" = "\${FAKE_COMPOSE_FAIL_GO_WS}" ]; }; then
         if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ]; then
           printf '%s\n' "\${FRONTEND_IMAGE:-}" > "\${FAKE_RUNTIME_IMAGE_FILE}"
           if [ -n "\${FAKE_FRONTEND_ID_FILE:-}" ]; then printf '%s\n' candidate-frontend-id > "\${FAKE_FRONTEND_ID_FILE}"; fi
@@ -120,6 +121,7 @@ if [ "$1" = compose ]; then
         case "$*" in
 		  *force-recreate*)
             printf '%s\\n' "\${FRONTEND_IMAGE:-}" > "$FAKE_RUNTIME_IMAGE_FILE"
+            printf '%s\\n' "\${FRONTEND_GO_WS:-false}" > "$FAKE_RUNTIME_IMAGE_FILE.go-ws"
             if [ -n "\${FAKE_FRONTEND_ID_FILE:-}" ]; then printf '%s\\n' candidate-frontend-id > "$FAKE_FRONTEND_ID_FILE"; fi ;;
         esac
       fi
@@ -129,6 +131,10 @@ if [ "$1" = compose ]; then
 fi
 if [ "$1" = inspect ]; then
   case "$*" in
+    *"Config.Env"*)
+      if [ -f "\${FAKE_RUNTIME_IMAGE_FILE}.go-ws" ]; then
+        printf 'PUBLIC_GO_WS_ENABLED=%s\\n' "$(cat "\${FAKE_RUNTIME_IMAGE_FILE}.go-ws")"
+      fi ;;
     *"Config.Image"*)
 	      if [ -n "\${FAKE_RUNTIME_IMAGE_FILE:-}" ] && [ -f "$FAKE_RUNTIME_IMAGE_FILE" ]; then
 	        cat "$FAKE_RUNTIME_IMAGE_FILE"
@@ -175,6 +181,120 @@ afterEach(() => {
 });
 
 const hasFlock = !spawnSync('flock', ['--help'], { encoding: 'utf8' }).error;
+
+describe('Go WebSocket release flag', () => {
+	function fixture({ mode = 'false', probe = '401', health = 'healthy', state = '' } = {}) {
+		const deployRoot = temporaryRoot();
+		const bin = join(deployRoot, 'bin');
+		mkdirSync(join(deployRoot, 'chat-microservices'));
+		const log = join(deployRoot, 'docker.log');
+		const docker = fakeDocker(bin, log, health);
+		writeExecutable(join(bin, 'curl'), `#!/bin/sh\nprintf '%s' '${probe}'\n`);
+		writeFileSync(join(deployRoot, 'release-state.env'), state);
+		return {
+			deployRoot,
+			log,
+			env: {
+				...docker,
+				PATH: `${bin}:${process.env.PATH}`,
+				DEPLOY_ROOT: deployRoot,
+				IMAGE_REF: `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`,
+				PUBLIC_GO_WS_ENABLED: mode,
+				HEALTH_TIMEOUT_SECONDS: '0',
+				HEALTH_POLL_SECONDS: '0'
+			}
+		};
+	}
+	const image = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
+	const backend = `go-websocket.current=ghcr.io/acme/chat-websocket@sha256:${'b'.repeat(64)}\n`;
+
+	it('requires a recorded backend relay and a ready gateway before browser activation', () => {
+		for (const [state, probe] of [
+			['', '401'],
+			[backend, '404']
+		]) {
+			const h = fixture({ mode: 'true', state, probe });
+			const result = runDeploy(h.env);
+			assert.notEqual(result.status, 0);
+			assert.equal(existsSync(h.log), false);
+			assert.equal(
+				existsSync(join(h.deployRoot, 'chat-microservices/frontend.compose.yml')),
+				false
+			);
+		}
+	});
+
+	it('activates the pilot for the same image and records both flag generations', () => {
+		const h = fixture({
+			mode: 'true',
+			state: `${backend}frontend.current=${image}\nowner.custom=keep\n`
+		});
+		const result = runDeploy(h.env);
+		assert.equal(result.status, 0, result.stderr);
+		const state = readFileSync(join(h.deployRoot, 'release-state.env'), 'utf8');
+		assert.ok(state.includes('frontend.go_ws.current=true\n'));
+		assert.ok(state.includes('frontend.go_ws.previous=false\n'));
+		assert.ok(state.includes('owner.custom=keep\n'));
+		assert.match(readFileSync(h.log, 'utf8'), /up .*force-recreate frontend.*FRONTEND_GO_WS=true/);
+	});
+
+	it('disables the pilot for the same image', () => {
+		const h = fixture({ state: `frontend.current=${image}\nfrontend.go_ws.current=true\n` });
+		const result = runDeploy(h.env);
+		assert.equal(result.status, 0, result.stderr);
+		const state = readFileSync(join(h.deployRoot, 'release-state.env'), 'utf8');
+		assert.ok(state.includes('frontend.go_ws.current=false\n'));
+		assert.ok(state.includes('frontend.go_ws.previous=true\n'));
+		assert.match(readFileSync(h.log, 'utf8'), /up .*force-recreate frontend.*FRONTEND_GO_WS=false/);
+	});
+
+	it('restores the prior flag after a failed replacement', () => {
+		const h = fixture({ mode: 'true', state: `${backend}frontend.current=${image}\n` });
+		writeFileSync(h.env.FAKE_RUNTIME_IMAGE_FILE, image);
+		const result = runDeploy({
+			...h.env,
+			FAKE_COMPOSE_FORCE_RECREATE_FAIL: '1',
+			FAKE_COMPOSE_FAIL_GO_WS: 'true'
+		});
+		assert.notEqual(result.status, 0);
+		const log = readFileSync(h.log, 'utf8');
+		assert.match(log, /up .*force-recreate frontend.*FRONTEND_GO_WS=true/);
+		assert.match(log, /up .*force-recreate frontend.*FRONTEND_GO_WS=false/);
+		assert.ok(
+			!readFileSync(join(h.deployRoot, 'release-state.env'), 'utf8').includes(
+				'frontend.go_ws.current=true'
+			)
+		);
+		assert.match(result.stderr, /frontend release rolled back/);
+		assert.equal(readFileSync(`${h.env.FAKE_RUNTIME_IMAGE_FILE}.go-ws`, 'utf8').trim(), 'false');
+	});
+
+	it('rejects a healthy image with a mismatched runtime flag', () => {
+		const h = fixture({ mode: 'true', state: backend });
+		writeExecutable(
+			join(h.deployRoot, 'bin', 'docker'),
+			`#!/bin/sh
+printf '%s\\n' "$*" >> "$FAKE_DOCKER_LOG"
+case "$*" in
+  *'ps -q frontend'*) echo fake-frontend ;;
+  *'Config.Image'*) echo '${image}' ;;
+  *'Config.Env'*) echo PUBLIC_GO_WS_ENABLED=false ;;
+  *'State.Health.Status'*) echo healthy ;;
+esac
+`
+		);
+		const result = runDeploy(h.env);
+		assert.notEqual(result.status, 0);
+		assert.equal(readFileSync(join(h.deployRoot, 'release-state.env'), 'utf8'), backend);
+	});
+
+	it('rejects malformed flags before Docker mutation', () => {
+		const h = fixture({ mode: 'yes' });
+		const result = runDeploy(h.env);
+		assert.notEqual(result.status, 0);
+		assert.equal(existsSync(h.log), false);
+	});
+});
 
 describe('frontend immutable deployment workflow', () => {
 	it('publishes the build digest and passes only that immutable ref to deployment', () => {
