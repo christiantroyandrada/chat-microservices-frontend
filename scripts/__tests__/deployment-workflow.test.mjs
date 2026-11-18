@@ -196,7 +196,9 @@ describe('Go WebSocket release flag', () => {
 			check.run,
 			/--go-websocket --check-relay-capacity --rehearse-rollback --rollback-frontend-sha [a-f0-9]{40}/
 		);
-		const deploy = workflow.jobs.deploy.steps.find((step) => step.name === 'Deploy Frontend via SSH');
+		const deploy = workflow.jobs.deploy.steps.find(
+			(step) => step.name === 'Deploy Frontend via SSH'
+		);
 		assert.equal(
 			deploy.env.PUBLIC_GO_WS_ENABLED,
 			"${{ vars.GO_WS_PILOT == 'true' && 'true' || 'false' }}"
