@@ -20,6 +20,18 @@ const api = vi.hoisted(() => ({
 vi.mock('$lib/services/api', () => ({ apiClient: api }));
 
 describe('generated API helpers', () => {
+	it('requires the delivery acknowledgement owner and encodes message identity', async () => {
+		const { chatApi } = await import('$lib/services/api.generated');
+		api.request.mockResolvedValue({ success: true, data: { modifiedCount: 1 } });
+		const reply = await chatApi.acknowledgeDelivery('message/one', 'alice');
+		expect(reply.data).toEqual({ modifiedCount: 1 });
+		const [path, options] = api.request.mock.calls[0];
+		const url = new URL(path, 'https://chat.example');
+		expect(url.pathname).toBe('/chat/messages/message%2Fone/delivered');
+		expect(url.searchParams.get('expectedUserId')).toBe('alice');
+		expect(options.method).toBe('PUT');
+		await expect(chatApi.acknowledgeDelivery('m1', '')).rejects.toThrow();
+	});
 	it('binds chat reads and read receipts to the expected account query', async () => {
 		const { chatApi } = await import('$lib/services/api.generated');
 		const owner = 'f067bcfe-3c78-49c8-bf23-0a9edb0bc731';
