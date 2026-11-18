@@ -183,6 +183,26 @@ afterEach(() => {
 const hasFlock = !spawnSync('flock', ['--help'], { encoding: 'utf8' }).error;
 
 describe('Go WebSocket release flag', () => {
+	it('runs hosted Go capacity and rollback checks against the pinned backend', () => {
+		const workflow = yaml.load(readFileSync(workflowPath, 'utf8'));
+		const job = workflow.jobs['full-stack'];
+		const checkout = job.steps.find((step) => step.name === 'Checkout frontend');
+		assert.equal(checkout.with['fetch-depth'], 0);
+		const check = job.steps.find(
+			(step) => step.name === 'Verify Go relay capacity and image rollback'
+		);
+		assert.equal(check['working-directory'], 'backend-fixture');
+		assert.match(
+			check.run,
+			/--go-websocket --check-relay-capacity --rehearse-rollback --rollback-frontend-sha [a-f0-9]{40}/
+		);
+		const deploy = workflow.jobs.deploy.steps.find((step) => step.name === 'Deploy Frontend via SSH');
+		assert.equal(
+			deploy.env.PUBLIC_GO_WS_ENABLED,
+			"${{ vars.GO_WS_PILOT == 'true' && 'true' || 'false' }}"
+		);
+	});
+
 	function fixture({ mode = 'false', probe = '401', health = 'healthy', state = '' } = {}) {
 		const deployRoot = temporaryRoot();
 		const bin = join(deployRoot, 'bin');
