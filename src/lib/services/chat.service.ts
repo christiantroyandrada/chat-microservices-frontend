@@ -1,3 +1,4 @@
+import { env } from '$env/dynamic/public';
 import { chatApi, userApi } from './api.generated';
 import { wsService } from './websocket.service';
 import { mergeDelivery, mergeMessages } from './message-merge';
@@ -138,7 +139,7 @@ async function processMessage(
 					sendState: 'accepted',
 					retryable: false,
 					sendError: undefined,
-					pendingNotification: true
+					pendingNotification: env.PUBLIC_GO_WS_ENABLED !== 'true'
 				};
 				await store.settleMessage(pending._id, accepted);
 				void notifyAccepted(accepted, owner, generation).catch(() => {});
@@ -194,13 +195,14 @@ async function notifyAccepted(message: Message, owner: string, generation: numbe
 			return;
 		const store = getMessageStore(owner);
 		assertOwner(owner, generation);
-		await wsService.sendMessage({
-			_id: message._id,
-			senderId: owner,
-			receiverId: message.receiverId,
-			clientMessageId: message.clientMessageId,
-			message: message.encryptedMessage
-		});
+		if (env.PUBLIC_GO_WS_ENABLED !== 'true')
+			await wsService.sendMessage({
+				_id: message._id,
+				senderId: owner,
+				receiverId: message.receiverId,
+				clientMessageId: message.clientMessageId,
+				message: message.encryptedMessage
+			});
 		assertOwner(owner, generation);
 		const latest = await store.getMessage(message._id);
 		assertOwner(owner, generation);
@@ -512,13 +514,14 @@ export const chatService = {
 					sendState: 'accepted',
 					retryable: false,
 					sendError: undefined,
-					pendingNotification: true
+					pendingNotification: env.PUBLIC_GO_WS_ENABLED !== 'true'
 				};
 				const cached = await store.getMessage(accepted._id);
 				if (cached)
 					accepted = {
 						...mergeDelivery(accepted, cached),
-						pendingNotification: cached.pendingNotification ?? true
+						pendingNotification:
+							env.PUBLIC_GO_WS_ENABLED !== 'true' && (cached.pendingNotification ?? true)
 					};
 				await store.settleMessage(pending._id, accepted);
 			} catch (error) {

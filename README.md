@@ -11,7 +11,7 @@ End-to-end encryption prevents the server from reading message content.
 
 The application has these features:
 
-- The application sends real-time messages through WebSocket connections with Socket.IO.
+- Go mode uses a native WebSocket connection for real-time messages. Socket.IO remains available for rollback.
 - The Signal Protocol uses X3DH key exchange and the Double Ratchet algorithm for end-to-end encryption.
 - Key backups use AES-256-GCM encryption.
   PBKDF2 derives the encryption keys from passwords.
@@ -92,7 +92,7 @@ The application has these security features:
 | Styling | Tailwind CSS 4.0 |
 | Testing | Vitest + Playwright |
 | E2EE | @privacyresearch/libsignal-protocol-typescript |
-| Real-time | Socket.IO Client |
+| Real-time | Go WebSocket relay; Socket.IO rollback |
 | Build | Vite |
 
 <a id="-documentation"></a>
@@ -108,6 +108,22 @@ Use this environment variable for the backend API address.
 ```env
 PUBLIC_API_URL=http://localhost:80  # Backend API URL
 ```
+
+## Go-only browser cutover
+
+With `PUBLIC_GO_WS_ENABLED=true`, the browser uses Go for messages, typing, and presence, and REST for sends and receipts.
+It does not open a Socket.IO connection.
+Previously accepted Socket.IO notification records are cleared locally without resending or re-encrypting their messages.
+
+Refresh any tab opened before this cutover.
+Old Socket.IO tabs and new Go tabs are not supported together during the cutover.
+Stored messages remain available through the API.
+
+The backend relay must be ready before enabling Go mode.
+Set the frontend repository variable `GO_WS_PILOT=false` and deploy to restore the Socket.IO browser path.
+Keep the server dependency until the rollback window ends.
+Go mode does not switch automatically to Socket.IO during a relay outage.
+After reconnect, the browser retrieves missed messages through the API.
 
 <a id="-license"></a>
 ## License

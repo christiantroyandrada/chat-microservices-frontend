@@ -87,6 +87,7 @@ vi.mock('$lib/stores/notification.store', async () => {
 	};
 });
 import ChatPage from '../../../src/routes/chat/+page.svelte';
+import { wsService } from '$lib/services/websocket.service';
 
 const alice: User = { _id: 'alice', username: 'Alice', email: 'alice@example.com' };
 const pending: Message = {
@@ -178,6 +179,54 @@ describe('chat durable send UI', () => {
 		expect(mocks.retry).toHaveBeenCalledTimes(2);
 	});
 
+	it('opens only Go and sends typing without a Socket.IO compatibility connection', async () => {
+		mocks.env.PUBLIC_GO_WS_ENABLED = 'true';
+		sockets.length = 0;
+		vi.stubGlobal('WebSocket', FakeSocket);
+		const view = await openBob();
+		expect(sockets).toHaveLength(1);
+		expect(wsService.connect).not.toHaveBeenCalled();
+		expect(wsService.sendMarkRead).not.toHaveBeenCalled();
+		sockets[0].frame({ type: 'ready' });
+		await fireEvent.input(view.getByLabelText('Message input'), {
+			target: { value: 'A Go-only draft' }
+		});
+		await waitFor(() =>
+			expect(sockets[0].send).toHaveBeenCalledWith(
+				JSON.stringify({ type: 'typing', receiverId: 'bob', isTyping: true })
+			)
+		);
+		expect(wsService.sendTyping).not.toHaveBeenCalled();
+	});
+
+	it('retries failed legacy cleanup on Go readiness without blocking history', async () => {
+		mocks.env.PUBLIC_GO_WS_ENABLED = 'true';
+		sockets.length = 0;
+		vi.stubGlobal('WebSocket', FakeSocket);
+		let pendingLegacy = true;
+		mocks.flush
+			.mockRejectedValueOnce(new Error('Initial IndexedDB abort'))
+			.mockRejectedValueOnce(new Error('Ready IndexedDB abort'))
+			.mockImplementation(async () => {
+				pendingLegacy = false;
+			});
+		const view = await openBob();
+		expect(mocks.flush).toHaveBeenCalledTimes(1);
+		sockets[0].frame({ type: 'ready' });
+		await waitFor(() => expect(mocks.flush).toHaveBeenCalledTimes(2));
+		expect(pendingLegacy).toBe(true);
+		const missed = { ...pending, _id: 'missed', content: 'recovered history' };
+		mocks.history.mockResolvedValue([missed]);
+		sockets[0].close();
+		await waitFor(() => expect(sockets).toHaveLength(2), { timeout: 2500 });
+		sockets[1].frame({ type: 'ready' });
+		await waitFor(() => expect(pendingLegacy).toBe(false));
+		await waitFor(() => expect(view.getByText('recovered history')).toBeTruthy());
+		expect(wsService.connect).not.toHaveBeenCalled();
+		expect(mocks.prepare).not.toHaveBeenCalled();
+		expect(mocks.retry).not.toHaveBeenCalled();
+	});
+
 	it('uses Go for inbound messages and refreshes the active thread after reconnect', async () => {
 		mocks.env.PUBLIC_GO_WS_ENABLED = 'true';
 		sockets.length = 0;
@@ -194,8 +243,6 @@ describe('chat durable send UI', () => {
 		sockets[0].frame({ type: 'presence', data: { userId: 'carol', online: true } });
 		expect(view.getByText('Presence unavailable')).toBeTruthy();
 		sockets[0].frame({ type: 'presence', data: { userId: 'bob', online: false } });
-		expect(view.getByText('Presence unavailable')).toBeTruthy();
-		mocks.status!('connected');
 		await waitFor(() => expect(view.getByText('Offline', { exact: true })).toBeTruthy());
 
 		const live = { ...pending, _id: 'live', senderId: 'bob', receiverId: 'alice' };

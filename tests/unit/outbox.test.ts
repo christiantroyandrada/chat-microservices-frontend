@@ -14,8 +14,10 @@ const mocks = vi.hoisted(() => ({
 	read: vi.fn(),
 	hasSession: vi.fn(),
 	stores: new Map<string, LocalMessageStore>(),
-	disconnect: vi.fn()
+	disconnect: vi.fn(),
+	env: { PUBLIC_GO_WS_ENABLED: '' }
 }));
+vi.mock('$env/dynamic/public', () => ({ env: mocks.env }));
 vi.mock('$lib/services/api.generated', () => ({
 	chatApi: {
 		sendMessage: mocks.send,
@@ -48,6 +50,7 @@ describe('durable encrypted send', () => {
 	let control: TransactionControl;
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.env.PUBLIC_GO_WS_ENABLED = '';
 		store = new LocalMessageStore('alice');
 		control = attachFakeStoreTo(store, vi);
 		mocks.stores.set('alice', store);
@@ -563,6 +566,34 @@ describe('durable encrypted send', () => {
 			expect(await store.getMessage('wrong-id')).toBeNull();
 		}
 	);
+
+	it('settles Go acceptance and old notification rows without Socket.IO', async () => {
+		mocks.env.PUBLIC_GO_WS_ENABLED = 'true';
+		const pending = await chatService.prepareMessage(
+			{ receiverId: 'bob', content: 'hello' },
+			'alice'
+		);
+		const accepted = await chatService.retryMessage(pending._id, 'alice');
+		expect(accepted).toMatchObject({ sendState: 'accepted', pendingNotification: false });
+		expect((await store.getMessage('server-id'))?.pendingNotification).toBe(false);
+		await store.saveMessage({ ...accepted, pendingNotification: true });
+		const save = store.saveMessage.bind(store);
+		vi.spyOn(store, 'saveMessage').mockImplementationOnce(async (message) => {
+			control.autoComplete = false;
+			const saving = save(message);
+			await pause();
+			control.transactions.at(-1)!.abort();
+			control.autoComplete = true;
+			return saving;
+		});
+		await chatService.flushNotifications('alice');
+		expect((await store.getMessage('server-id'))?.pendingNotification).toBe(true);
+		await chatService.flushNotifications('alice');
+		expect((await store.getMessage('server-id'))?.pendingNotification).toBe(false);
+		expect(mocks.notify).not.toHaveBeenCalled();
+		expect(mocks.send).toHaveBeenCalledTimes(1);
+		expect(mocks.encrypt).toHaveBeenCalledTimes(1);
+	});
 
 	it('retains accepted notification until an exact-cipher acknowledgement after reload', async () => {
 		const pending = await chatService.prepareMessage(

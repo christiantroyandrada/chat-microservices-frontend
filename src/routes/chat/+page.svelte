@@ -37,7 +37,6 @@
 	let unsubscribeOwner: (() => void) | undefined;
 	let socketSubscriptions: Array<() => void> = [];
 	let goSocket = $state.raw<ReturnType<typeof connectGoWebSocket>>();
-	let legacyConnected = $state(false);
 	let goPresence = $state<{ peerId: string; online: boolean } | null>(null);
 	const presencePeer = $derived.by(() => selectedConversation?.userId);
 
@@ -56,7 +55,6 @@
 		clearTimeout(goTypingExpiry);
 		goSocket?.disconnect();
 		goSocket = undefined;
-		legacyConnected = false;
 		socketSubscriptions.forEach((unsubscribe) => unsubscribe());
 		socketSubscriptions = [];
 		wsService.disconnect();
@@ -111,10 +109,6 @@
 			}
 		}
 		if (!owns(owner, generation)) return;
-		socketSubscriptions = [
-			wsService.onStatusChange(handleConnectionStatus),
-			wsService.onPresence(handlePresenceUpdate)
-		];
 		if (env.PUBLIC_GO_WS_ENABLED === 'true') {
 			goSocket = connectGoWebSocket(owner, {
 				onMessage: handleIncomingMessage,
@@ -125,7 +119,11 @@
 						);
 					}
 				},
-				onReady: () => void catchUp(owner, generation),
+				onReady: () => {
+					if (!owns(owner, generation)) return;
+					void chatService.flushNotifications(owner).catch(() => {});
+					void catchUp(owner, generation);
+				},
 				onPresence: (peerId, online) => {
 					if (owns(owner, generation) && selectedConversation?.userId === peerId) {
 						goPresence = online === null ? null : { peerId, online };
@@ -133,15 +131,16 @@
 				},
 				onTyping: handlePilotTyping
 			});
-			socketSubscriptions.push(wsService.onTyping(handlePilotTyping, false));
 		} else {
-			socketSubscriptions.push(
+			socketSubscriptions = [
+				wsService.onStatusChange(handleConnectionStatus),
+				wsService.onPresence(handlePresenceUpdate),
 				wsService.onTyping(handleTypingIndicator),
 				wsService.onMessage(handleIncomingMessage),
 				wsService.onReceipt(handleReceipt)
-			);
+			];
+			wsService.connect();
 		}
-		wsService.connect();
 		void chatService.flushNotifications(owner).catch(() => {});
 		await loadConversations();
 		if (owns(owner, generation)) await notificationStore.fetch();
@@ -221,7 +220,7 @@
 				if (!owns(owner, generation) || selection !== conversationGeneration) return;
 				await chatService.markAsRead(userId, owner);
 				if (!owns(owner, generation) || selection !== conversationGeneration) return;
-				wsService.sendMarkRead(userId);
+				if (!goSocket) wsService.sendMarkRead(userId);
 			}
 			await loadConversations();
 		} catch (error) {
@@ -244,7 +243,7 @@
 			if (!owns(owner, generation) || selection !== conversationGeneration) return;
 			await chatService.markAsRead(userId, owner);
 			if (!owns(owner, generation) || selection !== conversationGeneration) return;
-			wsService.sendMarkRead(userId);
+			if (!goSocket) wsService.sendMarkRead(userId);
 			await loadConversations();
 			if (!owns(owner, generation) || selection !== conversationGeneration) return;
 			selectedConversation = conversations.find((c) => c.userId === userId) ?? conversation;
@@ -345,7 +344,7 @@
 				}
 				if (selectedConversation?.userId === other) {
 					void chatService.markAsRead(other, owner).catch(() => {});
-					wsService.sendMarkRead(other);
+					if (!goSocket) wsService.sendMarkRead(other);
 				}
 			}
 			if (!result.fresh) return;
@@ -383,13 +382,6 @@
 		if (isTyping) goTypingExpiry = setTimeout(() => handleTypingIndicator(peerId, false), 3000);
 	}
 	function handleConnectionStatus(status: 'connected' | 'disconnected' | 'reconnecting') {
-		legacyConnected = status === 'connected';
-		if (goSocket && status === 'disconnected') {
-			pendingPresenceUpdates.clear();
-			conversations = conversations.map((c) => ({ ...c, online: undefined, lastSeen: undefined }));
-			if (selectedConversation)
-				selectedConversation = { ...selectedConversation, online: undefined, lastSeen: undefined };
-		}
 		if (status === 'connected') {
 			if ($user) void chatService.flushNotifications($user._id).catch(() => {});
 			toastStore.success('Connected to chat');
@@ -399,9 +391,8 @@
 	function handleTyping(isTyping: boolean) {
 		const peer = selectedConversation?.userId;
 		if (!peer) return;
-		if (goSocket) {
-			if (goSocket.sendTyping(peer, isTyping)) wsService.sendTyping(peer, isTyping, true);
-		} else wsService.sendTyping(peer, isTyping);
+		if (goSocket) goSocket.sendTyping(peer, isTyping);
+		else wsService.sendTyping(peer, isTyping);
 	}
 	function handleBack() {
 		if (goSocket) {
@@ -571,7 +562,7 @@
 					recipient={selectedConversation}
 					presence={goSocket
 						? goPresence?.peerId === selectedConversation.userId
-							? goPresence.online || (legacyConnected ? selectedConversation.online === true : null)
+							? goPresence.online
 							: null
 						: undefined}
 					isTyping={typingUsers.has(selectedConversation.userId)}
