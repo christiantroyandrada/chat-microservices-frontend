@@ -16,6 +16,7 @@
 	let confirmPassword = $state('');
 	let showPassword = $state(false);
 	let showConfirmPassword = $state(false);
+	let hydrated = $state(false);
 	let loading = $state(false);
 	let error = $state('');
 	let fieldErrors = $state<Record<string, string>>({});
@@ -43,6 +44,7 @@
 	]);
 
 	onMount(() => {
+		hydrated = true;
 		// Redirect if already authenticated (e.g. user visits /register while logged in).
 		// Gated on !loading so the subscriber doesn't navigate mid-registration before
 		// Signal Protocol init with the password completes — handleSubmit owns navigation.
@@ -149,7 +151,9 @@
 			<p class="auth__sub">A sealed line for your conversations — yours alone.</p>
 		</header>
 
-		<form class="auth__form" onsubmit={handleSubmit} novalidate>
+		<noscript><p class="auth__note">Enable JavaScript to use this form.</p></noscript>
+
+		<form method="POST" class="auth__form" onsubmit={handleSubmit} novalidate>
 			{#if error}
 				<div class="error-box auth__error" role="alert">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
@@ -169,6 +173,7 @@
 				<input
 					id="username"
 					name="username"
+					disabled={!hydrated}
 					type="text"
 					autocomplete="username"
 					required
@@ -188,6 +193,7 @@
 				<input
 					id="email"
 					name="email"
+					disabled={!hydrated}
 					type="email"
 					autocomplete="email"
 					required
@@ -205,6 +211,7 @@
 					<input
 						id="password"
 						name="password"
+						disabled={!hydrated}
 						type={showPassword ? 'text' : 'password'}
 						autocomplete="new-password"
 						required
@@ -216,6 +223,7 @@
 					<button
 						type="button"
 						class="reveal"
+						disabled={!hydrated}
 						onclick={() => (showPassword = !showPassword)}
 						aria-label={showPassword ? 'Hide password' : 'Show password'}
 					>
@@ -257,6 +265,7 @@
 					<input
 						id="confirmPassword"
 						name="confirmPassword"
+						disabled={!hydrated}
 						type={showConfirmPassword ? 'text' : 'password'}
 						autocomplete="new-password"
 						required
@@ -268,6 +277,7 @@
 					<button
 						type="button"
 						class="reveal"
+						disabled={!hydrated}
 						onclick={() => (showConfirmPassword = !showConfirmPassword)}
 						aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
 					>
@@ -279,7 +289,7 @@
 					</p>{/if}
 			</div>
 
-			<button type="submit" class="btn btn-primary auth__submit" disabled={loading}>
+			<button type="submit" class="btn btn-primary auth__submit" disabled={!hydrated || loading}>
 				{loading ? 'Sealing your account…' : 'Create account'}
 			</button>
 		</form>

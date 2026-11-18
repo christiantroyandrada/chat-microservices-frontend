@@ -20,6 +20,49 @@ test.beforeEach(async ({ page, context }) => {
 });
 
 test.describe('Authentication', () => {
+	for (const path of ['/login', '/register']) {
+		test(`waits for hydration before accepting credentials at ${path}`, async ({ page }) => {
+			let releaseScripts!: () => void;
+			const scripts = new Promise<void>((resolve) => {
+				releaseScripts = resolve;
+			});
+			await page.route('**/*.js', async (route) => {
+				await scripts;
+				await route.continue();
+			});
+			try {
+				await page.goto(path, { waitUntil: 'commit' });
+				const email = page.getByLabel('Email address', { exact: true });
+				await expect(email).toBeVisible();
+				await expect(page.locator('form')).toHaveAttribute('method', 'POST');
+				await expect(email).toBeDisabled();
+				await expect(page.locator('#password')).toBeDisabled();
+				await expect(
+					page.getByRole('button', {
+						name: path === '/login' ? 'Sign in' : 'Create account',
+						exact: true
+					})
+				).toBeDisabled();
+			} finally {
+				releaseScripts();
+			}
+			await expect(page.getByLabel('Email address', { exact: true })).toBeEnabled();
+			if (path === '/login') {
+				await page.getByLabel('Email address', { exact: true }).fill(seededUser.email);
+				await page.locator('#password').fill(seededUser.password);
+			} else {
+				await fillRegistration(page, 'hydrateduser', 'hydrated@example.com');
+			}
+			await page
+				.getByRole('button', {
+					name: path === '/login' ? 'Sign in' : 'Create account',
+					exact: true
+				})
+				.click();
+			await expect(page.getByRole('heading', { name: 'Correspondence' })).toBeVisible();
+			expect(new URL(page.url()).search).toBe('');
+		});
+	}
 	test('shows the login page by default', async ({ page }) => {
 		await page.goto('/');
 
