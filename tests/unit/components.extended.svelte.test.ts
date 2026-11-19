@@ -92,7 +92,7 @@ describe('Extended component tests', () => {
 			const onCreate = vi.fn();
 			const { container } = render(ChatList, { currentUserId: 'me', onCreate });
 
-			const newChatBtn = screen.getByRole('button', { name: 'New chat', exact: true });
+			const newChatBtn = screen.getByRole('button', { name: /^New chat$/ });
 			await fireEvent.click(newChatBtn);
 
 			const input = container.querySelector(

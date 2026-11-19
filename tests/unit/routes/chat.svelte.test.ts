@@ -64,7 +64,7 @@ import ChatPage from '../../../src/routes/chat/+page.svelte';
 describe('chat page', () => {
 	it('mounts and renders child components (ChatList)', async () => {
 		render(ChatPage);
-		const btn = await screen.findByRole('button', { name: 'New chat', exact: true });
+		const btn = await screen.findByRole('button', { name: /^New chat$/ });
 		expect(btn).toBeTruthy();
 	});
 
