@@ -37,7 +37,7 @@ Current hardening work remains incomplete.
 
 **Real-time Chat:**
 
-- Socket.IO provides WebSocket connections.
+- The Go relay provides native WebSocket connections.
 - The application delivers messages immediately.
 - Typing indicators show user activity.
 - The application monitors connection status.
@@ -92,7 +92,7 @@ src/
 │   │   ├── auth.service.ts         # Authentication API
 │   │   ├── chat.service.ts         # Chat/messaging with E2EE
 │   │   ├── notification.service.ts # Notifications API
-│   │   └── websocket.service.ts    # WebSocket manager
+│   │   └── go-websocket.ts         # Native WebSocket client
 │   │
 │   ├── stores/              # Svelte stores for state management
 │   │   ├── auth.store.ts           # Auth state & user data
@@ -772,20 +772,25 @@ pnpm format
 - Automatic message decryption on receipt
 - Typing indicators
 - Auto-scroll to bottom
-- Connection status notifications
+- Reconnect recovery through REST history
 
 ### WebSocket Service
 
-Manages real-time communication via Socket.IO:
+The browser connects to the Go relay at `/ws/v1`:
 
 - Auto-connect on successful authentication
 - Authentication via httpOnly cookie
-- Auto-reconnect on disconnect (5 attempts, 3s delay)
+- Automatic reconnect with a maximum delay of 15 seconds, plus jitter
 - Real-time encrypted message delivery
 - Automatic decryption of incoming messages
 - Typing indicators
-- Connection status monitoring
+- Presence subscriptions for the selected conversation
 - Graceful cleanup on logout
+
+The browser sends messages and receipts through REST.
+The browser clears historical accepted notification metadata locally.
+This cleanup does not resend or encrypt messages.
+Each ready event retries cleanup independently of history recovery.
 
 ### State Management
 
@@ -826,8 +831,9 @@ Manages real-time communication via Socket.IO:
 **Chat:**
 
 - `GET /chat/conversations` - Get all conversations with last message
-- `GET /chat/messages/:userId` - Get message history with specific user
-- `POST /chat/messages` - Send message via HTTP (also via WebSocket)
+- `GET /chat/get/:userId` - Get message history with specific user
+- `POST /chat/send` - Send an encrypted message with a durable client identifier
+- `PUT /chat/messages/:messageId/delivered` - Confirm message delivery
 - `PUT /chat/messages/read/:senderId` - Mark messages as read
 
 **Notifications:**
@@ -837,13 +843,14 @@ Manages real-time communication via Socket.IO:
 - `PUT /notifications/:id/read` - Mark notification as read
 - `DELETE /notifications/:id` - Delete notification
 
-**WebSocket Events (via Socket.IO):**
+**Native WebSocket frames:**
 
-- `connect` - WebSocket connection established
-- `disconnect` - WebSocket connection closed
-- `sendMessage` - Send message in real-time
-- `receiveMessage` - Receive incoming message
-- `typing` - Send/receive typing indicators
+- `ready` - The relay accepted the authenticated connection
+- `message` - Receive an encrypted message
+- `receipt` - Refresh REST history for the specified peer
+- `typing` - Send or receive typing state
+- `watchPresence` - Subscribe to the selected peer
+- `presence` - Receive the selected peer's presence state
 
 ---
 
@@ -867,9 +874,9 @@ Manages real-time communication via Socket.IO:
 
 **Solutions:**
 
-1. Verify chat service is running: `docker-compose ps chat`
-2. Check `PUBLIC_WS_URL=http://localhost:85` in `.env` (must match API URL)
-3. Ensure nginx is routing `/chat/socket.io/` correctly
+1. Verify that the Go relay is running.
+2. Check the browser's same-origin `/ws/v1` address.
+3. Ensure that nginx routes `/ws/v1` to the Go relay.
 4. Open browser DevTools → Network → WS tab to inspect connection
 5. Check for WebSocket upgrade errors in nginx logs
 6. Verify httpOnly cookie is present in Application → Cookies (DevTools)
@@ -917,7 +924,7 @@ pnpm format
 
 - **JWT Storage**: Tokens stored in httpOnly cookies (set by backend)
 - **Authentication**: Automatic cookie transmission with `credentials: 'include'`
-- **WebSocket Auth**: Socket.IO handshake uses httpOnly cookie from headers
+- **WebSocket Auth**: The Go relay validates the httpOnly cookie and the captured account identifier.
 - **CORS**: Configured on backend services to allow credentials
 - **Input Validation**: Client-side validation + server-side validation
 - **XSS Prevention**: Svelte automatically escapes content

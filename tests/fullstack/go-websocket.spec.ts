@@ -38,7 +38,8 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 }) => {
 	const origin = new URL(process.env.FULLSTACK_ORIGIN ?? 'https://127.0.0.1:1');
 	const password = `FixtureOnly!${crypto.randomUUID()}`;
-	const suffix = process.env.FULLSTACK_RUN_ID!.slice(-8);
+	const suffix =
+		process.env.FULLSTACK_RUN_ID!.slice(-8) + (process.env.FULLSTACK_ACCOUNT_SUFFIX ?? '');
 	const sender = `go_alice_${suffix}`;
 	const recipient = `go_bob_${suffix}`;
 	const contextA = await browser.newContext({ baseURL: origin.origin, ignoreHTTPSErrors: true });
@@ -261,53 +262,5 @@ test('Go delivers ciphertext and the open conversation catches up after reconnec
 		expect(legacyTraffic).toEqual([]);
 	} finally {
 		await Promise.all([contextA.close(), contextB.close()]);
-	}
-});
-
-test('Socket.IO delivers after Go rollback', async ({ browser }) => {
-	const origin = new URL(process.env.FULLSTACK_ORIGIN ?? 'https://127.0.0.1:1');
-	const password = `FixtureOnly!${crypto.randomUUID()}`;
-	const suffix = process.env.FULLSTACK_RUN_ID!.slice(-8);
-	const sender = `rollback_alice_${suffix}`;
-	const recipient = `rollback_bob_${suffix}`;
-	const options = { baseURL: origin.origin, ignoreHTTPSErrors: true };
-	const pageA = await browser.newPage(options);
-	const pageB = await browser.newPage(options);
-	try {
-		let ready = false;
-		let delivered = 0;
-		const goConnections: string[] = [];
-		for (const page of [pageA, pageB]) {
-			page.on('websocket', (socket) => {
-				if (new URL(socket.url()).pathname === '/ws/v1') goConnections.push(socket.url());
-			});
-		}
-		await pageB.routeWebSocket('**/chat/socket.io/**', (client) => {
-			client.connectToServer().onMessage((data) => {
-				if (typeof data === 'string') {
-					if (data.startsWith('40')) ready = true;
-					if (data.startsWith('42["receiveMessage",')) delivered++;
-				}
-				client.send(data);
-			});
-		});
-		const senderId = await signIn(pageA, origin, sender, password);
-		const recipientId = await signIn(pageB, origin, recipient, password);
-		await expect.poll(() => ready).toBe(true);
-		await startConversation(pageA, recipient);
-		const plaintext = 'Sent over Socket.IO after rollback';
-		await pageA.getByRole('textbox', { name: 'Message input' }).fill(plaintext);
-		await pageA.getByRole('button', { name: 'Seal and send message' }).click();
-		await expect.poll(() => delivered).toBeGreaterThan(0);
-		await pageB.getByRole('button', { name: new RegExp(`Chat with ${sender}`) }).click();
-		await expect(pageB.getByRole('log', { name: 'Messages' }).getByText(plaintext)).toHaveCount(1);
-		const history = await pageB.request.get(`/chat/get/${senderId}?expectedUserId=${recipientId}`);
-		expect(history.ok()).toBe(true);
-		const { data } = await history.json();
-		expect(data).toHaveLength(1);
-		expect(data[0].message).not.toContain(plaintext);
-		expect(goConnections).toEqual([]);
-	} finally {
-		await Promise.all([pageA.close(), pageB.close()]);
 	}
 });

@@ -10,14 +10,10 @@ const mocks = vi.hoisted(() => ({
 	receive: vi.fn(),
 	flush: vi.fn(),
 	setUser: (_value: User | null) => {},
-	incoming: undefined as ((message: Message) => Promise<void>) | undefined,
-	status: undefined as ((status: 'connected') => void) | undefined,
 	info: vi.fn(),
 	error: vi.fn(),
-	disconnect: vi.fn(),
-	delivered: vi.fn(),
 	acknowledgeDelivery: vi.fn().mockResolvedValue(undefined),
-	env: { PUBLIC_API_URL: 'http://localhost', PUBLIC_GO_WS_ENABLED: '' }
+	env: { PUBLIC_API_URL: 'http://localhost' }
 }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$env/dynamic/public', () => ({ env: mocks.env }));
@@ -39,7 +35,6 @@ vi.mock('$lib/services/chat.service', () => ({
 		receiveMessage: mocks.receive,
 		flushNotifications: mocks.flush,
 		markAsRead: vi.fn().mockResolvedValue(undefined),
-		applyReceipt: vi.fn().mockResolvedValue(undefined),
 		acknowledgeDelivery: mocks.acknowledgeDelivery
 	}
 }));
@@ -52,27 +47,6 @@ vi.mock('$lib/crypto/signal', () => ({
 	encryptMessage: vi.fn(),
 	decryptMessage: vi.fn(),
 	SignalDecryptionError: class extends Error {}
-}));
-vi.mock('$lib/services/websocket.service', () => ({
-	wsService: {
-		connect: vi.fn(),
-		disconnect: mocks.disconnect,
-		isConnected: () => false,
-		onMessage: (callback: typeof mocks.incoming) => {
-			mocks.incoming = callback;
-			return () => {};
-		},
-		onStatusChange: (callback: typeof mocks.status) => {
-			mocks.status = callback;
-			return () => {};
-		},
-		onTyping: () => () => {},
-		onPresence: () => () => {},
-		onReceipt: () => () => {},
-		sendTyping: vi.fn(),
-		sendDelivered: mocks.delivered,
-		sendMarkRead: vi.fn()
-	}
 }));
 vi.mock('$lib/stores/toast.store', () => ({
 	toastStore: { info: mocks.info, error: mocks.error, success: vi.fn(), warning: vi.fn() }
@@ -87,7 +61,6 @@ vi.mock('$lib/stores/notification.store', async () => {
 	};
 });
 import ChatPage from '../../../src/routes/chat/+page.svelte';
-import { wsService } from '$lib/services/websocket.service';
 
 const alice: User = { _id: 'alice', username: 'Alice', email: 'alice@example.com' };
 const pending: Message = {
@@ -128,7 +101,8 @@ class FakeSocket extends EventTarget {
 describe('chat durable send UI', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mocks.incoming = undefined;
+		sockets.length = 0;
+		vi.stubGlobal('WebSocket', FakeSocket);
 		mocks.setUser(alice);
 		mocks.conversations.mockResolvedValue([
 			{ userId: 'bob', username: 'Bob', unreadCount: 0 },
@@ -142,7 +116,6 @@ describe('chat durable send UI', () => {
 	afterEach(() => {
 		cleanup();
 		vi.unstubAllGlobals();
-		mocks.env.PUBLIC_GO_WS_ENABLED = '';
 	});
 	async function openBob() {
 		const rendered = render(ChatPage);
@@ -169,24 +142,28 @@ describe('chat durable send UI', () => {
 			...pending,
 			_id: 'server-id',
 			sendState: 'accepted',
-			retryable: false,
-			status: 'delivered'
+			status: 'sent',
+			retryable: false
 		});
 		await fireEvent.click(view.getByRole('button', { name: 'Retry message' }));
-		await waitFor(() => expect(view.getByLabelText('Delivered')).toBeTruthy());
+		await waitFor(() => expect(view.getByLabelText('Sent')).toBeTruthy());
 		expect(view.container.querySelectorAll('.message-row')).toHaveLength(1);
 		expect(mocks.prepare).toHaveBeenCalledTimes(1);
 		expect(mocks.retry).toHaveBeenCalledTimes(2);
+		const accepted: Message = { ...pending, _id: 'server-id', sendState: 'accepted' };
+		mocks.history.mockResolvedValue([{ ...accepted, status: 'delivered' }]);
+		sockets[0].frame({ type: 'ready' });
+		await waitFor(() => expect(view.getByLabelText('Delivered')).toBeTruthy());
+		mocks.history.mockResolvedValue([{ ...accepted, status: 'read', read: true }]);
+		sockets[0].frame({ type: 'receipt', data: { type: 'read', userId: 'alice', by: 'bob' } });
+		await waitFor(() => expect(view.getByLabelText('Read')).toBeTruthy());
 	});
 
-	it('opens only Go and sends typing without a Socket.IO compatibility connection', async () => {
-		mocks.env.PUBLIC_GO_WS_ENABLED = 'true';
+	it('opens native Go and sends typing with no mode flag', async () => {
 		sockets.length = 0;
 		vi.stubGlobal('WebSocket', FakeSocket);
 		const view = await openBob();
 		expect(sockets).toHaveLength(1);
-		expect(wsService.connect).not.toHaveBeenCalled();
-		expect(wsService.sendMarkRead).not.toHaveBeenCalled();
 		sockets[0].frame({ type: 'ready' });
 		await fireEvent.input(view.getByLabelText('Message input'), {
 			target: { value: 'A Go-only draft' }
@@ -196,11 +173,9 @@ describe('chat durable send UI', () => {
 				JSON.stringify({ type: 'typing', receiverId: 'bob', isTyping: true })
 			)
 		);
-		expect(wsService.sendTyping).not.toHaveBeenCalled();
 	});
 
 	it('retries failed legacy cleanup on Go readiness without blocking history', async () => {
-		mocks.env.PUBLIC_GO_WS_ENABLED = 'true';
 		sockets.length = 0;
 		vi.stubGlobal('WebSocket', FakeSocket);
 		let pendingLegacy = true;
@@ -222,13 +197,11 @@ describe('chat durable send UI', () => {
 		sockets[1].frame({ type: 'ready' });
 		await waitFor(() => expect(pendingLegacy).toBe(false));
 		await waitFor(() => expect(view.getByText('recovered history')).toBeTruthy());
-		expect(wsService.connect).not.toHaveBeenCalled();
 		expect(mocks.prepare).not.toHaveBeenCalled();
 		expect(mocks.retry).not.toHaveBeenCalled();
 	});
 
 	it('uses Go for inbound messages and refreshes the active thread after reconnect', async () => {
-		mocks.env.PUBLIC_GO_WS_ENABLED = 'true';
 		sockets.length = 0;
 		vi.stubGlobal('WebSocket', FakeSocket);
 		const view = await openBob();
@@ -247,7 +220,7 @@ describe('chat durable send UI', () => {
 
 		const live = { ...pending, _id: 'live', senderId: 'bob', receiverId: 'alice' };
 		mocks.receive.mockResolvedValue({ message: live, fresh: true });
-		expect(mocks.incoming).toBeUndefined();
+
 		const wire = {
 			id: live._id,
 			senderId: 'bob',
@@ -260,7 +233,6 @@ describe('chat durable send UI', () => {
 		await waitFor(() => expect(mocks.receive).toHaveBeenCalledTimes(1));
 		await waitFor(() => expect(view.getByText('durable text')).toBeTruthy());
 		expect(mocks.acknowledgeDelivery).toHaveBeenCalledWith('live', 'alice');
-		expect(mocks.delivered).not.toHaveBeenCalled();
 
 		const missed = { ...live, _id: 'missed', clientMessageId: 'missed', content: 'missed text' };
 		mocks.history.mockResolvedValue([live, missed]);
@@ -307,13 +279,34 @@ describe('chat durable send UI', () => {
 			.mockResolvedValueOnce({ message, fresh: false });
 		const view = render(ChatPage);
 		await waitFor(() => expect(view.getByText('Bob')).toBeTruthy());
-		await mocks.incoming!(message);
-		await mocks.incoming!(message);
+		sockets[0].frame({ type: 'ready' });
+		sockets[0].frame({
+			type: 'message',
+			data: {
+				id: message._id,
+				senderId: message.senderId,
+				receiverId: message.receiverId,
+				message: 'ciphertext',
+				status: 'NotDelivered'
+			}
+		});
+		await waitFor(() => expect(mocks.receive).toHaveBeenCalled());
+		sockets[0].frame({
+			type: 'message',
+			data: {
+				id: message._id,
+				senderId: message.senderId,
+				receiverId: message.receiverId,
+				message: 'ciphertext',
+				status: 'NotDelivered'
+			}
+		});
+		await waitFor(() => expect(mocks.receive).toHaveBeenCalled());
 		await waitFor(() =>
 			expect(view.container.querySelector('.unread-badge')?.textContent?.trim()).toBe('1')
 		);
 		expect(mocks.info).toHaveBeenCalledTimes(1);
-		expect(mocks.delivered).toHaveBeenCalledTimes(2);
+		expect(mocks.acknowledgeDelivery).toHaveBeenCalledTimes(2);
 	});
 
 	it('keeps a late history result out of the next conversation', async () => {
@@ -334,10 +327,21 @@ describe('chat durable send UI', () => {
 		const request = deferred<{ message: Message; fresh: boolean }>();
 		mocks.receive.mockReturnValue(request.promise);
 		const view = await openBob();
-		const receive = mocks.incoming!({ ...pending, senderId: 'bob', receiverId: 'alice' });
+		sockets[0].frame({ type: 'ready' });
+		sockets[0].frame({
+			type: 'message',
+			data: {
+				id: pending._id,
+				senderId: 'bob',
+				receiverId: 'alice',
+				message: 'ciphertext',
+				status: 'NotDelivered'
+			}
+		});
+		await waitFor(() => expect(mocks.receive).toHaveBeenCalled());
 		mocks.setUser(null);
 		request.resolve({ message: { ...pending, senderId: 'bob', receiverId: 'alice' }, fresh: true });
-		await receive;
+		await request.promise;
 		expect(mocks.info).not.toHaveBeenCalled();
 		expect(view.queryByText('durable text')).toBeNull();
 	});
@@ -348,11 +352,32 @@ describe('chat durable send UI', () => {
 			.mockResolvedValueOnce({ message, fresh: true })
 			.mockResolvedValueOnce({ message, fresh: false });
 		const view = await openBob();
-		await mocks.incoming!(message);
-		await mocks.incoming!(message);
+		sockets[0].frame({ type: 'ready' });
+		sockets[0].frame({
+			type: 'message',
+			data: {
+				id: message._id,
+				senderId: message.senderId,
+				receiverId: message.receiverId,
+				message: 'ciphertext',
+				status: 'NotDelivered'
+			}
+		});
+		await waitFor(() => expect(mocks.receive).toHaveBeenCalled());
+		sockets[0].frame({
+			type: 'message',
+			data: {
+				id: message._id,
+				senderId: message.senderId,
+				receiverId: message.receiverId,
+				message: 'ciphertext',
+				status: 'NotDelivered'
+			}
+		});
+		await waitFor(() => expect(mocks.receive).toHaveBeenCalled());
 		await waitFor(() => expect(view.queryAllByText('durable text')).toHaveLength(1));
 		expect(mocks.info).toHaveBeenCalledTimes(1);
-		mocks.status!('connected');
+		sockets[0].frame({ type: 'ready' });
 		expect(mocks.flush).toHaveBeenLastCalledWith('alice');
 	});
 
@@ -361,11 +386,22 @@ describe('chat durable send UI', () => {
 		mocks.receive.mockReturnValue(request.promise);
 		const view = render(ChatPage);
 		await waitFor(() => expect(view.getByText('Bob')).toBeTruthy());
+		sockets[0].frame({ type: 'ready' });
 		const message = { ...pending, senderId: 'bob', receiverId: 'alice' };
-		const receiving = mocks.incoming!(message);
-		await fireEvent.click(view.getByText('Bob'));
+		sockets[0].frame({
+			type: 'message',
+			data: {
+				id: message._id,
+				senderId: message.senderId,
+				receiverId: message.receiverId,
+				message: 'ciphertext',
+				status: 'NotDelivered'
+			}
+		});
+		await waitFor(() => expect(mocks.receive).toHaveBeenCalled());
+		await fireEvent.click(await view.findByRole('button', { name: 'Chat with Bob' }));
 		request.resolve({ message, fresh: true });
-		await receiving;
+		await request.promise;
 		await waitFor(() => expect(view.getByText('durable text')).toBeTruthy());
 	});
 });

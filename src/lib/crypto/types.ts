@@ -126,7 +126,7 @@ export interface EncryptedMessage {
 
 /**
  * Encrypted message envelope sent over the wire
- * Used by: signal.ts, chat.service.ts, websocket.service.ts
+ * Used by: signal.ts, chat.service.ts
  */
 export interface EncryptedEnvelope {
 	__encrypted: boolean;

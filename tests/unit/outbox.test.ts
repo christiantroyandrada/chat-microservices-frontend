@@ -8,16 +8,12 @@ const mocks = vi.hoisted(() => ({
 	prekey: vi.fn(),
 	encrypt: vi.fn(),
 	decrypt: vi.fn(),
-	notify: vi.fn(),
 	history: vi.fn(),
 	conversations: vi.fn(),
 	read: vi.fn(),
 	hasSession: vi.fn(),
-	stores: new Map<string, LocalMessageStore>(),
-	disconnect: vi.fn(),
-	env: { PUBLIC_GO_WS_ENABLED: '' }
+	stores: new Map<string, LocalMessageStore>()
 }));
-vi.mock('$env/dynamic/public', () => ({ env: mocks.env }));
 vi.mock('$lib/services/api.generated', () => ({
 	chatApi: {
 		sendMessage: mocks.send,
@@ -35,9 +31,6 @@ vi.mock('$lib/crypto/signal', () => ({
 	decryptMessage: mocks.decrypt,
 	SignalDecryptionError: class extends Error {}
 }));
-vi.mock('$lib/services/websocket.service', () => ({
-	wsService: { sendMessage: mocks.notify, disconnect: mocks.disconnect }
-}));
 vi.mock('$lib/crypto/messageStore', async (original) => ({
 	...(await original<typeof MessageStoreExports>()),
 	getMessageStore: (owner: string) => mocks.stores.get(owner)!
@@ -50,7 +43,6 @@ describe('durable encrypted send', () => {
 	let control: TransactionControl;
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mocks.env.PUBLIC_GO_WS_ENABLED = '';
 		store = new LocalMessageStore('alice');
 		control = attachFakeStoreTo(store, vi);
 		mocks.stores.set('alice', store);
@@ -60,7 +52,6 @@ describe('durable encrypted send', () => {
 		mocks.conversations.mockResolvedValue({ data: [] });
 		mocks.read.mockResolvedValue({ data: { modifiedCount: 0 } });
 		mocks.prekey.mockResolvedValue({ data: { userId: 'bob', deviceId: 'device', bundle: {} } });
-		mocks.notify.mockRejectedValue(new Error('offline'));
 		mocks.send.mockImplementation(async (body) => ({
 			data: {
 				id: 'server-id',
@@ -90,11 +81,14 @@ describe('durable encrypted send', () => {
 			timestamp: new Date().toISOString(),
 			status: 'sent'
 		});
-		await chatService.applyReceipt({ type: 'read', by: 'bob' }, 'alice');
-		await chatService.applyReceipt(
-			{ type: 'delivered', messageId: 'server-id', by: 'bob' },
-			'alice'
-		);
+		for (const status of ['Seen', 'Delivered']) {
+			mocks.history.mockResolvedValue({
+				data: [
+					{ id: 'server-id', senderId: 'alice', receiverId: 'bob', message: 'old wire', status }
+				]
+			});
+			await chatService.getMessages('bob', 50, 0, 'alice');
+		}
 		mocks.history.mockResolvedValue({
 			data: [
 				{
@@ -215,7 +209,7 @@ describe('durable encrypted send', () => {
 			await expect(
 				chatService.prepareMessage({ receiverId: 'bob', content: 'blocked' }, 'alice')
 			).rejects.toThrow('Account changed');
-			expect(mocks.disconnect).toHaveBeenCalled();
+			expect(mocks.send).not.toHaveBeenCalled();
 		}
 	);
 
@@ -360,7 +354,7 @@ describe('durable encrypted send', () => {
 		).toBe(true);
 	});
 
-	it('notifies accepted history immediately and retries accepted notifications without another POST', async () => {
+	it('settles accepted history without another POST or encryption', async () => {
 		const pending = await chatService.prepareMessage(
 			{ receiverId: 'bob', content: 'hello' },
 			'alice'
@@ -378,8 +372,7 @@ describe('durable encrypted send', () => {
 			]
 		});
 		await chatService.getMessages('bob', 50, 0, 'alice');
-		await vi.waitFor(() => expect(mocks.notify).toHaveBeenCalled());
-		mocks.notify.mockResolvedValue(undefined);
+
 		await chatService.retryMessage(pending.clientMessageId!, 'alice');
 		expect(mocks.send).not.toHaveBeenCalled();
 		expect(await store.getMessage('accepted-id')).toMatchObject({
@@ -434,29 +427,35 @@ describe('durable encrypted send', () => {
 		expect((await attempt).sendState).toBe('accepted');
 		expect(await store.getMessage('server-id')).toMatchObject({
 			content: 'hello',
-			pendingNotification: true
+			pendingNotification: false
 		});
 		expect(await otherStore.getUnfinishedMessages()).toEqual([]);
-		expect(mocks.notify).not.toHaveBeenCalled();
 	});
 
-	it('does not clear notification metadata after an ACK from an old account generation', async () => {
-		const pending = await chatService.prepareMessage(
-			{ receiverId: 'bob', content: 'hello' },
-			'alice'
+	it('does not clear legacy metadata after an account changes during a cache read', async () => {
+		const accepted = {
+			_id: 'legacy',
+			senderId: 'alice',
+			receiverId: 'bob',
+			content: 'saved',
+			timestamp: new Date().toISOString(),
+			sendState: 'accepted' as const,
+			pendingNotification: true
+		};
+		await store.saveMessage(accepted);
+		let finish!: (value: typeof accepted) => void;
+		const getMessage = vi.spyOn(store, 'getMessage').mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				})
 		);
-		let finish!: () => void;
-		mocks.notify.mockReturnValue(
-			new Promise<void>((resolve) => {
-				finish = resolve;
-			})
-		);
-		const attempt = chatService.retryMessage(pending._id, 'alice');
-		await vi.waitFor(() => expect(mocks.notify).toHaveBeenCalled());
+		const cleanup = chatService.flushNotifications('alice');
+		await vi.waitFor(() => expect(getMessage).toHaveBeenCalled());
 		chatService.activateOwner(null);
-		finish();
-		expect((await attempt).sendState).toBe('accepted');
-		expect(await store.getMessage('server-id')).toMatchObject({ pendingNotification: true });
+		finish(accepted);
+		await cleanup;
+		expect(await store.getMessage('legacy')).toMatchObject({ pendingNotification: true });
 	});
 
 	it('waits for transaction completion before transport', async () => {
@@ -568,7 +567,6 @@ describe('durable encrypted send', () => {
 	);
 
 	it('settles Go acceptance and old notification rows without Socket.IO', async () => {
-		mocks.env.PUBLIC_GO_WS_ENABLED = 'true';
 		const pending = await chatService.prepareMessage(
 			{ receiverId: 'bob', content: 'hello' },
 			'alice'
@@ -590,28 +588,26 @@ describe('durable encrypted send', () => {
 		expect((await store.getMessage('server-id'))?.pendingNotification).toBe(true);
 		await chatService.flushNotifications('alice');
 		expect((await store.getMessage('server-id'))?.pendingNotification).toBe(false);
-		expect(mocks.notify).not.toHaveBeenCalled();
 		expect(mocks.send).toHaveBeenCalledTimes(1);
 		expect(mocks.encrypt).toHaveBeenCalledTimes(1);
 	});
 
-	it('retains accepted notification until an exact-cipher acknowledgement after reload', async () => {
-		const pending = await chatService.prepareMessage(
-			{ receiverId: 'bob', content: 'hello' },
-			'alice'
-		);
-		await chatService.retryMessage(pending._id, 'alice');
-		expect((await store.getMessage('server-id'))?.pendingNotification).toBe(true);
+	it('clears historical accepted metadata after reload without a send command', async () => {
+		await store.saveMessage({
+			_id: 'legacy',
+			senderId: 'alice',
+			receiverId: 'bob',
+			content: 'saved',
+			timestamp: new Date().toISOString(),
+			sendState: 'accepted',
+			pendingNotification: true
+		});
 		chatService.activateOwner(null);
 		chatService.activateOwner('alice');
-		mocks.notify.mockResolvedValue(undefined);
 		await chatService.flushNotifications('alice');
-		expect(mocks.notify.mock.calls.at(-1)![0]).toMatchObject({
-			_id: 'server-id',
-			clientMessageId: pending.clientMessageId,
-			message: pending.encryptedMessage
-		});
-		expect((await store.getMessage('server-id'))?.pendingNotification).toBe(false);
+		expect((await store.getMessage('legacy'))?.pendingNotification).toBe(false);
+		expect(mocks.send).not.toHaveBeenCalled();
+		expect(mocks.encrypt).not.toHaveBeenCalled();
 	});
 
 	it('fences account changes during encryption', async () => {

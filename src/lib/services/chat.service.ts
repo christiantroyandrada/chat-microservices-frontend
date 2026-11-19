@@ -1,6 +1,4 @@
-import { env } from '$env/dynamic/public';
 import { chatApi, userApi } from './api.generated';
-import { wsService } from './websocket.service';
 import { mergeDelivery, mergeMessages } from './message-merge';
 import { assertValidServerMessage, normalizeMessage } from './server-message';
 import {
@@ -17,7 +15,6 @@ import type {
 	SendMessagePayload,
 	ChatConversation,
 	ServerMessage,
-	ReceiptEvent,
 	User
 } from '$lib/types';
 import type { EncryptedEnvelope } from '$lib/crypto/types';
@@ -39,7 +36,7 @@ import {
 let activeOwner: string | null = null;
 let ownerGeneration = 0;
 const sending = new Map<string, Promise<Message>>();
-const notifying = new Map<string, Promise<void>>();
+const clearingNotifications = new Map<string, Promise<void>>();
 type ProcessedMessage = { message: Message; uncached: boolean };
 const receiving = new Map<string, Promise<ProcessedMessage>>();
 const receivedEvents = new Set<string>();
@@ -75,7 +72,6 @@ async function requireReauthentication(owner: string): Promise<void> {
 		activeOwner = null;
 		ownerGeneration++;
 		receivedEvents.clear();
-		wsService.disconnect();
 	}
 	const store = getMessageStore(owner);
 	for (const message of await store.getUnfinishedMessages()) {
@@ -139,10 +135,10 @@ async function processMessage(
 					sendState: 'accepted',
 					retryable: false,
 					sendError: undefined,
-					pendingNotification: env.PUBLIC_GO_WS_ENABLED !== 'true'
+					pendingNotification: false
 				};
 				await store.settleMessage(pending._id, accepted);
-				void notifyAccepted(accepted, owner, generation).catch(() => {});
+				void clearLegacyNotification(accepted, owner, generation).catch(() => {});
 				return { message: accepted, uncached: false };
 			}
 		}
@@ -186,33 +182,28 @@ async function processMessage(
 	}
 }
 
-async function notifyAccepted(message: Message, owner: string, generation: number): Promise<void> {
+async function clearLegacyNotification(
+	message: Message,
+	owner: string,
+	generation: number
+): Promise<void> {
 	const key = owner + ':' + message._id;
-	const existing = notifying.get(key);
+	const existing = clearingNotifications.get(key);
 	if (existing) return existing;
 	const operation = (async () => {
-		if (!message.pendingNotification || !message.encryptedMessage || !message.clientMessageId)
-			return;
+		if (!message.pendingNotification) return;
 		const store = getMessageStore(owner);
 		assertOwner(owner, generation);
-		if (env.PUBLIC_GO_WS_ENABLED !== 'true')
-			await wsService.sendMessage({
-				_id: message._id,
-				senderId: owner,
-				receiverId: message.receiverId,
-				clientMessageId: message.clientMessageId,
-				message: message.encryptedMessage
-			});
 		assertOwner(owner, generation);
 		const latest = await store.getMessage(message._id);
 		assertOwner(owner, generation);
 		if (latest) await store.saveMessage({ ...latest, pendingNotification: false });
 	})();
-	notifying.set(key, operation);
+	clearingNotifications.set(key, operation);
 	try {
 		await operation;
 	} finally {
-		notifying.delete(key);
+		clearingNotifications.delete(key);
 	}
 }
 
@@ -481,7 +472,7 @@ export const chatService = {
 				throw new Error('Stored send command is missing');
 			if (pending.sendState === 'accepted') {
 				try {
-					await notifyAccepted(pending, owner, generation);
+					await clearLegacyNotification(pending, owner, generation);
 				} catch {
 					/* Retry on the next connection. */
 				}
@@ -514,14 +505,13 @@ export const chatService = {
 					sendState: 'accepted',
 					retryable: false,
 					sendError: undefined,
-					pendingNotification: env.PUBLIC_GO_WS_ENABLED !== 'true'
+					pendingNotification: false
 				};
 				const cached = await store.getMessage(accepted._id);
 				if (cached)
 					accepted = {
 						...mergeDelivery(accepted, cached),
-						pendingNotification:
-							env.PUBLIC_GO_WS_ENABLED !== 'true' && (cached.pendingNotification ?? true)
+						pendingNotification: false
 					};
 				await store.settleMessage(pending._id, accepted);
 			} catch (error) {
@@ -542,7 +532,7 @@ export const chatService = {
 				const latest = await store.getSendCommand(pending.clientMessageId);
 				if (latest?.sendState === 'accepted') {
 					try {
-						await notifyAccepted(latest, owner, generation);
+						await clearLegacyNotification(latest, owner, generation);
 					} catch {
 						/* REST acceptance remains durable. */
 					}
@@ -550,7 +540,7 @@ export const chatService = {
 				return latest ?? failed;
 			}
 			try {
-				await notifyAccepted(accepted, owner, generation);
+				await clearLegacyNotification(accepted, owner, generation);
 			} catch {
 				/* REST acceptance remains durable. */
 			}
@@ -579,36 +569,12 @@ export const chatService = {
 				message.pendingNotification
 			) {
 				try {
-					await notifyAccepted(message, owner, generation);
+					await clearLegacyNotification(message, owner, generation);
 				} catch {
 					/* Retry on the next connection. */
 				}
 			}
 		}
-	},
-
-	async applyReceipt(event: ReceiptEvent, owner: string): Promise<void> {
-		const generation = ownerGeneration;
-		assertOwner(owner, generation);
-		const store = getMessageStore(owner);
-		const messages =
-			event.type === 'delivered' && event.messageId
-				? [await store.getMessage(event.messageId)]
-				: await store.getMessages(event.by, owner, Number.MAX_SAFE_INTEGER);
-		assertOwner(owner, generation);
-		await store.saveMessages(
-			messages
-				.filter(
-					(message): message is Message =>
-						!!message && message.senderId === owner && message.receiverId === event.by
-				)
-				.map((message) =>
-					mergeDelivery(message, {
-						...message,
-						status: event.type === 'read' ? 'read' : 'delivered'
-					})
-				)
-		);
 	},
 
 	async acknowledgeDelivery(messageId: string, owner: string): Promise<void> {

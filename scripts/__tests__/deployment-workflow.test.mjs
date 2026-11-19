@@ -19,6 +19,11 @@ const root = resolve(import.meta.dirname, '../..');
 const workflowPath = resolve(root, '.github/workflows/ci-main.yml');
 const deployPath = resolve(root, 'scripts/deploy-frontend.sh');
 const temporaryRoots = [];
+const backendReleaseState = `go-websocket.current=ghcr.io/acme/chat-websocket@sha256:${'b'.repeat(64)}\n`;
+
+function releaseState(frontendState = '') {
+	return backendReleaseState + frontendState;
+}
 
 function temporaryRoot() {
 	const path = mkdtempSync(join(tmpdir(), 'frontend-release-'));
@@ -63,6 +68,7 @@ function fakeDocker(binDir, logPath, health = 'healthy') {
 	const runtimeImagePath = join(dirname(logPath), 'runtime-image');
 	const frontendIdPath = join(dirname(logPath), 'frontend-id');
 	writeExecutable(join(binDir, 'flock'), '#!/bin/sh\nexit 0\n');
+	writeExecutable(join(binDir, 'curl'), '#!/bin/sh\nprintf 401\n');
 	writeExecutable(
 		join(binDir, 'docker'),
 		`#!/bin/sh
@@ -199,13 +205,10 @@ describe('Go WebSocket release flag', () => {
 		const deploy = workflow.jobs.deploy.steps.find(
 			(step) => step.name === 'Deploy Frontend via SSH'
 		);
-		assert.equal(
-			deploy.env.PUBLIC_GO_WS_ENABLED,
-			"${{ vars.GO_WS_PILOT == 'true' && 'true' || 'false' }}"
-		);
+		assert.equal(deploy.env.PUBLIC_GO_WS_ENABLED, 'true');
 	});
 
-	function fixture({ mode = 'false', probe = '401', health = 'healthy', state = '' } = {}) {
+	function fixture({ mode = 'true', probe = '401', health = 'healthy', state = '' } = {}) {
 		const deployRoot = temporaryRoot();
 		const bin = join(deployRoot, 'bin');
 		mkdirSync(join(deployRoot, 'chat-microservices'));
@@ -260,14 +263,36 @@ describe('Go WebSocket release flag', () => {
 		assert.match(readFileSync(h.log, 'utf8'), /up .*force-recreate frontend.*FRONTEND_GO_WS=true/);
 	});
 
-	it('disables the pilot for the same image', () => {
-		const h = fixture({ state: `frontend.current=${image}\nfrontend.go_ws.current=true\n` });
+	it('rejects disabled Go transport before deployment or relay probes', () => {
+		const initialState = `${backend}frontend.current=${image}\nfrontend.go_ws.current=true\n`;
+		const h = fixture({ mode: 'false', state: initialState });
+		const result = runDeploy(h.env);
+		assert.notEqual(result.status, 0);
+		assert.match(result.stderr, /PUBLIC_GO_WS_ENABLED must be true/);
+		assert.equal(readFileSync(join(h.deployRoot, 'release-state.env'), 'utf8'), initialState);
+		assert.equal(existsSync(h.log), false);
+		assert.equal(existsSync(join(h.deployRoot, '.release.lock')), false);
+	});
+
+	it('defaults new deployments to Go when the public flag is absent', () => {
+		const h = fixture({ state: backend });
+		delete h.env.PUBLIC_GO_WS_ENABLED;
 		const result = runDeploy(h.env);
 		assert.equal(result.status, 0, result.stderr);
-		const state = readFileSync(join(h.deployRoot, 'release-state.env'), 'utf8');
-		assert.ok(state.includes('frontend.go_ws.current=false\n'));
-		assert.ok(state.includes('frontend.go_ws.previous=true\n'));
-		assert.match(readFileSync(h.log, 'utf8'), /up .*force-recreate frontend.*FRONTEND_GO_WS=false/);
+		assert.match(
+			readFileSync(join(h.deployRoot, 'release-state.env'), 'utf8'),
+			/frontend\.go_ws\.current=true\n/
+		);
+		assert.match(readFileSync(h.log, 'utf8'), /up .*FRONTEND_GO_WS=true/);
+	});
+
+	it('requires the backend relay when the public flag is absent', () => {
+		const h = fixture();
+		delete h.env.PUBLIC_GO_WS_ENABLED;
+		const result = runDeploy(h.env);
+		assert.notEqual(result.status, 0);
+		assert.equal(existsSync(h.log), false);
+		assert.equal(existsSync(join(h.deployRoot, 'chat-microservices/frontend.compose.yml')), false);
 	});
 
 	it('restores the prior flag after a failed replacement', () => {
@@ -386,7 +411,7 @@ describe('frontend immutable deployment workflow', () => {
 		const fakeEnv = fakeDocker(binDir, logPath);
 		writeFileSync(logPath, '');
 		mkdirSync(join(deployRoot, 'chat-microservices'));
-		writeFileSync(join(deployRoot, 'release-state.env'), 'frontend.current=\n');
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState('frontend.current=\n'));
 
 		const result = runDeploy({
 			...fakeEnv,
@@ -407,6 +432,7 @@ describe('frontend immutable deployment workflow', () => {
 		const fakeEnv = fakeDocker(binDir, logPath);
 		writeFileSync(logPath, '');
 		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState());
 
 		const result = runDeploy({
 			...fakeEnv,
@@ -430,7 +456,7 @@ describe('frontend immutable deployment workflow', () => {
 		mkdirSync(join(deployRoot, 'chat-microservices'));
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=ghcr.io/other/chat-frontend@sha256:${'b'.repeat(64)}\n`
+			releaseState(`frontend.current=ghcr.io/other/chat-frontend@sha256:${'b'.repeat(64)}\n`)
 		);
 
 		const result = runDeploy({
@@ -456,7 +482,9 @@ describe('frontend immutable deployment workflow', () => {
 		mkdirSync(join(deployRoot, 'chat-microservices'));
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`backend.current=ghcr.io/acme/chat@${'c'.repeat(40)}\nfrontend.current=${oldRef}\nfrontend.previous=ghcr.io/acme/chat-frontend@sha256:${'d'.repeat(64)}\nowner.custom=keep\n`
+			releaseState(
+				`backend.current=ghcr.io/acme/chat@${'c'.repeat(40)}\nfrontend.current=${oldRef}\nfrontend.previous=ghcr.io/acme/chat-frontend@sha256:${'d'.repeat(64)}\nowner.custom=keep\n`
+			)
 		);
 
 		const result = runDeploy({
@@ -489,7 +517,7 @@ describe('frontend immutable deployment workflow', () => {
 			join(deployRoot, 'chat-microservices/frontend.compose.yml'),
 			'services:\n  frontend: {}\n'
 		);
-		writeFileSync(join(deployRoot, 'release-state.env'), 'owner.custom=keep\n');
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState('owner.custom=keep\n'));
 
 		const result = runDeploy({
 			...fakeEnv,
@@ -543,7 +571,7 @@ exit 0
 		);
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=${oldRef}\nowner.custom=keep\n`
+			releaseState(`frontend.current=${oldRef}\nowner.custom=keep\n`)
 		);
 
 		const result = runDeploy({
@@ -579,7 +607,7 @@ exit 0
 		const deployRoot = temporaryRoot();
 		const binDir = join(deployRoot, 'bin');
 		const logPath = join(deployRoot, 'docker.log');
-		const oldState = 'frontend.current=\nowner.custom=keep\n';
+		const oldState = releaseState('frontend.current=\nowner.custom=keep\n');
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
@@ -608,7 +636,9 @@ exit 0
 		const binDir = join(deployRoot, 'bin');
 		const logPath = join(deployRoot, 'docker.log');
 		const image = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
-		const oldState = `frontend.current=${image}\nfrontend.previous=ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}\nowner.custom=keep\n`;
+		const oldState = releaseState(
+			`frontend.current=${image}\nfrontend.previous=ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}\nowner.custom=keep\nfrontend.go_ws.current=true\n`
+		);
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
@@ -618,6 +648,7 @@ exit 0
 		);
 		writeFileSync(join(deployRoot, 'release-state.env'), oldState);
 		writeFileSync(fakeEnv.FAKE_RUNTIME_IMAGE_FILE, image + '\n');
+		writeFileSync(fakeEnv.FAKE_RUNTIME_IMAGE_FILE + '.go-ws', 'true\n');
 
 		const result = runDeploy({
 			...fakeEnv,
@@ -649,7 +680,9 @@ exit 0
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
-		const oldState = `frontend.current=${currentImage}\nfrontend.previous=${oldImage}\nowner.custom=keep\n`;
+		const oldState = releaseState(
+			`frontend.current=${currentImage}\nfrontend.previous=${oldImage}\nowner.custom=keep\nfrontend.go_ws.current=true\n`
+		);
 		writeFileSync(join(deployRoot, 'release-state.env'), oldState);
 		writeFileSync(runtimeImagePath, oldImage + '\n');
 
@@ -690,7 +723,7 @@ if [ "$1" = compose ]; then
   case "$*" in
     *" ps -q frontend"*) printf 'fake-frontend-id\\n'; exit 0 ;;
     *" up "*)
-      case "$*" in *force-recreate*) printf '%s\\n' "\${FRONTEND_IMAGE:-}" > "$FAKE_RUNTIME_IMAGE_FILE" ;; esac
+      case "$*" in *force-recreate*) printf '%s\\n' "\${FRONTEND_IMAGE:-}" > "$FAKE_RUNTIME_IMAGE_FILE"; printf '%s\\n' "\${FRONTEND_GO_WS:-false}" > "$FAKE_RUNTIME_IMAGE_FILE.go-ws" ;; esac
       exit 0 ;;
   esac
 fi
@@ -710,7 +743,9 @@ exit 0
 		writeFileSync(runtimeImagePath, targetRef + '\n');
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=${targetRef}\nfrontend.previous=${oldRef}\nowner.custom=keep\n`
+			releaseState(
+				`frontend.current=${targetRef}\nfrontend.previous=${oldRef}\nowner.custom=keep\nfrontend.go_ws.current=true\n`
+			)
 		);
 
 		const result = runDeploy({
@@ -778,7 +813,9 @@ exit 0
 		writeFileSync(runtimeImagePath, targetRef + '\n');
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=${targetRef}\nfrontend.previous=${oldRef}\nowner.custom=keep\n`
+			releaseState(
+				`frontend.current=${targetRef}\nfrontend.previous=${oldRef}\nowner.custom=keep\nfrontend.go_ws.current=true\n`
+			)
 		);
 
 		const result = runDeploy({
@@ -816,7 +853,7 @@ exit 0
 		writeFileSync(runtimeImagePath, oldRef + '\n');
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=${oldRef}\nowner.custom=keep\n`
+			releaseState(`frontend.current=${oldRef}\nowner.custom=keep\n`)
 		);
 
 		const result = runDeploy({
@@ -856,7 +893,8 @@ exit 0
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
-		// No state file initially (absent)
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState());
+		// No frontend release is recorded.
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_COMPOSE_FORCE_RECREATE_FAIL: '1',
@@ -884,7 +922,7 @@ exit 0
 		const oldRef = `ghcr.io/acme/chat-frontend@sha256:${'b'.repeat(64)}`;
 		const newRef = `ghcr.io/acme/chat-frontend@sha256:${'a'.repeat(64)}`;
 		const runtimeImagePath = join(deployRoot, 'runtime-image');
-		const oldState = `frontend.current=${oldRef}\nowner.custom=keep\n`;
+		const oldState = releaseState(`frontend.current=${oldRef}\nowner.custom=keep\n`);
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
@@ -929,7 +967,7 @@ exit 0
 		writeFileSync(runtimeImagePath, oldRef + '\n');
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=${oldRef}\nowner.custom=keep\n`
+			releaseState(`frontend.current=${oldRef}\nowner.custom=keep\n`)
 		);
 		fakeMv(binDir, deployRoot);
 		const result = runDeploy({
@@ -966,7 +1004,7 @@ exit 0
 		writeFileSync(runtimeImagePath, oldRef + '\n');
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=${oldRef}\nowner.custom=keep\n`
+			releaseState(`frontend.current=${oldRef}\nowner.custom=keep\n`)
 		);
 		fakeMv(binDir, deployRoot);
 		const result = runDeploy({
@@ -1015,8 +1053,9 @@ exit 0
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState());
 		writeFileSync(runtimeImagePath, 'initial\n');
-		// No state file
+		// No frontend release is recorded.
 		fakeMv(binDir, deployRoot);
 		const result = runDeploy({
 			...fakeEnv,
@@ -1065,7 +1104,7 @@ exit 0
 		writeFileSync(runtimeImagePath, oldRef + '\n');
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=${oldRef}\nfrontend.previous=${prevRef}\nowner.custom=keep\n`
+			releaseState(`frontend.current=${oldRef}\nfrontend.previous=${prevRef}\nowner.custom=keep\n`)
 		);
 		// Make new health fail, so rollback to old
 		writeFileSync(
@@ -1078,13 +1117,14 @@ if [ "$1" = compose ]; then
   case "$*" in
     *" ps -q frontend"*) printf 'fake-frontend-id\\n'; exit 0 ;;
     *" up "*)
-      case "$*" in *force-recreate*) printf '%s\\n' "\${FRONTEND_IMAGE:-}" > "$FAKE_RUNTIME_IMAGE_FILE" ;; esac
+      case "$*" in *force-recreate*) printf '%s\\n' "\${FRONTEND_IMAGE:-}" > "$FAKE_RUNTIME_IMAGE_FILE"; printf '%s\\n' "\${FRONTEND_GO_WS:-false}" > "$FAKE_RUNTIME_IMAGE_FILE.go-ws" ;; esac
       exit 0 ;;
   esac
 fi
 if [ "$1" = inspect ]; then
   case "$*" in
     *Config.Image*) cat "$FAKE_RUNTIME_IMAGE_FILE" ;;
+    *Config.Env*) printf 'PUBLIC_GO_WS_ENABLED=%s\\n' "$(cat "$FAKE_RUNTIME_IMAGE_FILE.go-ws")" ;;
     *) if [ "$(cat "$FAKE_RUNTIME_IMAGE_FILE")" = "${newRef}" ]; then printf 'unhealthy\\n'; else printf 'healthy\\n'; fi ;;
   esac
   exit 0
@@ -1122,7 +1162,7 @@ exit 0
 			HEALTH_TIMEOUT_SECONDS: '0',
 			HEALTH_POLL_SECONDS: '0'
 		});
-		assert.strictEqual(retryResult.status, 0);
+		assert.strictEqual(retryResult.status, 0, retryResult.stderr);
 	});
 
 	it('fails when state commit mv fails for real', () => {
@@ -1136,7 +1176,7 @@ exit 0
 		mkdirSync(join(deployRoot, 'chat-microservices'));
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=${oldRef}\nowner.custom=keep\n`
+			releaseState(`frontend.current=${oldRef}\nowner.custom=keep\n`)
 		);
 		writeExecutable(
 			join(binDir, 'mv'),
@@ -1185,7 +1225,7 @@ exec /bin/mv "$@"
 		writeFileSync(runtimeImagePath, oldRef + '\n');
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=${oldRef}\nowner.custom=keep\n`
+			releaseState(`frontend.current=${oldRef}\nowner.custom=keep\n`)
 		);
 		const stateRenameCountPath = fakeMv(binDir, deployRoot, '.release-state.env.', [1, 2]);
 		const result = runDeploy({
@@ -1200,7 +1240,7 @@ exec /bin/mv "$@"
 		assert.notStrictEqual(result.status, 0);
 		assert.strictEqual(
 			readFileSync(join(deployRoot, 'release-state.env'), 'utf8'),
-			`frontend.current=${oldRef}\nowner.custom=keep\n`
+			releaseState(`frontend.current=${oldRef}\nowner.custom=keep\n`)
 		);
 		assert.strictEqual(readFileSync(runtimeImagePath, 'utf8'), oldRef + '\n');
 		assert.strictEqual(readFileSync(stateRenameCountPath, 'utf8').trim(), '2');
@@ -1228,7 +1268,10 @@ exec /bin/mv "$@"
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
-		writeFileSync(join(deployRoot, 'release-state.env'), `frontend.current=${oldRef}\n`);
+		writeFileSync(
+			join(deployRoot, 'release-state.env'),
+			releaseState(`frontend.current=${oldRef}\n`)
+		);
 		const composePath = join(deployRoot, 'chat-microservices/frontend.compose.yml');
 		writeFileSync(composePath, 'services:\n  frontend: {}\n');
 		// Make new deployment fail at health (so rollback will happen, but compose should remain correct)
@@ -1285,6 +1328,7 @@ exit 0
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState());
 		writeFileSync(runtimeImagePath, other + '\n');
 		writeFileSync(frontendIdPath, 'other-frontend-id\n');
 		fakeMv(
@@ -1319,6 +1363,7 @@ exit 0
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState());
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_STOPPED_CANDIDATE: '1',
@@ -1344,6 +1389,7 @@ exit 0
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath, 'unhealthy');
 		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState());
 		const result = runDeploy({
 			...fakeEnv,
 			PATH: `${binDir}:${process.env.PATH}`,
@@ -1366,6 +1412,7 @@ exit 0
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState());
 		fakeMv(binDir, deployRoot);
 		const result = runDeploy({
 			...fakeEnv,
@@ -1391,7 +1438,10 @@ exit 0
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath, 'unhealthy');
 		mkdirSync(join(deployRoot, 'chat-microservices'));
-		writeFileSync(join(deployRoot, 'release-state.env'), `frontend.current=${oldRef}\n`);
+		writeFileSync(
+			join(deployRoot, 'release-state.env'),
+			releaseState(`frontend.current=${oldRef}\n`)
+		);
 		const result = runDeploy({
 			...fakeEnv,
 			FAKE_MISSING_IMAGE: oldRef,
@@ -1419,7 +1469,9 @@ exit 0
 		mkdirSync(join(deployRoot, 'chat-microservices'));
 		writeFileSync(
 			join(deployRoot, 'release-state.env'),
-			`frontend.current=${image}\nowner.one=1\nfrontend.current=${image}\nfrontend.previous=\nowner.two=2\n`
+			releaseState(
+				`frontend.current=${image}\nowner.one=1\nfrontend.current=${image}\nfrontend.previous=\nowner.two=2\n`
+			)
 		);
 
 		const result = runDeploy({
@@ -1447,7 +1499,7 @@ exit 0
 		mkdirSync(binDir);
 		const fakeEnv = fakeDocker(binDir, logPath);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
-		writeFileSync(join(deployRoot, 'release-state.env'), 'owner.custom=keep\n');
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState('owner.custom=keep\n'));
 
 		const result = runDeploy({
 			...fakeEnv,
@@ -1471,6 +1523,7 @@ exit 0
 		const marker = join(deployRoot, 'critical-section');
 		const overlap = join(deployRoot, 'overlap');
 		mkdirSync(binDir);
+		writeExecutable(join(binDir, 'curl'), '#!/bin/sh\nprintf 401\n');
 		writeExecutable(
 			join(binDir, 'docker'),
 			[
@@ -1492,6 +1545,7 @@ exit 0
 				'if [ "$1" = inspect ]; then',
 				'  case "$*" in',
 				'    *Config.Image*) printf \'%s\\n\' "$EXPECTED_IMAGE_REF";;',
+				"    *Config.Env*) printf 'PUBLIC_GO_WS_ENABLED=true\\n';;",
 				"    *) printf 'healthy\\n';;",
 				'  esac',
 				'fi',
@@ -1499,7 +1553,7 @@ exit 0
 			].join('\n')
 		);
 		mkdirSync(join(deployRoot, 'chat-microservices'));
-		writeFileSync(join(deployRoot, 'release-state.env'), 'owner.custom=keep\\n');
+		writeFileSync(join(deployRoot, 'release-state.env'), releaseState('owner.custom=keep\\n'));
 		const common = {
 			FAKE_DOCKER_LOG: logPath,
 			FAKE_MARKER: marker,

@@ -88,7 +88,7 @@ test('native reload replays one accepted command without encryption and atomical
 		sendState: 'accepted',
 		content: command.content,
 		encryptedMessage: command.encryptedMessage,
-		pendingNotification: true
+		pendingNotification: false
 	});
 	expect(settled.temporary).toBeNull();
 	expect(settled.rows).toHaveLength(1);

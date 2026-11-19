@@ -2,20 +2,18 @@
 	import Seal from '$lib/components/Seal.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { env } from '$env/dynamic/public';
 	import { authStore, user } from '$lib/stores/auth.store';
 	import { toastStore } from '$lib/stores/toast.store';
 	import { notificationStore } from '$lib/stores/notification.store';
 	import { themeStore } from '$lib/stores/theme.store';
 	import { chatService } from '$lib/services/chat.service';
 	import { mergeMessages } from '$lib/services/message-merge';
-	import { wsService } from '$lib/services/websocket.service';
 	import { connectGoWebSocket } from '$lib/services/go-websocket';
 	import { sanitizeMessage } from '$lib/utils';
 	import { initSignalWithRestore, isSignalInitialized } from '$lib/crypto/signal';
 	import { logger } from '$lib/services/dev-logger';
 	import { API_BASE, getOrCreateDeviceId } from '$lib/config';
-	import type { ChatConversation, Message, MessageListHandle, ReceiptEvent } from '$lib/types';
+	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
 	import ChatList from '$lib/components/ChatList.svelte';
 	import ChatHeader from '$lib/components/ChatHeader.svelte';
 	import MessageList from '$lib/components/MessageList.svelte';
@@ -35,7 +33,6 @@
 	let hasPreloadedMessages = false;
 	let observedOwner: string | null = null;
 	let unsubscribeOwner: (() => void) | undefined;
-	let socketSubscriptions: Array<() => void> = [];
 	let goSocket = $state.raw<ReturnType<typeof connectGoWebSocket>>();
 	let goPresence = $state<{ peerId: string; online: boolean } | null>(null);
 	const presencePeer = $derived.by(() => selectedConversation?.userId);
@@ -45,7 +42,6 @@
 		goSocket?.watchPresence(presencePeer);
 	});
 	let goTypingExpiry: ReturnType<typeof setTimeout> | undefined;
-	const pendingPresenceUpdates = new Map<string, { online: boolean; lastSeen?: string }>();
 
 	function owns(owner: string, generation: number) {
 		return !destroyed && $user?._id === owner && generation === accountGeneration;
@@ -55,9 +51,6 @@
 		clearTimeout(goTypingExpiry);
 		goSocket?.disconnect();
 		goSocket = undefined;
-		socketSubscriptions.forEach((unsubscribe) => unsubscribe());
-		socketSubscriptions = [];
-		wsService.disconnect();
 	}
 
 	onMount(() => {
@@ -71,7 +64,6 @@
 			messages = [];
 			selectedConversation = null;
 			typingUsers = new Set();
-			pendingPresenceUpdates.clear();
 			hasPreloadedMessages = false;
 			clearSocket();
 			if (owner) void initializeAccount(owner, accountGeneration);
@@ -109,56 +101,30 @@
 			}
 		}
 		if (!owns(owner, generation)) return;
-		if (env.PUBLIC_GO_WS_ENABLED === 'true') {
-			goSocket = connectGoWebSocket(owner, {
-				onMessage: handleIncomingMessage,
-				onReceipt: (peerId) => {
-					if (owns(owner, generation) && selectedConversation?.userId === peerId) {
-						void refreshHistory(peerId, owner, generation, conversationGeneration).catch((error) =>
-							logger.error('[Chat] Receipt history failed:', error)
-						);
-					}
-				},
-				onReady: () => {
-					if (!owns(owner, generation)) return;
-					void chatService.flushNotifications(owner).catch(() => {});
-					void catchUp(owner, generation);
-				},
-				onPresence: (peerId, online) => {
-					if (owns(owner, generation) && selectedConversation?.userId === peerId) {
-						goPresence = online === null ? null : { peerId, online };
-					}
-				},
-				onTyping: handlePilotTyping
-			});
-		} else {
-			socketSubscriptions = [
-				wsService.onStatusChange(handleConnectionStatus),
-				wsService.onPresence(handlePresenceUpdate),
-				wsService.onTyping(handleTypingIndicator),
-				wsService.onMessage(handleIncomingMessage),
-				wsService.onReceipt(handleReceipt)
-			];
-			wsService.connect();
-		}
+		goSocket = connectGoWebSocket(owner, {
+			onMessage: handleIncomingMessage,
+			onReceipt: (peerId) => {
+				if (owns(owner, generation) && selectedConversation?.userId === peerId) {
+					void refreshHistory(peerId, owner, generation, conversationGeneration).catch((error) =>
+						logger.error('[Chat] Receipt history failed:', error)
+					);
+				}
+			},
+			onReady: () => {
+				if (!owns(owner, generation)) return;
+				void chatService.flushNotifications(owner).catch(() => {});
+				void catchUp(owner, generation);
+			},
+			onPresence: (peerId, online) => {
+				if (owns(owner, generation) && selectedConversation?.userId === peerId) {
+					goPresence = online === null ? null : { peerId, online };
+				}
+			},
+			onTyping: handlePilotTyping
+		});
 		void chatService.flushNotifications(owner).catch(() => {});
 		await loadConversations();
 		if (owns(owner, generation)) await notificationStore.fetch();
-	}
-
-	function handleReceipt(event: ReceiptEvent) {
-		const owner = $user?._id;
-		if (!owner) return;
-		void chatService
-			.applyReceipt(event, owner)
-			.catch((error) => logger.error('[Chat] Receipt storage failed:', error));
-		messages = messages.map((message) => {
-			if (message.senderId !== owner || message.receiverId !== event.by) return message;
-			if (event.type === 'read') return { ...message, status: 'read', read: true };
-			return message._id === event.messageId && message.status !== 'read'
-				? { ...message, status: 'delivered' }
-				: message;
-		});
 	}
 
 	async function loadConversations() {
@@ -175,11 +141,9 @@
 					...conversation,
 					unreadCount: Number(conversation.unreadCount || 0),
 					online: previous?.online,
-					lastSeen: previous?.lastSeen,
-					...pendingPresenceUpdates.get(conversation.userId)
+					lastSeen: previous?.lastSeen
 				};
 			});
-			pendingPresenceUpdates.clear();
 			if (!hasPreloadedMessages && conversations.length) {
 				hasPreloadedMessages = true;
 				void Promise.all(
@@ -220,7 +184,6 @@
 				if (!owns(owner, generation) || selection !== conversationGeneration) return;
 				await chatService.markAsRead(userId, owner);
 				if (!owns(owner, generation) || selection !== conversationGeneration) return;
-				if (!goSocket) wsService.sendMarkRead(userId);
 			}
 			await loadConversations();
 		} catch (error) {
@@ -243,7 +206,6 @@
 			if (!owns(owner, generation) || selection !== conversationGeneration) return;
 			await chatService.markAsRead(userId, owner);
 			if (!owns(owner, generation) || selection !== conversationGeneration) return;
-			if (!goSocket) wsService.sendMarkRead(userId);
 			await loadConversations();
 			if (!owns(owner, generation) || selection !== conversationGeneration) return;
 			selectedConversation = conversations.find((c) => c.userId === userId) ?? conversation;
@@ -334,17 +296,12 @@
 				goSocket?.refreshPresence();
 			}
 			if (message.senderId !== owner) {
-				if (env.PUBLIC_GO_WS_ENABLED === 'true') {
-					void chatService.acknowledgeDelivery(message._id, owner).catch((error) => {
-						if (owns(owner, generation))
-							logger.error('[Chat] Delivery acknowledgement failed:', error);
-					});
-				} else {
-					wsService.sendDelivered(message._id);
-				}
+				void chatService.acknowledgeDelivery(message._id, owner).catch((error) => {
+					if (owns(owner, generation))
+						logger.error('[Chat] Delivery acknowledgement failed:', error);
+				});
 				if (selectedConversation?.userId === other) {
 					void chatService.markAsRead(other, owner).catch(() => {});
-					if (!goSocket) wsService.sendMarkRead(other);
 				}
 			}
 			if (!result.fresh) return;
@@ -381,18 +338,10 @@
 		handleTypingIndicator(peerId, isTyping);
 		if (isTyping) goTypingExpiry = setTimeout(() => handleTypingIndicator(peerId, false), 3000);
 	}
-	function handleConnectionStatus(status: 'connected' | 'disconnected' | 'reconnecting') {
-		if (status === 'connected') {
-			if ($user) void chatService.flushNotifications($user._id).catch(() => {});
-			toastStore.success('Connected to chat');
-		} else if (status === 'disconnected') toastStore.warning('Disconnected from chat');
-		else toastStore.info('Reconnecting...');
-	}
 	function handleTyping(isTyping: boolean) {
 		const peer = selectedConversation?.userId;
 		if (!peer) return;
-		if (goSocket) goSocket.sendTyping(peer, isTyping);
-		else wsService.sendTyping(peer, isTyping);
+		goSocket?.sendTyping(peer, isTyping);
 	}
 	function handleBack() {
 		if (goSocket) {
@@ -403,14 +352,6 @@
 		conversationGeneration++;
 		selectedConversation = null;
 		messages = [];
-	}
-	function handlePresenceUpdate(userId: string, online: boolean, lastSeen?: string) {
-		if (!conversations.length) pendingPresenceUpdates.set(userId, { online, lastSeen });
-		conversations = conversations.map((c) =>
-			c.userId === userId ? { ...c, online, lastSeen } : c
-		);
-		if (selectedConversation?.userId === userId)
-			selectedConversation = { ...selectedConversation, online, lastSeen };
 	}
 	async function createConversation(value: unknown) {
 		const account = value as Record<string, unknown>;

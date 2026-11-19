@@ -36,22 +36,14 @@ vi.mock('$lib/stores/auth.store', () => ({
 	}
 }));
 
-// wsService basic mock - inline factory (hoist-safe)
-vi.mock('$lib/services/websocket.service', () => ({
-	wsService: {
-		connect: vi.fn(),
+// Keep route behavior tests independent of network availability.
+vi.mock('$lib/services/go-websocket', () => ({
+	connectGoWebSocket: vi.fn(() => ({
 		disconnect: vi.fn(),
-		isConnected: vi.fn().mockReturnValue(true),
-		sendMessage: vi.fn(),
+		watchPresence: vi.fn(),
 		sendTyping: vi.fn(),
-		sendDelivered: vi.fn(),
-		sendMarkRead: vi.fn(),
-		onMessage: vi.fn().mockReturnValue(() => {}),
-		onTyping: vi.fn().mockReturnValue(() => {}),
-		onStatusChange: vi.fn().mockReturnValue(() => {}),
-		onPresence: vi.fn().mockReturnValue(() => {}),
-		onReceipt: vi.fn().mockReturnValue(() => {})
-	}
+		refreshPresence: vi.fn()
+	}))
 }));
 
 // mock chatService; per-test we'll import and adjust the mocked methods

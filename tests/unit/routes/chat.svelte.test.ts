@@ -34,18 +34,13 @@ vi.mock('$lib/services/chat.service', () => ({
 		getMessages: vi.fn().mockResolvedValue([])
 	}
 }));
-vi.mock('$lib/services/websocket.service', () => ({
-	wsService: {
-		connect: vi.fn(),
+vi.mock('$lib/services/go-websocket', () => ({
+	connectGoWebSocket: vi.fn(() => ({
 		disconnect: vi.fn(),
-		onMessage: vi.fn().mockReturnValue(() => {}),
-		onTyping: vi.fn().mockReturnValue(() => {}),
-		onStatusChange: vi.fn().mockReturnValue(() => {}),
-		onPresence: vi.fn().mockReturnValue(() => {}),
-		onReceipt: vi.fn().mockReturnValue(() => {}),
-		sendDelivered: vi.fn(),
-		sendMarkRead: vi.fn()
-	}
+		watchPresence: vi.fn(),
+		sendTyping: vi.fn(),
+		refreshPresence: vi.fn()
+	}))
 }));
 vi.mock('$lib/stores/notification.store', () => ({
 	notificationStore: {
@@ -76,10 +71,13 @@ describe('chat page', () => {
 
 	it('connects to websocket on mount', async () => {
 		render(ChatPage);
-		const { wsService } = await import('$lib/services/websocket.service');
+		const { connectGoWebSocket } = await import('$lib/services/go-websocket');
 		// Wait for the async onMount to complete
 		await waitFor(() => {
-			expect(wsService.connect).toHaveBeenCalled();
+			expect(connectGoWebSocket).toHaveBeenCalledWith(
+				'u1',
+				expect.objectContaining({ onReady: expect.any(Function) })
+			);
 		});
 	});
 

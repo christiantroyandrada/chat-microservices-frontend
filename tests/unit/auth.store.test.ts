@@ -4,14 +4,10 @@ import { get } from 'svelte/store';
 
 const lifecycle = vi.hoisted(() => ({
 	activateOwner: vi.fn(),
-	verifyOwner: vi.fn(),
-	disconnect: vi.fn()
+	verifyOwner: vi.fn()
 }));
 vi.mock('$lib/services/chat.service', () => ({
 	chatService: { activateOwner: lifecycle.activateOwner, verifyOwner: lifecycle.verifyOwner }
-}));
-vi.mock('$lib/services/websocket.service', () => ({
-	wsService: { disconnect: lifecycle.disconnect }
 }));
 
 // We'll reset modules each test so the store is re-created with our mocks
@@ -26,7 +22,7 @@ afterEach(() => {
 });
 
 describe('authStore', () => {
-	it('clears owner and disconnects before a pending logout request', async () => {
+	it('clears owner and user before a pending logout request', async () => {
 		vi.doMock('$app/environment', () => ({ browser: true }));
 		let finish!: () => void;
 		vi.doMock('$lib/services/auth.service', () => ({
@@ -35,7 +31,6 @@ describe('authStore', () => {
 				getCurrentUser: async () => ({ _id: 'alice' }),
 				logout: vi.fn(() => {
 					expect(lifecycle.activateOwner).toHaveBeenLastCalledWith(null);
-					expect(lifecycle.disconnect).toHaveBeenCalled();
 					return new Promise<void>((resolve) => {
 						finish = resolve;
 					});

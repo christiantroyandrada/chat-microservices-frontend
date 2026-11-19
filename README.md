@@ -111,18 +111,15 @@ PUBLIC_API_URL=http://localhost:80  # Backend API URL
 
 ## Go-only browser cutover
 
-With `PUBLIC_GO_WS_ENABLED=true`, the browser uses Go for messages, typing, and presence, and REST for sends and receipts.
-It does not open a Socket.IO connection.
+The browser uses Go for messages, typing, and presence, and REST for sends and receipts.
 Previously accepted Socket.IO notification records are cleared locally without resending or re-encrypting their messages.
 
 Refresh any tab opened before this cutover.
 Old Socket.IO tabs and new Go tabs are not supported together during the cutover.
 Stored messages remain available through the API.
 
-The backend relay must be ready before enabling Go mode.
-Set the frontend repository variable `GO_WS_PILOT=false` and deploy to restore the Socket.IO browser path.
-Keep the server dependency until the rollback window ends.
-Go mode does not switch automatically to Socket.IO during a relay outage.
+The backend relay must be ready before deployment.
+The browser reconnects to Go during a relay outage.
 After reconnect, the browser retrieves missed messages through the API.
 
 <a id="-license"></a>

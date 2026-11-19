@@ -213,7 +213,7 @@ jobs:
       - name: Verify Go relay capacity and image rollback
         working-directory: backend-fixture
         run: |
-          node tests/fullstack/run.mjs --start-fixture --go-websocket --check-relay-capacity --rehearse-rollback --rollback-frontend-sha d607f890f3fa8eb2ece805250a179e166ce9a21c --frontend-dir "$GITHUB_WORKSPACE"
+          node tests/fullstack/run.mjs --start-fixture --go-websocket --check-relay-capacity --rehearse-rollback --rollback-frontend-sha a6c5c7dcba0081073f2d0eab55a7a7c341318574 --frontend-dir "$GITHUB_WORKSPACE"
 
       - name: Upload real-stack evidence
         if: always()
@@ -330,7 +330,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
           IMAGE_REF: ghcr.io/${{ github.repository_owner }}/chat-frontend@${{ needs.docker-build.outputs.frontend_digest }}
-          PUBLIC_GO_WS_ENABLED: ${{ vars.GO_WS_PILOT == 'true' && 'true' || 'false' }}
+          PUBLIC_GO_WS_ENABLED: 'true'
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}

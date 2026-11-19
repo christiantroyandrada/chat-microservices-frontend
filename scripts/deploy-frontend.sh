@@ -10,7 +10,7 @@ IMAGE_REF="${IMAGE_REF:-${1:-}}"
 REPO_OWNER="${REPO_OWNER:-}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-60}"
 HEALTH_POLL_SECONDS="${HEALTH_POLL_SECONDS:-2}"
-PUBLIC_GO_WS_ENABLED="${PUBLIC_GO_WS_ENABLED:-false}"
+PUBLIC_GO_WS_ENABLED="${PUBLIC_GO_WS_ENABLED:-true}"
 runtime_go_ws="$PUBLIC_GO_WS_ENABLED"
 
 die() {
@@ -25,7 +25,7 @@ is_immutable_frontend_ref() {
 [[ -n "$IMAGE_REF" ]] || die 'IMAGE_REF is required'
 [[ "$REPO_OWNER" =~ ^[A-Za-z0-9_.-]+$ ]] || die 'REPO_OWNER is required and must be a valid GHCR owner'
 is_immutable_frontend_ref "$IMAGE_REF" || die "invalid immutable frontend image ref: $IMAGE_REF"
-[[ "$PUBLIC_GO_WS_ENABLED" == true || "$PUBLIC_GO_WS_ENABLED" == false ]] || die 'PUBLIC_GO_WS_ENABLED must be true or false'
+[[ "$PUBLIC_GO_WS_ENABLED" == true ]] || die 'PUBLIC_GO_WS_ENABLED must be true for new deployments'
 [[ "$HEALTH_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || die 'HEALTH_TIMEOUT_SECONDS must be a non-negative integer'
 [[ "$HEALTH_POLL_SECONDS" =~ ^[0-9]+$ ]] || die 'HEALTH_POLL_SECONDS must be a non-negative integer'
 [[ -d "$DEPLOY_ROOT" ]] || die "deployment root does not exist: $DEPLOY_ROOT"
@@ -129,14 +129,12 @@ fi
 for flag in "$frontend_go_ws_current" "$frontend_go_ws_previous"; do
 	[[ "$flag" == true || "$flag" == false ]] || die 'release state contains an invalid Go WebSocket flag'
 done
-if [[ "$PUBLIC_GO_WS_ENABLED" == true ]]; then
-	[[ "$backend_relay_current" =~ ^ghcr\.io/$REPO_OWNER/chat-websocket@sha256:[0-9a-f]{64}$ ]] ||
-		die 'enable the backend relay release before the browser pilot'
-	relay_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 5 \
-		-H 'Host: chat.ctaprojects.xyz' -H 'Origin: https://chat.ctaprojects.xyz' https://chat.ctaprojects.xyz/ws/v1)" ||
-		die 'backend relay readiness probe failed'
-	[[ "$relay_status" == 401 ]] || die 'backend relay is not ready for the browser pilot'
-fi
+[[ "$backend_relay_current" =~ ^ghcr\.io/$REPO_OWNER/chat-websocket@sha256:[0-9a-f]{64}$ ]] ||
+	die 'record the backend relay release before frontend deployment'
+relay_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 5 \
+	-H 'Host: chat.ctaprojects.xyz' -H 'Origin: https://chat.ctaprojects.xyz' https://chat.ctaprojects.xyz/ws/v1)" ||
+	die 'backend relay readiness probe failed'
+[[ "$relay_status" == 401 ]] || die 'backend relay is not ready for frontend deployment'
 
 if [[ -n "$frontend_current" ]] && ! is_immutable_frontend_ref "$frontend_current"; then
 	die "release state contains an invalid frontend.current ref"

@@ -5,7 +5,6 @@ import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { logger } from '$lib/services/dev-logger';
 import { chatService } from '$lib/services/chat.service';
-import { wsService } from '$lib/services/websocket.service';
 
 // Extended auth state with initialization tracking
 interface ExtendedAuthState extends AuthState {
@@ -26,7 +25,6 @@ function createAuthStore() {
 	function startTransition() {
 		generation++;
 		chatService.activateOwner(null);
-		wsService.disconnect();
 		set({ ...initialState, loading: true });
 		return generation;
 	}
@@ -78,7 +76,6 @@ function createAuthStore() {
 			} catch {
 				if (attempt !== generation) return;
 				chatService.activateOwner(null);
-				wsService.disconnect();
 				// Failed logout must not block initialization.
 				void authService.logout().catch((e) => logger.warning('Logout during init failed', e));
 				// Always set initialized to true so the app can proceed

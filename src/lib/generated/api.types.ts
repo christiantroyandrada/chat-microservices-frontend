@@ -2,7 +2,7 @@
 
  * AUTO-GENERATED from committed OpenAPI contracts.
 
- * backendCommit: a7abc7b92e9b48791329c3fe0c9f3875c57274b2
+ * backendCommit: a9137776faa1940a7064bc4f95880e0ffc9f83b7
 
  * generatorVersion: 1
 

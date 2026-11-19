@@ -27,7 +27,7 @@ export interface RegisterCredentials {
 }
 
 // Message Types
-// Used by: chat.service.ts, websocket.service.ts, messageStore.ts, MessageList.svelte
+// Used by: chat.service.ts, messageStore.ts, MessageList.svelte
 export interface Message {
 	_id: string;
 	senderId: string;
@@ -103,13 +103,6 @@ export interface NotificationPayload {
 	message: string;
 }
 
-// WebSocket Types
-// Used by: websocket.service.ts (deprecated - using typed events now)
-export interface WebSocketMessage {
-	type: 'message' | 'typing' | 'online' | 'offline';
-	data: Message | { userId: string; username?: string; isTyping?: boolean };
-}
-
 // API Response Types
 // Used by: api.ts for all API client methods
 export type ApiResponse<T = unknown, TMeta extends object = Record<never, never>> = {
@@ -156,7 +149,7 @@ export interface NotificationState {
 }
 
 // Server-derived message shape (backend -> frontend normalization)
-// Used by: chat.service.ts, websocket.service.ts for normalizing backend responses
+// Used by: chat.service.ts for normalizing backend responses
 export interface ServerMessage {
 	_id?: string;
 	id?: string;
@@ -205,14 +198,6 @@ export type ServiceResult<T> = { success: true; data: T } | { success: false; er
 export type MessageListHandle = {
 	scrollToLatest?: (options?: { behavior?: ScrollBehavior }) => Promise<void> | void;
 };
-
-// Used by: websocket.service.ts for event callbacks
-export type MessageCallback = (message: Message) => void;
-export type StatusCallback = (status: 'connected' | 'disconnected' | 'reconnecting') => void;
-export type TypingCallback = (userId: string, isTyping: boolean) => void;
-export type PresenceCallback = (userId: string, online: boolean, lastSeen?: string) => void;
-export type ReceiptEvent = { type: 'delivered' | 'read'; messageId?: string; by: string };
-export type ReceiptCallback = (event: ReceiptEvent) => void;
 
 // Signal Protocol Types
 // Used by: auth.service.ts, signal.ts for key backup/restore

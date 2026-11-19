@@ -103,40 +103,40 @@ test('real Signal delivery preserves commands and account isolation across trans
 		const pageA = await contextA.newPage();
 		const pageB = await contextB.newPage();
 		let senderConnections = 0;
-		const notificationFrames: string[] = [];
+		const senderFrames: string[] = [];
+		let allowReceipts = false;
 		let interruptSender: (() => Promise<void>) | undefined;
-		await pageA.routeWebSocket('**/chat/socket.io/**', (socket) => {
+		await pageA.routeWebSocket('**/ws/v1?**', (socket) => {
 			const server = socket.connectToServer();
+			interruptSender = async () => {
+				await Promise.all([
+					socket.close({ code: 1012, reason: 'Fixture transport interruption' }),
+					server.close({ code: 1012, reason: 'Fixture transport interruption' })
+				]);
+			};
 			server.onMessage((frame) => {
-				if (typeof frame === 'string' && frame.startsWith('40')) senderConnections++;
+				if (typeof frame === 'string') {
+					const event = JSON.parse(frame);
+					if (event.type === 'ready') senderConnections++;
+					// Keep the lost REST response unresolved until the explicit idempotent retry.
+					if (event.type === 'receipt' && !allowReceipts) return;
+				}
 				socket.send(frame);
 			});
-			socket.onMessage(async (frame) => {
-				if (typeof frame === 'string' && /^42\d*\["sendMessage",/.test(frame)) {
-					notificationFrames.push(frame);
-					if (notificationFrames.length === 1) {
-						// Lose the first notification command after durable REST acceptance.
-						interruptSender = async () => {
-							await Promise.all([
-								socket.close({ code: 1012, reason: 'Fixture transport interruption' }),
-								server.close({ code: 1012, reason: 'Fixture transport interruption' })
-							]);
-						};
-						return;
-					}
-				}
-				// Forward Engine.IO heartbeat, Socket.IO handshake, events, and acknowledgements intact.
+			socket.onMessage((frame) => {
+				if (typeof frame === 'string') senderFrames.push(frame);
 				server.send(frame);
 			});
 		});
 		let duplicateFrames = 0;
 		let recipientConnections = 0;
-		await pageB.routeWebSocket('**/chat/socket.io/**', (socket) => {
+		await pageB.routeWebSocket('**/ws/v1?**', (socket) => {
 			const server = socket.connectToServer();
 			server.onMessage((frame) => {
-				if (typeof frame === 'string' && frame.startsWith('40')) recipientConnections++;
+				const event = typeof frame === 'string' ? JSON.parse(frame) : undefined;
+				if (event?.type === 'ready') recipientConnections++;
 				socket.send(frame);
-				if (typeof frame === 'string' && /^42\["receiveMessage",/.test(frame)) {
+				if (event?.type === 'message') {
 					duplicateFrames++;
 					socket.send(frame);
 				}
@@ -167,14 +167,38 @@ test('real Signal delivery preserves commands and account isolation across trans
 		await messagesA.getByRole('button', { name: 'Retry message' }).click();
 		await expect.poll(() => commands.length).toBe(2);
 		expect(commands[1]).toEqual(commands[0]);
+		allowReceipts = true;
 		expect(commands[0]).toMatchObject({ receiverId: accountB.id, expectedSenderId: accountA.id });
 		expect(commands[0].clientMessageId).toMatch(/^[0-9a-f-]{36}$/);
 		expect(commands[0].message).not.toContain(plaintext);
 		await expect(messagesA.getByText(plaintext, { exact: true })).toHaveCount(1);
 		await expect(messagesA.getByRole('button', { name: 'Retry message' })).toHaveCount(0);
 
-		await test.step('reconnect replays the accepted notification and duplicates preserve one decrypted message', async () => {
-			await expect.poll(() => notificationFrames.length).toBe(1);
+		await test.step('reconnect clears historical metadata locally and duplicate Go frames preserve one decrypted message', async () => {
+			await pageA.evaluate(
+				async ({ owner, id }) => {
+					await new Promise<void>((resolve, reject) => {
+						const request = indexedDB.open('chat-messages-' + owner);
+						request.onerror = () => reject(request.error);
+						request.onsuccess = () => {
+							const db = request.result;
+							const transaction = db.transaction('messages', 'readwrite');
+							const store = transaction.objectStore('messages');
+							const row = store.get(id);
+							row.onsuccess = () => store.put({ ...row.result, pendingNotification: true });
+							transaction.oncomplete = () => {
+								db.close();
+								resolve();
+							};
+							transaction.onerror = transaction.onabort = () => {
+								db.close();
+								reject(transaction.error);
+							};
+						};
+					});
+				},
+				{ owner: accountA.id, id: acceptedId }
+			);
 			expect(
 				(await cachedMessages(pageA, accountA.id)).filter(
 					(message) => message.clientMessageId === commands[0].clientMessageId
@@ -190,14 +214,14 @@ test('real Signal delivery preserves commands and account isolation across trans
 							?.pendingNotification
 				)
 				.toBe(false);
-			expect(notificationFrames).toHaveLength(2);
+			expect(
+				senderFrames.every((frame) => ['typing', 'watchPresence'].includes(JSON.parse(frame).type))
+			).toBe(true);
 			await expect.poll(() => duplicateFrames).toBeGreaterThan(0);
 			await pageB
 				.getByRole('button', { name: new RegExp(`Chat with ${accountA.username}`) })
 				.click();
-			// Socket.IO acknowledgement IDs differ between connections.
-			const payload = (frame: string) => JSON.parse(frame.slice(frame.indexOf('[')));
-			expect(payload(notificationFrames[1])).toEqual(payload(notificationFrames[0]));
+
 			expect(commands).toHaveLength(2);
 			expect(
 				(await cachedMessages(pageB, accountB.id)).filter((message) => message._id === acceptedId)
