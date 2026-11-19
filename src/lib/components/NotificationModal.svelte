@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { notificationStore } from '$lib/stores/notification.store';
 	import type { Notification } from '$lib/types';
 
@@ -20,18 +21,35 @@
 	let notifications = $derived.by(() => $notificationStore.notifications);
 	let loading = $derived.by(() => $notificationStore.loading);
 
+	async function keepFocusAfter(action: () => Promise<void>) {
+		const dialog = backdropEl;
+		const focused = document.activeElement;
+		const hadFocus = dialog?.contains(focused);
+		await action();
+		await tick();
+		if (
+			hadFocus &&
+			dialog &&
+			backdropEl === dialog &&
+			!focused?.isConnected &&
+			document.activeElement === document.body
+		) {
+			dialog.focus();
+		}
+	}
+
 	async function handleMarkAsRead(notificationId?: string) {
 		if (!notificationId) return;
-		await notificationStore.markAsRead(notificationId);
+		await keepFocusAfter(() => notificationStore.markAsRead(notificationId));
 	}
 
 	async function handleMarkAllAsRead() {
-		await notificationStore.markAllAsRead();
+		await keepFocusAfter(notificationStore.markAllAsRead);
 	}
 
 	async function handleDelete(notificationId?: string) {
 		if (!notificationId) return;
-		await notificationStore.delete(notificationId);
+		await keepFocusAfter(() => notificationStore.delete(notificationId));
 	}
 
 	function getNotificationIcon(type: Notification['type']) {
@@ -98,7 +116,7 @@
 
 {#if isOpen}
 	<div
-		class="notification-backdrop animate-fade-in fixed inset-0 z-50 flex items-start justify-center px-4 pt-16"
+		class="notification-backdrop animate-fade-in fixed inset-0 z-50 flex items-start justify-center p-3 sm:px-4 sm:pt-16"
 		onclick={handleBackdropClick}
 		onkeydown={handleBackdropKeydown}
 		role="dialog"
@@ -108,10 +126,12 @@
 		bind:this={backdropEl}
 	>
 		<div
-			class="notification-modal glass-strong animate-scale-in relative w-full max-w-lg rounded-2xl"
+			class="notification-modal animate-scale-in relative flex max-h-full min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-2xl"
 			role="document"
 		>
-			<div class="modal-header flex items-center justify-between px-6 py-5">
+			<div
+				class="modal-header flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6"
+			>
 				<div>
 					<h2 id="notification-modal-title" class="modal-title text-xl font-semibold">
 						Notifications
@@ -148,7 +168,7 @@
 				</div>
 			</div>
 
-			<div class="notification-list max-h-96 overflow-y-auto">
+			<div class="notification-list min-h-0 overflow-y-auto overscroll-contain">
 				{#if loading}
 					<div class="flex items-center justify-center py-16">
 						<div
@@ -175,12 +195,10 @@
 				{:else}
 					<ul class="notification-items divide-y">
 						{#each notifications as notification (notification._id ?? notification.id)}
-							<li
-								class="notification-item group relative px-6 py-4 transition-all duration-200"
-								class:unread={!notification.read}
-							>
+							<li class="notification-item px-4 py-4 sm:px-6" class:unread={!notification.read}>
 								<div class="flex items-start gap-4">
 									<div
+										aria-hidden="true"
 										class="notification-icon mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
 									>
 										<span class="text-lg">{getNotificationIcon(notification.type)}</span>
@@ -189,13 +207,17 @@
 									<div class="min-w-0 flex-1">
 										<div class="mb-1 flex items-start justify-between gap-2">
 											<h3
-												class="notification-title font-medium"
+												class="notification-title font-medium wrap-anywhere"
 												class:font-semibold={!notification.read}
 											>
 												{notification.title}
 											</h3>
 											{#if !notification.read}
-												<span class="unread-dot mt-2 h-2 w-2 shrink-0 rounded-full"></span>
+												<span
+													class="unread-dot mt-2 h-2 w-2 shrink-0 rounded-full"
+													aria-hidden="true"
+												></span>
+												<span class="sr-only">Unread</span>
 											{/if}
 										</div>
 										<p class="notification-message mb-2 text-sm">
@@ -206,14 +228,13 @@
 										</p>
 									</div>
 
-									<div
-										class="notification-actions shrink-0 opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
-									>
+									<div class="shrink-0">
 										<div class="flex gap-1">
 											{#if !notification.read}
 												<button
 													onclick={() => handleMarkAsRead(notification._id ?? notification.id)}
 													class="action-btn-read hover-lift btn rounded-lg p-2 transition-all duration-200"
+													aria-label="Mark as read"
 													title="Mark as read"
 												>
 													<svg
@@ -254,17 +275,6 @@
 					</ul>
 				{/if}
 			</div>
-
-			{#if notifications.length > 0}
-				<div class="modal-footer px-6 py-4 text-center">
-					<button
-						onclick={onClose}
-						class="close-link text-sm font-medium transition-colors duration-200"
-					>
-						Close
-					</button>
-				</div>
-			{/if}
 		</div>
 	</div>
 {/if}
@@ -329,6 +339,7 @@
 
 			.notification-item {
 				background: transparent;
+				border-color: var(--border-subtle);
 
 				&.unread {
 					background: var(--bg-hover);
@@ -347,11 +358,11 @@
 
 			.unread-dot {
 				background: var(--accent-primary);
-				box-shadow: 0 0 8px var(--accent-primary);
 			}
 
 			.notification-message {
 				color: var(--text-secondary);
+				overflow-wrap: anywhere;
 			}
 
 			.notification-time {
@@ -367,14 +378,6 @@
 				background: var(--color-error-bg);
 				color: var(--color-error);
 				border: 1px solid var(--color-error-border);
-			}
-
-			.modal-footer {
-				border-top: 1px solid var(--modal-border);
-			}
-
-			.close-link {
-				color: var(--accent-secondary);
 			}
 
 			.notification-list {

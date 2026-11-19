@@ -27,7 +27,12 @@ async function signIn(page: Page, origin: URL, username: string, password: strin
 }
 
 async function startConversation(page: Page, recipient: string) {
-	await page.getByRole('button', { name: 'Start new conversation' }).click();
+	const newChat = page.getByRole('button', { name: 'New chat', exact: true });
+	await (
+		process.env.FULLSTACK_ACCOUNT_SUFFIX
+			? newChat.or(page.getByRole('button', { name: 'Start new conversation', exact: true }))
+			: newChat
+	).click();
 	await page.getByPlaceholder('Search people by name or email').fill(recipient);
 	await page.getByRole('button', { name: new RegExp(recipient) }).click();
 	await page.getByRole('button', { name: 'Start chat', exact: true }).click();

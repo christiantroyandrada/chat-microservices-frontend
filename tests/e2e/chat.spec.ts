@@ -77,7 +77,7 @@ test.describe('Authenticated chat', () => {
 	});
 
 	test('searches for a user through the conversation UI', async ({ page }) => {
-		await page.getByRole('button', { name: 'Start new conversation' }).click();
+		await page.getByRole('button', { name: 'New chat', exact: true }).click();
 		const search = page.getByPlaceholder('Search people by name or email');
 		await expect(search).toBeVisible();
 		await search.fill('search user');

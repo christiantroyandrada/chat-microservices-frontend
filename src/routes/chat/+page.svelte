@@ -380,7 +380,7 @@
 	<title>Secret · {$user?.username || 'User'}</title>
 </svelte:head>
 
-<div class="flex h-screen flex-col" style="background: var(--bg-primary);">
+<div class="flex h-dvh flex-col" style="background: var(--bg-primary);">
 	<!-- Modern Top Navigation with Glass Effect -->
 	<nav class="glass-strong border-b" style="border-color: var(--border-subtle);">
 		<div class="flex items-center justify-between px-6 py-4">

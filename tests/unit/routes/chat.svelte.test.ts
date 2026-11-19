@@ -64,8 +64,7 @@ import ChatPage from '../../../src/routes/chat/+page.svelte';
 describe('chat page', () => {
 	it('mounts and renders child components (ChatList)', async () => {
 		render(ChatPage);
-		// ChatList contains a button with aria-label 'Start new conversation'
-		const btn = await screen.findByLabelText('Start new conversation');
+		const btn = await screen.findByRole('button', { name: 'New chat', exact: true });
 		expect(btn).toBeTruthy();
 	});
 

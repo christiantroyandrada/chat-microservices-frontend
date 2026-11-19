@@ -145,7 +145,7 @@ test('real Signal delivery preserves commands and account isolation across trans
 		await login(pageA, accountA.email);
 		await login(pageB, accountB.email);
 		await expect.poll(() => [senderConnections, recipientConnections]).toEqual([1, 1]);
-		await pageA.getByRole('button', { name: 'Start new conversation' }).click();
+		await pageA.getByRole('button', { name: 'New chat', exact: true }).click();
 		await pageA.getByPlaceholder('Search people by name or email').fill(accountB.username);
 		await pageA.getByRole('button', { name: new RegExp(accountB.username) }).click();
 		await pageA.getByRole('button', { name: 'Start chat', exact: true }).click();

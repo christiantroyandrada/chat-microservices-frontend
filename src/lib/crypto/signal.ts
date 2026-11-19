@@ -303,9 +303,10 @@ export async function initSignalWithRestore(
 			try {
 				const { authService } = await import('$lib/services/auth.service');
 				const encryptedBundle = await authService.fetchSignalKeys(deviceId);
+				const hasKeys = await Backup.hasLocalKeys(getStore());
 
-				// ── Path 1: Backend has encrypted keys AND we have a password → restore
-				if (encryptedBundle && encryptionPassword) {
+				// Backups contain keys but no sessions. Preserve the local database on sign-in.
+				if (!hasKeys && encryptedBundle && encryptionPassword) {
 					logger.info('[Signal] Found encrypted keys on backend, decrypting and restoring...');
 
 					// Clear data in-place via the existing connection instead of
@@ -364,8 +365,6 @@ export async function initSignalWithRestore(
 				};
 
 				// ── Path 2: We already have local keys in IndexedDB → use them
-				const hasKeys = await Backup.hasLocalKeys(getStore());
-
 				if (hasKeys) {
 					logger.info('[Signal] Found existing local keys');
 
@@ -381,10 +380,10 @@ export async function initSignalWithRestore(
 						logger.warning('[Signal] Failed to re-publish prekeys (non-fatal):', republishErr);
 					}
 
-					if (encryptionPassword) {
+					if (encryptionPassword && !encryptedBundle) {
 						logger.info('[Signal] Encrypting and backing up local keys to backend...');
 						await tryBackup();
-					} else {
+					} else if (!encryptionPassword) {
 						logger.warning('[Signal] No encryption password — using local keys without backup');
 					}
 					return true;

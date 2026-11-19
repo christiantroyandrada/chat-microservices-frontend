@@ -7,27 +7,34 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/svelte';
+import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import NotificationModal from '$lib/components/NotificationModal.svelte';
+import { notificationStore } from '$lib/stores/notification.store';
+import type { NotificationState } from '$lib/types';
 
-vi.mock('$lib/stores/notification.store', () => ({
-	notificationStore: {
-		subscribe: vi.fn((fn) => {
-			fn({ notifications: [], unreadCount: 0, loading: false });
-			return () => {};
-		}),
-		markAsRead: vi.fn(),
-		markAllAsRead: vi.fn(),
-		delete: vi.fn()
-	}
-}));
+const store = vi.hoisted(() => ({ set: (_state: NotificationState) => {} }));
+
+vi.mock('$lib/stores/notification.store', async () => {
+	const { writable } = await import('svelte/store');
+	const state = writable<NotificationState>();
+	store.set = state.set;
+	return {
+		notificationStore: {
+			subscribe: state.subscribe,
+			markAsRead: vi.fn(),
+			markAllAsRead: vi.fn(),
+			delete: vi.fn()
+		}
+	};
+});
 
 describe('NotificationModal focus management', () => {
 	let opener: HTMLButtonElement;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		store.set({ notifications: [], unreadCount: 0, loading: false });
 		opener = document.createElement('button');
 		opener.textContent = 'opener';
 		document.body.appendChild(opener);
@@ -72,5 +79,31 @@ describe('NotificationModal focus management', () => {
 		await rerender({ isOpen: false });
 		await tick();
 		expect(document.activeElement).toBe(opener);
+	});
+
+	it('keeps focus in the dialog after Mark all read removes the focused button', async () => {
+		const unread = {
+			_id: 'notice',
+			userId: 'recipient',
+			title: 'New message',
+			message: 'You have a new message',
+			type: 'message' as const,
+			createdAt: new Date().toISOString(),
+			read: false
+		};
+		store.set({ notifications: [unread], unreadCount: 1, loading: false });
+		vi.mocked(notificationStore.markAllAsRead).mockImplementationOnce(async () => {
+			store.set({ notifications: [{ ...unread, read: true }], unreadCount: 0, loading: false });
+		});
+
+		const view = render(NotificationModal, { isOpen: true });
+		const action = view.getByRole('button', { name: 'Mark all read' });
+		action.focus();
+		await fireEvent.click(action);
+		await tick();
+		expect(view.queryByRole('button', { name: 'Mark all read' })).toBeNull();
+		await waitFor(() =>
+			expect(view.getByRole('dialog').contains(document.activeElement)).toBe(true)
+		);
 	});
 });

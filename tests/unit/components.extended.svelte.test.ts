@@ -92,10 +92,7 @@ describe('Extended component tests', () => {
 			const onCreate = vi.fn();
 			const { container } = render(ChatList, { currentUserId: 'me', onCreate });
 
-			// open modal
-			const newChatBtn = container.querySelector(
-				'button[aria-label="Start new conversation"]'
-			) as HTMLElement;
+			const newChatBtn = screen.getByRole('button', { name: 'New chat', exact: true });
 			await fireEvent.click(newChatBtn);
 
 			const input = container.querySelector(

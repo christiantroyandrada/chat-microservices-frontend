@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { ChatConversation } from '$lib/types';
 	import { chatService } from '$lib/services/chat.service';
 	import { debounce } from '$lib/utils';
@@ -20,6 +21,7 @@
 	let searchResults = $state<ChatConversation[]>([]);
 	let selectedUser = $state<ChatConversation | null>(null);
 	let isSearching = $state(false);
+	let searchInput = $state<HTMLInputElement>();
 
 	const performSearch = debounce(async (q: string) => {
 		if (!q || q.trim().length < 1) {
@@ -51,11 +53,13 @@
 		}
 	}, 300);
 
-	function openCreate() {
+	async function openCreate() {
 		showCreate = true;
 		searchQuery = '';
 		searchResults = [];
 		selectedUser = null;
+		await tick();
+		searchInput?.focus();
 	}
 
 	function closeCreate() {
@@ -107,10 +111,15 @@
 			<h2 class="messages-title">Correspondence</h2>
 			<button
 				onclick={openCreate}
-				class="new-chat-button ml-2 inline-flex items-center justify-center rounded-md p-2"
-				aria-label="Start new conversation"
+				class="new-chat-button inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium"
 			>
-				<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+				<svg
+					aria-hidden="true"
+					class="h-5 w-5"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+				>
 					<path
 						stroke-linecap="round"
 						stroke-linejoin="round"
@@ -118,6 +127,7 @@
 						d="M12 4v16m8-8H4"
 					/>
 				</svg>
+				New chat
 			</button>
 		</div>
 	</div>
@@ -129,15 +139,23 @@
 				<div class="flex items-center gap-2">
 					<input
 						class="create-modal-input flex-1 rounded px-3 py-2"
+						aria-label="Search people by name or email"
 						placeholder="Search people by name or email"
 						bind:value={searchQuery}
+						bind:this={searchInput}
 						oninput={() => performSearch(searchQuery)}
 					/>
-					<button onclick={closeCreate} class="create-modal-close rounded p-2">✕</button>
+					<button
+						onclick={closeCreate}
+						class="create-modal-close rounded p-2"
+						aria-label="Close people search">✕</button
+					>
 				</div>
 				<div class="mt-3 max-h-64 overflow-y-auto">
 					{#if isSearching}
 						<div class="search-status text-sm">Searching…</div>
+					{:else if !searchQuery.trim()}
+						<div class="search-status text-sm">Enter a name or email to find someone.</div>
 					{:else if searchResults.length === 0}
 						<div class="search-status text-sm">No people found</div>
 					{:else}
@@ -188,9 +206,11 @@
 		{#if loading}
 			<div class="loading-state p-4 text-center">Gathering your correspondence…</div>
 		{:else if conversations.length === 0}
-			<div class="empty-state p-4 text-center">
-				<p class="text-sm">No conversations yet</p>
-				<p class="empty-state-hint mt-1 text-xs">Start a new one to begin writing</p>
+			<div class="empty-state mx-auto grid max-w-sm gap-2 px-6 py-12 text-center">
+				<p class="text-base font-medium">No conversations yet</p>
+				<p class="empty-state-hint text-sm">
+					Choose New chat to find someone and send your first message.
+				</p>
 			</div>
 		{:else}
 			<ul class="conversations-list divide-y" role="list" aria-label="Conversations">
@@ -269,9 +289,8 @@
 		}
 
 		.new-chat-button {
-			color: var(--text-secondary);
-			transition: all var(--dur-fast) ease;
-			background: transparent;
+			color: var(--text-primary);
+			background: var(--bg-hover);
 		}
 		.new-chat-button:hover {
 			background: var(--accent-soft);
