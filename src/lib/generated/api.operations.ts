@@ -1,6 +1,6 @@
 /**
  * AUTO-GENERATED from committed OpenAPI contracts.
- * backendCommit: acb7d16b94ddfc1dcf435da2a099572d227fa1b9
+ * backendCommit: b643b6536cf2a0e08d4281d357defbfca8753b01
  * generatorVersion: 1
  */
 
