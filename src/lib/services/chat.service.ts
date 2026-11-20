@@ -1,4 +1,4 @@
-import { chatApi, userApi } from './api.generated';
+import { chatApi, userApi, type HistoryCursor } from './api.generated';
 import { mergeDelivery, mergeMessages } from './message-merge';
 import { assertValidServerMessage, normalizeMessage } from './server-message';
 import {
@@ -38,6 +38,13 @@ let ownerGeneration = 0;
 const sending = new Map<string, Promise<Message>>();
 const clearingNotifications = new Map<string, Promise<void>>();
 type ProcessedMessage = { message: Message; uncached: boolean };
+type HistoryPage = {
+	messages: Message[];
+	firstId?: string;
+	lastId?: string;
+	hasMore: boolean;
+	cached?: boolean;
+};
 const receiving = new Map<string, Promise<ProcessedMessage>>();
 const receivedEvents = new Set<string>();
 
@@ -342,22 +349,35 @@ export const chatService = {
 		offset = 0,
 		currentUserId?: string
 	): Promise<Message[]> {
+		return (await chatService.getMessagesPage(userId, limit, offset, currentUserId)).messages;
+	},
+
+	async getMessagesPage(
+		userId: string,
+		limit: number,
+		offset: number,
+		currentUserId?: string,
+		cursor?: HistoryCursor
+	): Promise<HistoryPage> {
 		if (!currentUserId) throw new Error('currentUserId is required for getMessages');
 		const generation = ownerGeneration;
 		assertOwner(currentUserId, generation);
 		const store = getMessageStore(currentUserId);
-		const local = await store.getMessages(userId, currentUserId, limit);
+		const local = cursor ? [] : await store.getMessages(userId, currentUserId, limit);
 		assertOwner(currentUserId, generation);
 		let response;
 		try {
-			response = await chatApi.getMessages(userId, limit, offset, currentUserId);
+			response = cursor
+				? await chatApi.getMessages(userId, limit, offset, currentUserId, cursor)
+				: await chatApi.getMessages(userId, limit, offset, currentUserId);
 		} catch (error) {
 			if (authenticationFailure(error)) {
 				await requireReauthentication(currentUserId);
 				throw error;
 			}
 			assertOwner(currentUserId, generation);
-			if (unavailable(error) && local.length) return local;
+			if (unavailable(error) && local.length)
+				return { messages: local, hasMore: false, cached: true };
 			throw error;
 		}
 		assertOwner(currentUserId, generation);
@@ -377,9 +397,14 @@ export const chatService = {
 			processed.push(
 				(await processMessage(normalizeMessage(raw), currentUserId, generation)).message
 			);
-		const latest = await store.getMessages(userId, currentUserId, limit);
+		const latest = cursor ? [] : await store.getMessages(userId, currentUserId, limit);
 		assertOwner(currentUserId, generation);
-		return mergeMessages(processed, latest);
+		return {
+			messages: cursor ? processed : mergeMessages(processed, latest),
+			firstId: processed[0]?._id,
+			lastId: processed.at(-1)?._id,
+			hasMore: response.pagination?.hasMore === true
+		};
 	},
 
 	async receiveMessage(
@@ -581,9 +606,17 @@ export const chatService = {
 		await updateReceipt(owner, () => chatApi.acknowledgeDelivery(messageId, owner));
 	},
 
-	async markAsRead(senderId: string, owner = activeOwner): Promise<void> {
+	async markAsRead(
+		senderId: string,
+		owner = activeOwner,
+		messageIds?: readonly string[]
+	): Promise<void> {
 		if (!owner) throw new Error('Current account is required');
-		await updateReceipt(owner, () => chatApi.markAsRead(senderId, owner));
+		await updateReceipt(owner, () =>
+			messageIds
+				? chatApi.markAsRead(senderId, owner, messageIds)
+				: chatApi.markAsRead(senderId, owner)
+		);
 	},
 
 	/**

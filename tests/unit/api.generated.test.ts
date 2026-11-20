@@ -44,6 +44,18 @@ describe('generated API helpers', () => {
 			)
 		).toEqual([owner, owner, owner]);
 	});
+	it('sends cursor history and visible receipts to the gateway routes', async () => {
+		const { chatApi } = await import('$lib/services/api.generated');
+		await chatApi.getMessages('peer', 50, 0, 'owner', { afterMessageId: 'anchor' });
+		await chatApi.markAsRead('peer', 'owner', ['visible-id']);
+		const [[history], [read, options]] = api.request.mock.calls;
+		expect(new URL(history, 'https://chat.example').searchParams.get('afterMessageId')).toBe(
+			'anchor'
+		);
+		expect(read).toBe('/chat/messages/read/peer/visible?expectedUserId=owner');
+		expect(options.method).toBe('PUT');
+		expect(JSON.parse(options.body)).toEqual({ messageIds: ['visible-id'] });
+	});
 	beforeEach(() => {
 		vi.clearAllMocks();
 		api.request.mockResolvedValue({ success: true, data: {} });

@@ -74,6 +74,8 @@ export const userApi = {
 } as const;
 
 // ── Chat Service endpoints ────────────────────────────────────────────────────
+export type HistoryCursor = { afterMessageId: string } | { beforeMessageId: string };
+
 export const chatApi = {
 	sendMessage(body: ChatApiSendMessageRequest): Promise<ApiResponse<ChatApiMessage>> {
 		return executeOperation<ChatApiMessage>(apiOperations['chat.sendMessage'], {}, body);
@@ -83,11 +85,12 @@ export const chatApi = {
 		receiverId: string,
 		limit = 50,
 		offset = 0,
-		expectedUserId?: string
+		expectedUserId?: string,
+		cursor?: HistoryCursor
 	): Promise<ApiResponse<ChatApiMessage[], { pagination: ChatApiPagination }>> {
 		return executeOperation<ChatApiMessage[], { pagination: ChatApiPagination }>(
 			apiOperations['chat.listMessages'],
-			{ receiverId, limit, offset, expectedUserId }
+			{ receiverId, limit, offset, expectedUserId, ...cursor }
 		);
 	},
 
@@ -109,11 +112,13 @@ export const chatApi = {
 
 	markAsRead(
 		senderId: string,
-		expectedUserId?: string
+		expectedUserId?: string,
+		messageIds?: readonly string[]
 	): Promise<ApiResponse<{ modifiedCount: number }>> {
-		return executeOperation<{ modifiedCount: number }>(apiOperations['chat.markAsRead'], {
-			senderId,
-			expectedUserId
-		});
+		return executeOperation<{ modifiedCount: number }>(
+			messageIds ? apiOperations['chat.markVisibleAsRead'] : apiOperations['chat.markAsRead'],
+			{ senderId, expectedUserId },
+			messageIds ? { messageIds } : undefined
+		);
 	}
 } as const;

@@ -54,6 +54,7 @@ vi.mock('$lib/services/chat.service', () => ({
 		markAsRead: vi.fn().mockResolvedValue(undefined),
 		getConversations: vi.fn().mockResolvedValue([]),
 		getMessages: vi.fn().mockResolvedValue([]),
+		getMessagesPage: vi.fn().mockResolvedValue({ messages: [], hasMore: false }),
 		searchUsers: vi.fn().mockResolvedValue([])
 	}
 }));
@@ -125,7 +126,7 @@ describe('Chat route behaviors', () => {
 		expect(toast.toastStore.error).toHaveBeenCalled();
 	});
 
-	it('selecting a conversation calls getMessages and clears unread badge', async () => {
+	it('selecting a conversation requests its history', async () => {
 		const { chatService } = await import('$lib/services/chat.service');
 		const conv = {
 			userId: 'u42',
@@ -137,19 +138,7 @@ describe('Chat route behaviors', () => {
 		const getConversationsOnce = chatService.getConversations as MockedFunction<
 			typeof chatService.getConversations
 		>;
-		const getMessagesOnce = chatService.getMessages as MockedFunction<
-			typeof chatService.getMessages
-		>;
 		getConversationsOnce.mockResolvedValueOnce([conv]);
-		getMessagesOnce.mockResolvedValueOnce([
-			{
-				_id: 'm1',
-				senderId: 'u42',
-				receiverId: 'me',
-				content: 'hey',
-				timestamp: new Date().toISOString()
-			}
-		]);
 
 		const { container } = render(ChatPage);
 
@@ -162,11 +151,8 @@ describe('Chat route behaviors', () => {
 		const convBtn = container.querySelector('.conversation-button') as HTMLElement;
 		await fireEvent.click(convBtn);
 
-		// ensure getMessages was called for that user
-		expect(chatService.getMessages).toHaveBeenCalled();
-
-		// after selection unread badge should be cleared (no unread-badge elements)
-		const badgeAfter = container.querySelector('.unread-badge');
-		expect(badgeAfter).toBeNull();
+		await waitFor(() =>
+			expect(chatService.getMessagesPage).toHaveBeenCalledWith('u42', 50, 0, 'me', undefined)
+		);
 	});
 });

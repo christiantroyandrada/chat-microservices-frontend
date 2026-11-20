@@ -31,7 +31,8 @@ vi.mock('$lib/services/chat.service', () => ({
 	chatService: {
 		flushNotifications: vi.fn().mockResolvedValue(undefined),
 		getConversations: vi.fn().mockResolvedValue([]),
-		getMessages: vi.fn().mockResolvedValue([])
+		getMessages: vi.fn().mockResolvedValue([]),
+		getMessagesPage: vi.fn().mockResolvedValue({ messages: [], hasMore: false })
 	}
 }));
 vi.mock('$lib/services/go-websocket', () => ({

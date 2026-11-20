@@ -2,7 +2,7 @@
 
  * AUTO-GENERATED from committed OpenAPI contracts.
 
- * backendCommit: b643b6536cf2a0e08d4281d357defbfca8753b01
+ * backendCommit: 1e08667625a47bc20f86a6be13300e480b7beed8
 
  * generatorVersion: 1
 
@@ -116,6 +116,10 @@ export interface ChatApiSendMessageRequest {
 	clientMessageId?: string;
 	/** Signal-protocol encrypted envelope (JSON string, max 5000 chars) */
 	message: string;
+}
+
+export interface ChatApiMarkVisibleAsReadRequest {
+	messageIds: string[];
 }
 
 export interface ChatApiMessage {

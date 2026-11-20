@@ -13,7 +13,10 @@
 		typingUsers = new Set<string>(),
 		// typingUsername optionally provides a display name for the typing user
 		typingUsername = '' as string | undefined,
-		retry = undefined as ((message: Message) => void) | undefined
+		retry = undefined as ((message: Message) => void) | undefined,
+		hasEarlier = false,
+		loadEarlier = undefined as (() => Promise<void>) | undefined,
+		readVisible = undefined as ((ids: string[]) => void) | undefined
 	} = $props();
 
 	let messagesContainer: HTMLDivElement;
@@ -21,6 +24,7 @@
 	let lastConversationId = '';
 	let lastMessageKey: string | null = null;
 	let pendingConversationScroll = false;
+	let loadingEarlier = $state(false);
 
 	// Optimize: Use $derived for computed values instead of reactive statements
 	let messageKey = $derived.by(() =>
@@ -81,6 +85,65 @@
 	onMount(() => {
 		scrollToBottom('auto');
 	});
+
+	$effect(() => {
+		if (
+			!messages.length ||
+			!messagesContainer ||
+			loading ||
+			!readVisible ||
+			typeof IntersectionObserver === 'undefined'
+		)
+			return;
+		const report = readVisible;
+		const visible = new Map<Element, string>();
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		function scheduleRead() {
+			clearTimeout(timer);
+			if (document.visibilityState === 'visible' && visible.size) {
+				timer = setTimeout(() => {
+					if (document.visibilityState === 'visible') report([...visible.values()]);
+				}, 200);
+			}
+		}
+		const observer = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					const id = entry.target.getAttribute('data-unread-message');
+					if (id && entry.isIntersecting && entry.intersectionRect.height > 0)
+						visible.set(entry.target, id);
+					else visible.delete(entry.target);
+				}
+				scheduleRead();
+			},
+			{ root: messagesContainer }
+		);
+		for (const row of messagesContainer.querySelectorAll('[data-unread-message]'))
+			observer.observe(row);
+		document.addEventListener('visibilitychange', scheduleRead);
+		return () => {
+			observer.disconnect();
+			clearTimeout(timer);
+			document.removeEventListener('visibilitychange', scheduleRead);
+		};
+	});
+
+	async function showEarlier() {
+		if (!loadEarlier || loadingEarlier) return;
+		const selected = conversationId;
+		const { scrollTop, scrollHeight } = messagesContainer;
+		shouldAutoScroll = false;
+		loadingEarlier = true;
+		try {
+			await loadEarlier();
+			await tick();
+			if (selected === conversationId && messagesContainer) {
+				messagesContainer.scrollTop = scrollTop + messagesContainer.scrollHeight - scrollHeight;
+			}
+		} finally {
+			loadingEarlier = false;
+		}
+	}
 
 	function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
 		if (!messagesContainer) return;
@@ -219,6 +282,16 @@
 			</div>
 		</div>
 	{:else}
+		{#if hasEarlier && loadEarlier}
+			<button
+				type="button"
+				class="btn mx-auto block min-h-11"
+				disabled={loadingEarlier}
+				onclick={showEarlier}
+			>
+				{loadingEarlier ? 'Loading earlier messages…' : 'Load earlier messages'}
+			</button>
+		{/if}
 		{#each messages as message, index (message._id)}
 			{#if shouldShowDateSeparator(index)}
 				<div class="date-separator my-4 flex items-center justify-center">
@@ -234,6 +307,12 @@
 					: 'justify-start'}"
 				class:message-sent={message.senderId === currentUserId}
 				class:message-received={message.senderId !== currentUserId}
+				data-unread-message={message.receiverId === currentUserId &&
+				message.senderId !== currentUserId &&
+				!message.read &&
+				!('_decryptionFailed' in message && message._decryptionFailed)
+					? message._id
+					: undefined}
 			>
 				<div
 					class="message-bubble max-w-[85%] px-4 py-2 md:max-w-[70%]"

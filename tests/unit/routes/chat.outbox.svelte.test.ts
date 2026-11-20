@@ -5,6 +5,8 @@ import type { Message, User } from '$lib/types';
 const mocks = vi.hoisted(() => ({
 	conversations: vi.fn(),
 	history: vi.fn(),
+	historyPage: vi.fn(),
+	markAsRead: vi.fn().mockResolvedValue(undefined),
 	prepare: vi.fn(),
 	retry: vi.fn(),
 	receive: vi.fn(),
@@ -30,11 +32,12 @@ vi.mock('$lib/services/chat.service', () => ({
 	chatService: {
 		getConversations: mocks.conversations,
 		getMessages: mocks.history,
+		getMessagesPage: mocks.historyPage,
 		prepareMessage: mocks.prepare,
 		retryMessage: mocks.retry,
 		receiveMessage: mocks.receive,
 		flushNotifications: mocks.flush,
-		markAsRead: vi.fn().mockResolvedValue(undefined),
+		markAsRead: mocks.markAsRead,
 		acknowledgeDelivery: mocks.acknowledgeDelivery
 	}
 }));
@@ -109,6 +112,18 @@ describe('chat durable send UI', () => {
 			{ userId: 'carol', username: 'Carol', unreadCount: 0 }
 		]);
 		mocks.history.mockResolvedValue([]);
+		mocks.historyPage.mockReset();
+		mocks.historyPage.mockImplementation(
+			async (peer: string, limit: number, offset: number, owner: string) => {
+				const messages = (await mocks.history(peer, limit, offset, owner)) as Message[];
+				return {
+					messages,
+					firstId: messages[0]?._id,
+					lastId: messages.at(-1)?._id,
+					hasMore: false
+				};
+			}
+		);
 		mocks.flush.mockResolvedValue(undefined);
 		mocks.prepare.mockResolvedValue(pending);
 		mocks.retry.mockResolvedValue({ ...pending, sendState: 'failed', sendError: 'Try again.' });
@@ -117,15 +132,125 @@ describe('chat durable send UI', () => {
 		cleanup();
 		vi.unstubAllGlobals();
 	});
-	async function openBob() {
+	async function openBob(ready = false) {
 		const rendered = render(ChatPage);
 		await waitFor(() =>
 			expect(rendered.container.querySelectorAll('.conversation-button')).toHaveLength(2)
 		);
+		if (ready) sockets[0].frame({ type: 'ready' });
 		await fireEvent.click(rendered.getByText('Bob'));
 		await waitFor(() => expect(rendered.queryByLabelText('Message input')).toBeTruthy());
 		return rendered;
 	}
+
+	it('drains cursor pages after reconnect without replacing the last synced anchor with live events', async () => {
+		const stored = (i: number): Message => ({
+			_id: 'message-' + i,
+			senderId: i === 61 ? 'bob' : 'alice',
+			receiverId: i === 61 ? 'alice' : 'bob',
+			content: 'Message ' + i,
+			timestamp: new Date(2026, 0, 1, 0, i).toISOString()
+		});
+		mocks.history.mockResolvedValue([stored(0)]);
+		mocks.historyPage.mockImplementation(async (_peer, _limit, _offset, _owner, cursor) => {
+			const page =
+				cursor?.afterMessageId === 'message-0'
+					? Array.from({ length: 50 }, (_, i) => stored(i + 1))
+					: cursor?.afterMessageId === 'message-50'
+						? Array.from({ length: 11 }, (_, i) => stored(i + 51))
+						: [stored(0)];
+			return {
+				messages: page,
+				firstId: page[0]._id,
+				lastId: page.at(-1)!._id,
+				hasMore: page.length === 50
+			};
+		});
+		const rendered = await openBob(true);
+		await waitFor(() => expect(rendered.getByText('Message 0')).toBeTruthy());
+		const initialSocket = sockets[0];
+		initialSocket.close();
+		await waitFor(() => expect(sockets).toHaveLength(2), { timeout: 3000 });
+		const reconnected = sockets[1];
+		const firstPage = deferred<{
+			messages: Message[];
+			firstId: string;
+			lastId: string;
+			hasMore: boolean;
+		}>();
+		// Let the live event arrive before the reconnect query returns.
+		mocks.historyPage.mockImplementationOnce(() => firstPage.promise);
+		mocks.receive.mockResolvedValue({ message: stored(61), fresh: true });
+		reconnected.frame({ type: 'ready' });
+		reconnected.frame({
+			type: 'message',
+			data: {
+				id: 'message-61',
+				senderId: 'bob',
+				receiverId: 'alice',
+				message: 'ciphertext',
+				createdAt: stored(61).timestamp,
+				status: 'NotDelivered'
+			}
+		});
+		await waitFor(() => expect(rendered.getByText('Message 61')).toBeTruthy());
+		expect(mocks.historyPage).toHaveBeenCalledWith('bob', 50, 0, 'alice', {
+			afterMessageId: 'message-0'
+		});
+		firstPage.resolve({
+			messages: Array.from({ length: 50 }, (_, i) => stored(i + 1)),
+			firstId: 'message-1',
+			lastId: 'message-50',
+			hasMore: true
+		});
+		await waitFor(() => expect(rendered.getAllByText(/^Message \d+$/)).toHaveLength(62));
+		expect(mocks.historyPage).toHaveBeenCalledWith('bob', 50, 0, 'alice', {
+			afterMessageId: 'message-50'
+		});
+	});
+
+	it('acknowledges only visible inbound rows', async () => {
+		const callbacks = new Map<Element, IntersectionObserverCallback>();
+		vi.stubGlobal(
+			'IntersectionObserver',
+			class {
+				constructor(private readonly callback: IntersectionObserverCallback) {}
+				observe(element: Element) {
+					callbacks.set(element, this.callback);
+				}
+				disconnect() {
+					callbacks.clear();
+				}
+			}
+		);
+		const incoming = {
+			...pending,
+			senderId: 'bob',
+			receiverId: 'alice',
+			sendState: undefined,
+			retryable: undefined
+		};
+		mocks.history.mockResolvedValue([
+			{ ...incoming, _id: 'above', content: 'Above viewport' },
+			{ ...incoming, _id: 'visible', content: 'Visible message' }
+		]);
+		const rendered = await openBob();
+		const row = (await rendered.findByText('Visible message')).closest('[data-unread-message]')!;
+		await waitFor(() => expect(callbacks.has(row)).toBe(true));
+		expect(mocks.markAsRead).not.toHaveBeenCalled();
+		callbacks.get(row)?.(
+			[
+				{
+					target: row,
+					isIntersecting: true,
+					intersectionRect: { height: 24 }
+				} as IntersectionObserverEntry
+			],
+			{} as IntersectionObserver
+		);
+		await waitFor(() => expect(mocks.markAsRead).toHaveBeenCalledWith('bob', 'alice', ['visible']));
+		expect(mocks.markAsRead).toHaveBeenCalledTimes(1);
+	});
 
 	it('sends while socket is disconnected and shows accessible pending, failure, retry, and receipt states', async () => {
 		const request = deferred<Message>();

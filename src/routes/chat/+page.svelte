@@ -32,6 +32,11 @@
 	let destroyed = false;
 	let hasPreloadedMessages = false;
 	let observedOwner: string | null = null;
+	let historyCursor: string | undefined;
+	let oldestMessageId: string | undefined;
+	let hasEarlier = $state(false);
+	let historySync: { selection: number; promise: Promise<boolean> } | undefined;
+	const reading = new Set<string>();
 	let unsubscribeOwner: (() => void) | undefined;
 	let goSocket = $state.raw<ReturnType<typeof connectGoWebSocket>>();
 	let goPresence = $state<{ peerId: string; online: boolean } | null>(null);
@@ -63,6 +68,7 @@
 			conversations = [];
 			messages = [];
 			selectedConversation = null;
+			resetHistory();
 			typingUsers = new Set();
 			hasPreloadedMessages = false;
 			clearSocket();
@@ -174,15 +180,119 @@
 		return true;
 	}
 
+	function resetHistory() {
+		historyCursor = undefined;
+		oldestMessageId = undefined;
+		hasEarlier = false;
+		reading.clear();
+	}
+
+	async function syncHistory(userId: string, owner: string, generation: number, selection: number) {
+		const isCurrent = () => owns(owner, generation) && selection === conversationGeneration;
+		while (historySync?.selection === selection) await historySync.promise.catch(() => {});
+		if (!isCurrent()) return false;
+		const promise = (async () => {
+			let more = true;
+			do {
+				const cursor = historyCursor;
+				const page = await chatService.getMessagesPage(
+					userId,
+					50,
+					0,
+					owner,
+					cursor ? { afterMessageId: cursor } : undefined
+				);
+				if (!isCurrent()) return false;
+				messages = mergeMessages(messages, page.messages);
+				if (page.cached) return true;
+				if (!cursor) hasEarlier = page.hasMore;
+				oldestMessageId ??= page.firstId;
+				historyCursor = page.lastId ?? cursor ?? 'start';
+				more =
+					cursor !== undefined &&
+					page.hasMore &&
+					page.lastId !== undefined &&
+					page.lastId !== cursor;
+			} while (more);
+			return true;
+		})();
+		historySync = { selection, promise };
+		try {
+			return await promise;
+		} finally {
+			if (historySync?.promise === promise) historySync = undefined;
+		}
+	}
+
+	async function loadEarlier() {
+		const owner = $user?._id;
+		const peer = selectedConversation?.userId;
+		const generation = accountGeneration;
+		const selection = conversationGeneration;
+		if (!owner || !peer || !oldestMessageId) return;
+		try {
+			const page = await chatService.getMessagesPage(peer, 50, 0, owner, {
+				beforeMessageId: oldestMessageId
+			});
+			if (!owns(owner, generation) || selection !== conversationGeneration) return;
+			messages = mergeMessages(page.messages, messages);
+			oldestMessageId = page.firstId ?? oldestMessageId;
+			hasEarlier = page.hasMore;
+		} catch {
+			if (owns(owner, generation) && selection === conversationGeneration)
+				toastStore.error('Could not load earlier messages. Try again.');
+		}
+	}
+
+	async function readVisible(ids: string[]) {
+		const owner = $user?._id;
+		const peer = selectedConversation?.userId;
+		const generation = accountGeneration;
+		const selection = conversationGeneration;
+		if (!owner || !peer) return;
+		const visible = new Set(ids);
+		const batch = messages
+			.filter(
+				(message) =>
+					visible.has(message._id) &&
+					!reading.has(message._id) &&
+					message.senderId === peer &&
+					message.receiverId === owner &&
+					!message.read
+			)
+			.slice(0, 50);
+		if (!batch.length) return;
+		const requested = new Set(batch.map((message) => message._id));
+		for (const id of requested) reading.add(id);
+		try {
+			await chatService.markAsRead(peer, owner, [...requested]);
+			if (!owns(owner, generation) || selection !== conversationGeneration) return;
+			messages = messages.map((message) =>
+				requested.has(message._id) ? { ...message, read: true, status: 'read' } : message
+			);
+			conversations = conversations.map((conversation) =>
+				conversation.userId === peer
+					? {
+							...conversation,
+							unreadCount: Math.max(0, Number(conversation.unreadCount ?? 0) - requested.size)
+						}
+					: conversation
+			);
+		} catch (error) {
+			if (owns(owner, generation)) logger.warning('[Chat] Read receipt failed', error);
+		} finally {
+			if (owns(owner, generation) && selection === conversationGeneration)
+				for (const id of requested) reading.delete(id);
+		}
+	}
+
 	async function catchUp(owner: string, generation: number) {
 		if (!owns(owner, generation)) return;
 		const userId = selectedConversation?.userId;
 		const selection = conversationGeneration;
 		try {
 			if (userId) {
-				if (!(await refreshHistory(userId, owner, generation, selection))) return;
-				if (!owns(owner, generation) || selection !== conversationGeneration) return;
-				await chatService.markAsRead(userId, owner);
+				if (!(await syncHistory(userId, owner, generation, selection))) return;
 				if (!owns(owner, generation) || selection !== conversationGeneration) return;
 			}
 			await loadConversations();
@@ -199,12 +309,10 @@
 		const selection = ++conversationGeneration;
 		selectedConversation = conversation;
 		messages = [];
+		resetHistory();
 		loading.messages = true;
-		conversations = conversations.map((c) => (c.userId === userId ? { ...c, unreadCount: 0 } : c));
 		try {
-			if (!(await refreshHistory(userId, owner, generation, selection))) return;
-			if (!owns(owner, generation) || selection !== conversationGeneration) return;
-			await chatService.markAsRead(userId, owner);
+			if (!(await syncHistory(userId, owner, generation, selection))) return;
 			if (!owns(owner, generation) || selection !== conversationGeneration) return;
 			await loadConversations();
 			if (!owns(owner, generation) || selection !== conversationGeneration) return;
@@ -300,9 +408,6 @@
 					if (owns(owner, generation))
 						logger.error('[Chat] Delivery acknowledgement failed:', error);
 				});
-				if (selectedConversation?.userId === other) {
-					void chatService.markAsRead(other, owner).catch(() => {});
-				}
 			}
 			if (!result.fresh) return;
 			const conversation = conversations.find((c) => c.userId === other) ?? {
@@ -315,7 +420,7 @@
 				lastMessage: message.content,
 				lastMessageTime: message.timestamp,
 				unreadCount:
-					message.senderId !== owner && selectedConversation?.userId !== other
+					message.senderId !== owner && !message.read
 						? Number(conversation.unreadCount || 0) + 1
 						: conversation.unreadCount
 			};
@@ -352,20 +457,16 @@
 		conversationGeneration++;
 		selectedConversation = null;
 		messages = [];
+		resetHistory();
 	}
 	async function createConversation(value: unknown) {
 		const account = value as Record<string, unknown>;
 		const userId = String(account.userId ?? '');
 		if (!userId) return;
-		if (conversations.some((c) => c.userId === userId)) {
-			await selectConversation(userId);
-			return;
+		if (!conversations.some((c) => c.userId === userId)) {
+			conversations = [...conversations, { userId, username: String(account.username ?? '') }];
 		}
-		conversationGeneration++;
-		selectedConversation = { userId, username: String(account.username ?? '') };
-		conversations = [...conversations, selectedConversation];
-		messages = [];
-		loading.messages = false;
+		await selectConversation(userId);
 	}
 	function handleLogout() {
 		void authStore.logout();
@@ -518,6 +619,9 @@
 					{typingUsers}
 					typingUsername={selectedConversation.username}
 					retry={retryMessage}
+					{hasEarlier}
+					{loadEarlier}
+					{readVisible}
 				/>
 				<MessageInput send={sendMessage} typing={handleTyping} disabled={!$user} />
 			{:else}
