@@ -100,14 +100,17 @@ export async function generateSignalIdentity(
  */
 export async function publishSignalPrekey(
 	_apiBase: string,
-	_userId: string,
+	userId: string,
 	deviceId: string,
 	bundle: PublicPreKeyBundle
 ): Promise<void> {
-	await userApi.publishPrekey({
-		deviceId,
-		bundle
-	});
+	await userApi.publishPrekey(
+		{
+			deviceId,
+			bundle
+		},
+		userId
+	);
 }
 
 /**

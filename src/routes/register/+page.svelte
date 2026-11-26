@@ -103,6 +103,7 @@
 				const { initSignalWithRestore } = await import('$lib/crypto/signal');
 
 				const userId = createdUser._id;
+				if ($authStore.user?._id !== userId) return;
 				// getOrCreateDeviceId() uses the namespaced 'chatapp_deviceId' key and
 				// migrates any legacy 'deviceId' values, ensuring consistency with login.
 				const deviceId = getOrCreateDeviceId();
@@ -123,6 +124,7 @@
 				// Don't block registration - keys will be generated on first chat login
 			}
 
+			if ($authStore.user?._id !== createdUser._id) return;
 			toastStore.success('Registration successful!');
 			// Navigate AFTER Signal init so the chat page doesn't race with a keyless init
 			void goto('/chat');

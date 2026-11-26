@@ -100,9 +100,10 @@ async function requireReauthentication(owner: string): Promise<void> {
 async function processMessage(
 	message: Message,
 	owner: string,
-	generation: number
+	generation: number,
+	retry = false
 ): Promise<ProcessedMessage> {
-	const key = owner + ':' + message._id;
+	const key = generation + ':' + message._id;
 	const inFlight = receiving.get(key);
 	if (inFlight) return inFlight;
 	const operation = (async () => {
@@ -110,17 +111,21 @@ async function processMessage(
 		const store = getMessageStore(owner);
 		const existing = await store.getMessage(message._id);
 		assertOwner(owner, generation);
-		const meta = existing as
-			(Message & { _decryptionFailed?: boolean; _encryptedContent?: string }) | null;
+		if (retry && existing?.decryptionRecovery !== 'retry') {
+			if (!existing) throw new Error('Message is no longer available.');
+			return { message: existing, uncached: false };
+		}
+		const ciphertext = existing?._encryptedContent ?? message.content;
 		let envelope: EncryptedEnvelope | undefined;
 		try {
-			envelope = JSON.parse(meta?._encryptedContent ?? message.content);
+			envelope = JSON.parse(ciphertext);
 		} catch {
 			/* Legacy plaintext. */
 		}
 		if (
 			existing &&
-			((!meta?._decryptionFailed && !existing.content.startsWith('🔒')) || envelope?.type === 3)
+			((!existing._decryptionFailed && !existing.content.startsWith('🔒')) ||
+				(envelope?.type === 3 && !retry))
 		) {
 			const merged = mergeDelivery(existing, message);
 			if (merged.status !== existing.status || merged.read !== existing.read)
@@ -162,18 +167,28 @@ async function processMessage(
 						{ type: envelope.type, body: envelope.body },
 						owner
 					);
-					result = { ...message, content };
-				} catch (error) {
-					assertOwner(owner, generation);
 					result = {
 						...message,
-						content:
-							error instanceof SignalDecryptionError
-								? '🔒 ' + error.message
-								: '🔒 [Message could not be decrypted - encryption keys may be missing]',
+						content,
+						_decryptionFailed: false,
+						_encryptedContent: undefined,
+						decryptionRecovery: undefined
+					};
+				} catch (error) {
+					assertOwner(owner, generation);
+					const details = error instanceof SignalDecryptionError ? error : undefined;
+					const keysMissing =
+						details?.hasIdentityKey === false || details?.hasSignedPreKey === false;
+					const resend = !keysMissing && (envelope.type === 3 || details?.hasSession === false);
+					result = {
+						...message,
+						content: resend
+							? '🔒 Ask the sender to resend this message.'
+							: '🔒 Message could not be decrypted.',
 						_decryptionFailed: true,
-						_encryptedContent: meta?._encryptedContent ?? message.content
-					} as Message;
+						_encryptedContent: ciphertext,
+						decryptionRecovery: resend ? 'resend' : 'retry'
+					};
 				}
 			}
 		}
@@ -425,6 +440,23 @@ export const chatService = {
 		const fresh = processed.uncached && !receivedEvents.has(key);
 		receivedEvents.add(key);
 		return { message: processed.message, fresh };
+	},
+
+	async retryDecryption(messageId: string, owner: string): Promise<Message> {
+		const generation = ownerGeneration;
+		assertOwner(owner, generation);
+		const cached = await getMessageStore(owner).getMessage(messageId);
+		assertOwner(owner, generation);
+		if (
+			cached?.receiverId !== owner ||
+			cached.senderId === owner ||
+			cached.decryptionRecovery !== 'retry' ||
+			!cached._encryptedContent
+		)
+			throw new Error('This message cannot be retried.');
+		const { message } = await processMessage(cached, owner, generation, true);
+		assertOwner(owner, generation);
+		return message;
 	},
 
 	async prepareMessage(

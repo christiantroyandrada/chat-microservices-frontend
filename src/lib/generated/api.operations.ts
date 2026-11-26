@@ -1,6 +1,6 @@
 /**
  * AUTO-GENERATED from committed OpenAPI contracts.
- * backendCommit: d2e54a1fd1642dac4de820d714ecb12c9799fa46
+ * backendCommit: ce978961b8da6b398d3931a9ec795dfba53a8d44
  * generatorVersion: 1
  */
 
@@ -38,12 +38,12 @@ export const apiOperations = {
 	"chat.markVisibleAsRead": { operationId: "chat.markVisibleAsRead", service: "chat", method: "PUT", path: "/chat/messages/read/{senderId}/visible", responseMode: "envelope", parameters: [ { name: "senderId", in: "path", required: true, schemaType: "string" }, { name: "expectedUserId", in: "query", required: false, schemaType: "string" } ], requestSchema: "#/components/schemas/MarkVisibleAsReadRequest", successSchema: "#/components/schemas/MarkReadResponse" } as const,
 	"user.metrics": { operationId: "user.metrics", service: "user", method: "GET", path: "/user/metrics", responseMode: "raw", parameters: [  ], requestSchema: null, successSchema: null } as const,
 	"chat.metrics": { operationId: "chat.metrics", service: "chat", method: "GET", path: "/chat/metrics", responseMode: "raw", parameters: [  ], requestSchema: null, successSchema: null } as const,
-	"user.publishPrekey": { operationId: "user.publishPrekey", service: "user", method: "POST", path: "/user/prekeys", responseMode: "envelope", parameters: [  ], requestSchema: "#/components/schemas/PublishPrekeyRequest", successSchema: "#/components/schemas/StatusResponse" } as const,
+	"user.publishPrekey": { operationId: "user.publishPrekey", service: "user", method: "POST", path: "/user/prekeys", responseMode: "envelope", parameters: [ { name: "expectedUserId", in: "query", required: false, schemaType: "string" } ], requestSchema: "#/components/schemas/PublishPrekeyRequest", successSchema: "#/components/schemas/StatusResponse" } as const,
 	"user.consumePrekey": { operationId: "user.consumePrekey", service: "user", method: "GET", path: "/user/prekeys/{userId}", responseMode: "envelope", parameters: [ { name: "userId", in: "path", required: true, schemaType: "string" } ], requestSchema: null, successSchema: "#/components/schemas/ConsumedPrekeyResponse" } as const,
 	"user.register": { operationId: "user.register", service: "user", method: "POST", path: "/user/register", responseMode: "envelope", parameters: [  ], requestSchema: "#/components/schemas/RegisterRequest", successSchema: "#/components/schemas/UserResponse" } as const,
 	"user.searchUsers": { operationId: "user.searchUsers", service: "user", method: "GET", path: "/user/search", responseMode: "envelope", parameters: [ { name: "q", in: "query", required: true, schemaType: "string" } ], requestSchema: null, successSchema: "#/components/schemas/UserListResponse" } as const,
 	"chat.sendMessage": { operationId: "chat.sendMessage", service: "chat", method: "POST", path: "/chat/send", responseMode: "envelope", parameters: [  ], requestSchema: "#/components/schemas/SendMessageRequest", successSchema: "#/components/schemas/MessageResponse" } as const,
-	"user.fetchSignalKeys": { operationId: "user.fetchSignalKeys", service: "user", method: "GET", path: "/user/signal-keys", responseMode: "envelope", parameters: [ { name: "deviceId", in: "query", required: true, schemaType: "string" } ], requestSchema: null, successSchema: "#/components/schemas/SignalKeyBackupResponse" } as const,
-	"user.storeSignalKeys": { operationId: "user.storeSignalKeys", service: "user", method: "POST", path: "/user/signal-keys", responseMode: "envelope", parameters: [  ], requestSchema: "#/components/schemas/SignalKeyBackupRequest", successSchema: "#/components/schemas/StatusResponse" } as const,
+	"user.fetchSignalKeys": { operationId: "user.fetchSignalKeys", service: "user", method: "GET", path: "/user/signal-keys", responseMode: "envelope", parameters: [ { name: "deviceId", in: "query", required: true, schemaType: "string" }, { name: "expectedUserId", in: "query", required: false, schemaType: "string" } ], requestSchema: null, successSchema: "#/components/schemas/SignalKeyBackupResponse" } as const,
+	"user.storeSignalKeys": { operationId: "user.storeSignalKeys", service: "user", method: "POST", path: "/user/signal-keys", responseMode: "envelope", parameters: [ { name: "expectedUserId", in: "query", required: false, schemaType: "string" } ], requestSchema: "#/components/schemas/SignalKeyBackupRequest", successSchema: "#/components/schemas/StatusResponse" } as const,
 	"user.getById": { operationId: "user.getById", service: "user", method: "GET", path: "/user/users/{userId}", responseMode: "envelope", parameters: [ { name: "userId", in: "path", required: true, schemaType: "string" } ], requestSchema: null, successSchema: "#/components/schemas/UserResponse" } as const,
 } as const satisfies Record<string, GeneratedApiOperation>;

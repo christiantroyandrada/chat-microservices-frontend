@@ -54,18 +54,28 @@ export const userApi = {
 		return executeOperation<UserApiUser>(apiOperations['user.getById'], { userId });
 	},
 
-	storeSignalKeys(body: UserApiSignalKeyBackupRequest): Promise<ApiResponse<void>> {
-		return executeOperation<void>(apiOperations['user.storeSignalKeys'], {}, body);
+	storeSignalKeys(
+		body: UserApiSignalKeyBackupRequest,
+		expectedUserId?: string
+	): Promise<ApiResponse<void>> {
+		return executeOperation<void>(apiOperations['user.storeSignalKeys'], { expectedUserId }, body);
 	},
 
-	fetchSignalKeys(deviceId: string): Promise<ApiResponse<UserApiSignalKeyBackupRequest>> {
+	fetchSignalKeys(
+		deviceId: string,
+		expectedUserId?: string
+	): Promise<ApiResponse<UserApiSignalKeyBackupRequest>> {
 		return executeOperation<UserApiSignalKeyBackupRequest>(apiOperations['user.fetchSignalKeys'], {
-			deviceId
+			deviceId,
+			expectedUserId
 		});
 	},
 
-	publishPrekey(body: UserApiPublishPrekeyRequest): Promise<ApiResponse<void>> {
-		return executeOperation<void>(apiOperations['user.publishPrekey'], {}, body);
+	publishPrekey(
+		body: UserApiPublishPrekeyRequest,
+		expectedUserId?: string
+	): Promise<ApiResponse<void>> {
+		return executeOperation<void>(apiOperations['user.publishPrekey'], { expectedUserId }, body);
 	},
 
 	getPrekeyBundle(userId: string): Promise<ApiResponse<UserApiConsumedPrekey>> {

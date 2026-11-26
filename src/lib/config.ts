@@ -62,18 +62,18 @@ export const BACKUP_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 const LAST_BACKUP_KEY = 'chatapp_lastBackupTs';
 
 /** Record a successful backup timestamp */
-export function markBackupDone(): void {
+export function markBackupDone(userId: string, deviceId: string): void {
 	try {
-		sessionStorage.setItem(LAST_BACKUP_KEY, String(Date.now()));
+		sessionStorage.setItem(`${LAST_BACKUP_KEY}:${userId}:${deviceId}`, String(Date.now()));
 	} catch {
 		/* private/incognito — ignore */
 	}
 }
 
 /** Check whether a backup attempt should be skipped */
-export function shouldSkipBackup(): boolean {
+export function shouldSkipBackup(userId: string, deviceId: string): boolean {
 	try {
-		const ts = sessionStorage.getItem(LAST_BACKUP_KEY);
+		const ts = sessionStorage.getItem(`${LAST_BACKUP_KEY}:${userId}:${deviceId}`);
 		if (!ts) return false;
 		return Date.now() - Number(ts) < BACKUP_COOLDOWN_MS;
 	} catch {

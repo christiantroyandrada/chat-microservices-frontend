@@ -51,6 +51,7 @@
 				const { API_BASE, getOrCreateDeviceId } = await import('$lib/config');
 
 				const userId = loggedInUser._id;
+				if ($authStore.user?._id !== userId) return;
 				const deviceId = getOrCreateDeviceId();
 				const apiBase = API_BASE;
 
@@ -69,6 +70,7 @@
 				// Don't block login - keys will be generated on chat page
 			}
 
+			if ($authStore.user?._id !== loggedInUser._id) return;
 			toastStore.success('Login successful!');
 			// Navigate AFTER Signal init so the chat page doesn't race with a keyless init
 			void goto('/chat');

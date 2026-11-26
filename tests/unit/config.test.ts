@@ -118,21 +118,23 @@ describe('config', () => {
 
 	describe('backup cooldown', () => {
 		it('shouldSkipBackup returns false when no backup has been done', () => {
-			expect(shouldSkipBackup()).toBe(false);
+			expect(shouldSkipBackup('alice', 'phone')).toBe(false);
 		});
 
-		it('shouldSkipBackup returns true immediately after markBackupDone', () => {
-			markBackupDone();
-			expect(shouldSkipBackup()).toBe(true);
+		it('applies the cooldown only to the account and device that backed up', () => {
+			markBackupDone('alice', 'phone');
+			expect(shouldSkipBackup('alice', 'phone')).toBe(true);
+			expect(shouldSkipBackup('alice', 'laptop')).toBe(false);
+			expect(shouldSkipBackup('bob', 'phone')).toBe(false);
 		});
 
 		it('shouldSkipBackup returns false when cooldown has elapsed', () => {
 			// Set the timestamp to well in the past
 			sessionStorage.setItem(
-				'chatapp_lastBackupTs',
+				'chatapp_lastBackupTs:alice:phone',
 				String(Date.now() - BACKUP_COOLDOWN_MS - 1000)
 			);
-			expect(shouldSkipBackup()).toBe(false);
+			expect(shouldSkipBackup('alice', 'phone')).toBe(false);
 		});
 	});
 });

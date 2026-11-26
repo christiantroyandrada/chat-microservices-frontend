@@ -185,12 +185,15 @@ describe('authService', () => {
 
 			mockUserApi.storeSignalKeys.mockResolvedValue({ success: true });
 
-			await authService.storeSignalKeys(deviceId, encryptedBundle);
+			await authService.storeSignalKeys(deviceId, encryptedBundle, 'expected-owner');
 
-			expect(mockUserApi.storeSignalKeys).toHaveBeenCalledWith({
-				deviceId,
-				encryptedBundle
-			});
+			expect(mockUserApi.storeSignalKeys).toHaveBeenCalledWith(
+				{
+					deviceId,
+					encryptedBundle
+				},
+				'expected-owner'
+			);
 		});
 	});
 
@@ -209,9 +212,10 @@ describe('authService', () => {
 				createSuccessResponse({ deviceId, encryptedBundle })
 			);
 
-			const result = await authService.fetchSignalKeys(deviceId);
+			const result = await authService.fetchSignalKeys(deviceId, 'expected-owner');
 
 			expect(result).toEqual(encryptedBundle);
+			expect(mockUserApi.fetchSignalKeys).toHaveBeenCalledWith(deviceId, 'expected-owner');
 		});
 
 		it('should return null when no keys are stored (404)', async () => {

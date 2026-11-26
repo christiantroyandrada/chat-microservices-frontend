@@ -127,8 +127,12 @@ export const authService = {
 	 * Store encrypted Signal Protocol keys on the backend for persistence across devices/tabs
 	 * Keys are encrypted CLIENT-SIDE before transmission - server never sees plaintext keys
 	 */
-	async storeSignalKeys(deviceId: string, encryptedBundle: EncryptedKeyBundle): Promise<void> {
-		await userApi.storeSignalKeys({ deviceId, encryptedBundle });
+	async storeSignalKeys(
+		deviceId: string,
+		encryptedBundle: EncryptedKeyBundle,
+		expectedUserId?: string
+	): Promise<void> {
+		await userApi.storeSignalKeys({ deviceId, encryptedBundle }, expectedUserId);
 	},
 
 	/**
@@ -136,9 +140,12 @@ export const authService = {
 	 * Returns null if no keys are stored
 	 * Keys must be decrypted CLIENT-SIDE after retrieval
 	 */
-	async fetchSignalKeys(deviceId: string): Promise<EncryptedKeyBundle | null> {
+	async fetchSignalKeys(
+		deviceId: string,
+		expectedUserId?: string
+	): Promise<EncryptedKeyBundle | null> {
 		try {
-			const response = await userApi.fetchSignalKeys(deviceId);
+			const response = await userApi.fetchSignalKeys(deviceId, expectedUserId);
 			if (response.data == null) {
 				throw new ContractBoundaryError('user.fetchSignalKeys: data is required');
 			}

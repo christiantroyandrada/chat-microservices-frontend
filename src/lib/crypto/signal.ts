@@ -47,14 +47,27 @@ let store: IndexedDBSignalProtocolStore | null = null;
 let initialized = false;
 let currentUserId: string | null = null;
 let initializationPromise: Promise<void> | null = null;
-let restorePromise: Promise<boolean> | null = null;
+type RestoreAttempt = {
+	userId: string;
+	deviceId: string;
+	hasPassword: boolean;
+	promise: Promise<boolean>;
+};
+let activeRestore: RestoreAttempt | undefined;
+let restoredDevice: { userId: string; deviceId: string } | undefined;
+const pendingRestores = new Map<string, Promise<boolean>>();
 
 /**
  * Check whether Signal has been fully initialized for the current user.
  * Used by the chat page to skip a redundant init when the login page already ran it.
  */
-export function isSignalInitialized(): boolean {
-	return initialized && store !== null;
+export function isSignalInitialized(userId: string, deviceId: string): boolean {
+	return restoredDevice?.userId === userId && restoredDevice.deviceId === deviceId;
+}
+
+export function cancelSignalRestore() {
+	activeRestore = undefined;
+	restoredDevice = undefined;
 }
 
 // ============================================================================
@@ -72,48 +85,40 @@ export function isSignalInitialized(): boolean {
  * @throws Error if userId is not provided for first initialization
  */
 export async function initSignal(userId?: string): Promise<void> {
-	// If there's an ongoing initialization, wait for it to complete
-	if (initializationPromise !== null) {
-		logger.info('[Signal] Waiting for ongoing initialization to complete...');
-		await initializationPromise;
-		if (userId && userId !== currentUserId) {
-			// Need to re-initialize with different user
-		} else {
-			return;
+	await initializedStore(userId);
+}
+
+async function initializedStore(userId?: string): Promise<IndexedDBSignalProtocolStore> {
+	const owner = userId ?? currentUserId;
+	if (!owner) throw new Error('initSignal requires userId parameter for first initialization');
+	while (initializationPromise) {
+		const initializingOwner = currentUserId;
+		try {
+			await initializationPromise;
+		} catch (error) {
+			if (owner === initializingOwner) throw error;
 		}
 	}
 
-	// If userId is provided and different from current, reinitialize store
-	if (userId && userId !== currentUserId) {
-		logger.info(`[Signal] Switching user from ${currentUserId} to ${userId}`);
-		store = new IndexedDBSignalProtocolStore(userId);
-		currentUserId = userId;
+	if (!store || owner !== currentUserId) {
+		store = new IndexedDBSignalProtocolStore(owner);
+		currentUserId = owner;
 		initialized = false;
 	}
 
-	// If no store exists yet, we need a userId
-	if (!store) {
-		if (!userId) {
-			throw new Error('initSignal requires userId parameter for first initialization');
-		}
-		store = new IndexedDBSignalProtocolStore(userId);
-		currentUserId = userId;
+	const accountStore = store;
+	if (!initialized) {
+		initializationPromise = accountStore
+			.init()
+			.then(() => {
+				initialized = store === accountStore;
+			})
+			.finally(() => {
+				initializationPromise = null;
+			});
+		await initializationPromise;
 	}
-
-	if (initialized) return;
-
-	// Create initialization promise to prevent concurrent calls
-	initializationPromise = (async () => {
-		try {
-			await store.init();
-			initialized = true;
-			logger.info('[Signal] Initialization complete for userId:', currentUserId);
-		} finally {
-			initializationPromise = null;
-		}
-	})();
-
-	await initializationPromise;
+	return accountStore;
 }
 
 /**
@@ -158,8 +163,12 @@ export async function generateAndPublishIdentity(
 	userId: string,
 	deviceId: string
 ) {
-	await initSignal(userId);
-	return Backup.generateAndPublishIdentity(getStore(), apiBase, userId, deviceId);
+	return Backup.generateAndPublishIdentity(
+		await initializedStore(userId),
+		apiBase,
+		userId,
+		deviceId
+	);
 }
 
 // ============================================================================
@@ -170,8 +179,7 @@ export async function generateAndPublishIdentity(
  * Create a Signal Protocol session with a remote user's prekey bundle
  */
 export async function createSessionWithPrekeyBundle(prekeyBundle: unknown, currentUserId?: string) {
-	await initSignal(currentUserId);
-	return Session.createSessionWithPrekeyBundle(getStore(), prekeyBundle);
+	return Session.createSessionWithPrekeyBundle(await initializedStore(currentUserId), prekeyBundle);
 }
 
 /**
@@ -182,8 +190,7 @@ export async function encryptMessage(
 	plaintext: string,
 	currentUserId?: string
 ) {
-	await initSignal(currentUserId);
-	return Session.encryptMessage(getStore(), recipientId, plaintext);
+	return Session.encryptMessage(await initializedStore(currentUserId), recipientId, plaintext);
 }
 
 /**
@@ -194,24 +201,21 @@ export async function decryptMessage(
 	ciphertext: EncryptedMessage | string,
 	currentUserId?: string
 ) {
-	await initSignal(currentUserId);
-	return Session.decryptMessage(getStore(), senderId, ciphertext);
+	return Session.decryptMessage(await initializedStore(currentUserId), senderId, ciphertext);
 }
 
 /**
  * Check if we have an established session with a user
  */
 export async function hasSession(targetUserId: string, currentUserId?: string): Promise<boolean> {
-	await initSignal(currentUserId);
-	return Session.hasSession(getStore(), targetUserId);
+	return Session.hasSession(await initializedStore(currentUserId), targetUserId);
 }
 
 /**
  * Remove all sessions with a specific user
  */
 export async function removeSessionWith(targetUserId: string, currentUserId: string) {
-	await initSignal(currentUserId);
-	return Session.removeSessionWith(getStore(), targetUserId);
+	return Session.removeSessionWith(await initializedStore(currentUserId), targetUserId);
 }
 
 // ============================================================================
@@ -222,24 +226,21 @@ export async function removeSessionWith(targetUserId: string, currentUserId: str
  * Check if this device has encryption keys stored locally
  */
 export async function hasLocalKeys(userId?: string): Promise<boolean> {
-	await initSignal(userId);
-	return Backup.hasLocalKeys(getStore());
+	return Backup.hasLocalKeys(await initializedStore(userId));
 }
 
 /**
  * Export Signal keys (plaintext - use with caution!)
  */
 export async function exportSignalKeys(userId: string) {
-	await initSignal(userId);
-	return KeyManager.exportSignalKeys(getStore());
+	return KeyManager.exportSignalKeys(await initializedStore(userId));
 }
 
 /**
  * Import Signal keys from backend
  */
 export async function importSignalKeys(userId: string, keySet: SignalKeySet) {
-	await initSignal(userId);
-	return KeyManager.importSignalKeys(getStore(), keySet);
+	return KeyManager.importSignalKeys(await initializedStore(userId), keySet);
 }
 
 /**
@@ -250,8 +251,7 @@ export async function exportAndEncryptSignalKeys(
 	deviceId: string,
 	password: string
 ) {
-	await initSignal(userId);
-	return Backup.exportAndEncryptSignalKeys(getStore(), deviceId, password);
+	return Backup.exportAndEncryptSignalKeys(await initializedStore(userId), deviceId, password);
 }
 
 /**
@@ -262,14 +262,19 @@ export async function decryptAndImportSignalKeys(
 	encryptedBundle: EncryptedKeyBundle,
 	password: string
 ) {
-	await initSignal(userId);
-	return Backup.decryptAndImportSignalKeys(getStore(), encryptedBundle, password);
+	return Backup.decryptAndImportSignalKeys(
+		await initializedStore(userId),
+		encryptedBundle,
+		password
+	);
 }
 
 /**
  * Clear all Signal Protocol state for a user
  */
 export async function clearSignalState(userId: string) {
+	if (activeRestore?.userId === userId || restoredDevice?.userId === userId) cancelSignalRestore();
+	await pendingRestores.get(userId)?.catch(() => {});
 	if (store && currentUserId === userId) {
 		store.close();
 		store = null;
@@ -288,151 +293,83 @@ export async function initSignalWithRestore(
 	apiBase: string,
 	encryptionPassword?: string
 ): Promise<boolean> {
-	if (restorePromise !== null) {
-		logger.info('[Signal] Waiting for ongoing restore to complete...');
-		return await restorePromise;
+	const hasPassword = Boolean(encryptionPassword);
+	if (
+		activeRestore?.userId === userId &&
+		activeRestore.deviceId === deviceId &&
+		(activeRestore.hasPassword || !hasPassword)
+	) {
+		return activeRestore.promise;
 	}
 
-	logger.info('[Signal] Initializing with restore for userId:', userId);
+	// Devices for the same account use one IndexedDB database.
+	const previous = pendingRestores.get(userId);
+	const isCurrent = () => activeRestore === attempt;
+	const promise = Promise.resolve()
+		.then(async () => {
+			await previous?.catch(() => {});
+			if (!isCurrent()) return false;
+			const accountStore = await initializedStore(userId);
 
-	restorePromise = (async () => {
-		try {
-			await initSignal(userId);
-
-			logger.info('[Signal] Checking backend for authoritative encrypted keys...');
 			try {
 				const { authService } = await import('$lib/services/auth.service');
-				const encryptedBundle = await authService.fetchSignalKeys(deviceId);
-				const hasKeys = await Backup.hasLocalKeys(getStore());
+				if (!isCurrent()) return false;
+				const bundle = await authService.fetchSignalKeys(deviceId, userId);
+				if (!isCurrent()) return false;
+				const hasKeys = await Backup.hasLocalKeys(accountStore);
+				if (!isCurrent()) return false;
 
-				// Backups contain keys but no sessions. Preserve the local database on sign-in.
-				if (!hasKeys && encryptedBundle && encryptionPassword) {
-					logger.info('[Signal] Found encrypted keys on backend, decrypting and restoring...');
-
-					// Clear data in-place via the existing connection instead of
-					// deleting the entire database.  deleteDatabase fires onblocked
-					// when the connection hasn't fully closed yet, creating a data
-					// race where the deferred delete could wipe newly-imported keys.
-					await getStore().clearAllData();
-
-					await Backup.decryptAndImportSignalKeys(getStore(), encryptedBundle, encryptionPassword);
-					logger.info('[Signal] Successfully decrypted and restored keys from backend');
-
-					// Re-publish the prekey bundle so the server's public keys
-					// match the private keys we just restored.  This prevents
-					// "Bad MAC" errors caused by a stale public bundle that was
-					// overwritten during a previous password-less initialisation.
-					try {
-						await Backup.republishPrekeys(getStore(), apiBase, userId, deviceId);
-					} catch (republishErr) {
-						logger.warning('[Signal] Failed to re-publish prekeys after restore:', republishErr);
+				if (hasKeys || bundle) {
+					// A key backup has no sessions. Keep the existing database when it has local keys.
+					if (!hasKeys && bundle) {
+						if (!encryptionPassword) return false;
+						await accountStore.clearAllData();
+						if (!isCurrent()) return false;
+						await Backup.decryptAndImportSignalKeys(accountStore, bundle, encryptionPassword);
 					}
-
-					return true;
+					if (!isCurrent()) return false;
+					await Backup.republishPrekeys(accountStore, apiBase, userId, deviceId).catch((error) =>
+						logger.warning('[Signal] Failed to re-publish prekeys:', error)
+					);
+				} else {
+					await Backup.generateAndPublishIdentity(accountStore, apiBase, userId, deviceId);
 				}
 
-				// Helper: attempt a best-effort backup — 429 and transient errors are non-fatal.
-				// Checks a client-side cooldown first to avoid running expensive PBKDF2
-				// (100k iterations) only to receive a predictable 429 from the server.
-				const tryBackup = async () => {
-					if (!encryptionPassword) return;
-					if (shouldSkipBackup()) {
-						logger.info('[Signal] Skipping backup — cooldown not elapsed');
-						return;
-					}
+				if (isCurrent() && !bundle && encryptionPassword && !shouldSkipBackup(userId, deviceId)) {
 					try {
 						const encrypted = await Backup.exportAndEncryptSignalKeys(
-							getStore(),
+							accountStore,
 							deviceId,
 							encryptionPassword
 						);
-						await authService.storeSignalKeys(deviceId, encrypted);
-						markBackupDone();
-						logger.info('[Signal] Successfully backed up encrypted keys to backend');
-					} catch (backupErr) {
-						const isRateLimited =
-							backupErr instanceof Error &&
-							((backupErr as { status?: number }).status === 429 ||
-								backupErr.message.toLowerCase().includes('rate limit'));
-						if (isRateLimited) {
-							logger.warning(
-								'[Signal] Key backup rate-limited — local keys are intact, backup will retry on next session'
-							);
-						} else {
-							logger.error('[Signal] Key backup failed (non-fatal):', backupErr);
-						}
+						if (!isCurrent()) return false;
+						await authService.storeSignalKeys(deviceId, encrypted, userId);
+						markBackupDone(userId, deviceId);
+					} catch (error) {
+						logger.warning('[Signal] Key backup failed. Local keys are intact:', error);
 					}
-				};
-
-				// ── Path 2: We already have local keys in IndexedDB → use them
-				if (hasKeys) {
-					logger.info('[Signal] Found existing local keys');
-
-					// Always re-publish the public prekey bundle so the server
-					// is in sync with the private keys we hold locally.  Without
-					// this, a stale server bundle (left over from a previous key
-					// generation) causes "Bad MAC" for every incoming
-					// PreKeyWhisperMessage because the peer encrypts against
-					// public keys that no longer match our private keys.
-					try {
-						await Backup.republishPrekeys(getStore(), apiBase, userId, deviceId);
-					} catch (republishErr) {
-						logger.warning('[Signal] Failed to re-publish prekeys (non-fatal):', republishErr);
-					}
-
-					if (encryptionPassword && !encryptedBundle) {
-						logger.info('[Signal] Encrypting and backing up local keys to backend...');
-						await tryBackup();
-					} else if (!encryptionPassword) {
-						logger.warning('[Signal] No encryption password — using local keys without backup');
-					}
-					return true;
 				}
-
-				// A server-side encrypted backup exists but we have no password to
-				// decrypt it (e.g. the auth cookie is still valid but local keys were
-				// evicted, or this is a new device without re-login). Generating fresh
-				// keys here would ORPHAN that backup (losing access to all prior
-				// messages) and overwrite the server's prekey bundle. Bail out so the
-				// UI prompts re-authentication instead of silently clobbering keys.
-				if (encryptedBundle) {
-					logger.warning(
-						'[Signal] Encrypted backup exists but no password to restore it — requesting re-auth instead of generating new keys'
-					);
-					return false;
-				}
-
-				// ── Path 3: No backup and no local keys → genuinely new identity
-				logger.info('[Signal] No keys found anywhere, generating new keys...');
-				await Backup.generateAndPublishIdentity(getStore(), apiBase, userId, deviceId);
-
-				if (encryptionPassword) {
-					logger.info('[Signal] Encrypting and backing up newly generated keys to backend...');
-					await tryBackup();
-				} else {
-					logger.warning(
-						'[Signal] No encryption password provided - keys will NOT be backed up to backend'
-					);
-				}
-
 				return true;
 			} catch (error) {
 				logger.error('[Signal] Key initialization error:', error);
-
-				const hasKeys = await Backup.hasLocalKeys(getStore());
-				if (hasKeys) {
-					logger.warning('[Signal] Falling back to local keys after initialization error');
-					return true;
-				}
-
-				return false;
+				return isCurrent() && (await Backup.hasLocalKeys(accountStore));
 			}
-		} finally {
-			restorePromise = null;
-		}
-	})();
+		})
+		.then((success) => {
+			if (!isCurrent()) return false;
+			if (success) restoredDevice = { userId, deviceId };
+			return success;
+		})
+		.finally(() => {
+			if (isCurrent()) activeRestore = undefined;
+			if (pendingRestores.get(userId) === promise) pendingRestores.delete(userId);
+		});
+	const attempt: RestoreAttempt = { userId, deviceId, hasPassword, promise };
+	activeRestore = attempt;
+	restoredDevice = undefined;
+	pendingRestores.set(userId, promise);
 
-	return await restorePromise;
+	return promise;
 }
 
 // ============================================================================

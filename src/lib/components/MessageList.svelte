@@ -14,6 +14,7 @@
 		// typingUsername optionally provides a display name for the typing user
 		typingUsername = '' as string | undefined,
 		retry = undefined as ((message: Message) => void) | undefined,
+		retryDecryption = undefined as ((message: Message) => void) | undefined,
 		hasEarlier = false,
 		loadEarlier = undefined as (() => Promise<void>) | undefined,
 		readVisible = undefined as ((ids: string[]) => void) | undefined
@@ -310,7 +311,7 @@
 				data-unread-message={message.receiverId === currentUserId &&
 				message.senderId !== currentUserId &&
 				!message.read &&
-				!('_decryptionFailed' in message && message._decryptionFailed)
+				!message._decryptionFailed
 					? message._id
 					: undefined}
 			>
@@ -325,8 +326,17 @@
 						</div>
 					{/if}
 					<p class="message-content wrap-break-word whitespace-pre-wrap">
-						{message.content}
+						{message._decryptionFailed && !message.decryptionRecovery
+							? '🔒 Ask the sender to resend this message.'
+							: message.content}
 					</p>
+					{#if message.receiverId === currentUserId && message.decryptionRecovery === 'retry' && retryDecryption}
+						<button
+							type="button"
+							class="inline-flex min-h-11 items-center underline"
+							onclick={() => retryDecryption?.(message)}>Try again</button
+						>
+					{/if}
 					<div
 						class="message-time mt-1"
 						class:time-sent={message.senderId === currentUserId}

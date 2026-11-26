@@ -111,10 +111,10 @@ describe('generated API helpers', () => {
 		};
 		api.request.mockResolvedValue({ success: true, data: { userId: 'u', ...body } });
 
-		const published = await userApi.publishPrekey(body);
+		const published = await userApi.publishPrekey(body, 'user/one?');
 		const consumed = await userApi.getPrekeyBundle('user/one?');
 
-		expect(api.request).toHaveBeenCalled();
+		expect(api.request.mock.calls[0][0]).toBe('/user/prekeys?expectedUserId=user%2Fone%3F');
 		expectTypeOf(published).toEqualTypeOf<ApiResponse<void>>();
 		expectTypeOf(consumed).toEqualTypeOf<ApiResponse<UserApiConsumedPrekey>>();
 	});
@@ -133,10 +133,13 @@ describe('generated API helpers', () => {
 		};
 		api.request.mockResolvedValue({ success: true, data: body });
 
-		await userApi.storeSignalKeys(body);
-		const fetched = await userApi.fetchSignalKeys('device/one?');
+		await userApi.storeSignalKeys(body, 'user/one?');
+		const fetched = await userApi.fetchSignalKeys('device/one?', 'user/one?');
 
-		expect(api.request).toHaveBeenCalled();
+		expect(api.request.mock.calls.map(([path]) => path)).toEqual([
+			'/user/signal-keys?expectedUserId=user%2Fone%3F',
+			'/user/signal-keys?deviceId=device%2Fone%3F&expectedUserId=user%2Fone%3F'
+		]);
 		expectTypeOf(fetched).toEqualTypeOf<ApiResponse<UserApiSignalKeyBackupRequest>>();
 	});
 

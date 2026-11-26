@@ -5,6 +5,7 @@ import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { logger } from '$lib/services/dev-logger';
 import { chatService } from '$lib/services/chat.service';
+import { cancelSignalRestore } from '$lib/crypto/signal';
 
 // Extended auth state with initialization tracking
 interface ExtendedAuthState extends AuthState {
@@ -24,6 +25,7 @@ function createAuthStore() {
 	let generation = 0;
 	function startTransition() {
 		generation++;
+		cancelSignalRestore();
 		chatService.activateOwner(null);
 		set({ ...initialState, loading: true });
 		return generation;

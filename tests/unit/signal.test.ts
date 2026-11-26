@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import type { MockedFunction } from 'vitest';
 
 // We'll mock dependent modules before importing the signal module so that
@@ -94,8 +94,39 @@ beforeEach(async () => {
 	// re-import module under test so it picks up fresh mocks
 	Signal = await import('$lib/crypto/signal');
 });
+afterEach(resetAuthMock);
 
 describe('signal module facade', () => {
+	it('ignores a late restore when the account changes during the backup fetch', async () => {
+		const backup = await import('$lib/crypto/signalBackup');
+		vi.mocked(backup.hasLocalKeys).mockResolvedValueOnce(true);
+		let finishFirst!: (value: Awaited<ReturnType<typeof authService.fetchSignalKeys>>) => void;
+		const firstResponse = new Promise<Awaited<ReturnType<typeof authService.fetchSignalKeys>>>(
+			(resolve) => {
+				finishFirst = resolve;
+			}
+		);
+		vi.mocked(authService.fetchSignalKeys)
+			.mockReturnValueOnce(firstResponse)
+			.mockResolvedValue(null);
+		const alice = Signal.initSignalWithRestore('alice', 'shared-device', 'api', 'alice-password');
+		await vi.waitFor(() => expect(authService.fetchSignalKeys).toHaveBeenCalledTimes(1));
+		const bob = Signal.initSignalWithRestore('bob', 'shared-device', 'api');
+		finishFirst(null);
+		await expect(alice).resolves.toBe(false);
+		await expect(bob).resolves.toBe(true);
+		expect(Signal.isSignalInitialized('bob', 'shared-device')).toBe(true);
+		expect(Signal.isSignalInitialized('bob', 'another-device')).toBe(false);
+		expect(Signal.isSignalInitialized('alice', 'shared-device')).toBe(false);
+		expect(backup.republishPrekeys).toHaveBeenCalledExactlyOnceWith(
+			fakeStoreInstances.at(-1),
+			'api',
+			'bob',
+			'shared-device'
+		);
+		expect(authService.storeSignalKeys).not.toHaveBeenCalled();
+	});
+
 	it('initSignal throws when called without userId first', async () => {
 		await expect(Signal.initSignal()).rejects.toThrow(/requires userId/);
 	});

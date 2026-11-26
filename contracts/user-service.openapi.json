@@ -322,6 +322,15 @@
 				"summary": "Publish prekey bundle",
 				"description": "Upload a Signal Protocol prekey bundle for the authenticated user.",
 				"security": [{ "cookieAuth": [] }],
+				"parameters": [
+					{
+						"name": "expectedUserId",
+						"in": "query",
+						"required": false,
+						"schema": { "type": "string", "minLength": 1 },
+						"description": "If specified, the ID must match the authenticated account."
+					}
+				],
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -337,7 +346,9 @@
 							"application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
 						}
 					},
-					"401": { "description": "Authentication required" }
+					"400": { "description": "Invalid request parameters" },
+					"401": { "description": "Authentication required" },
+					"403": { "description": "The authenticated account does not match the expected account" }
 				}
 			}
 		},
@@ -376,6 +387,15 @@
 				"tags": ["E2EE"],
 				"summary": "Store complete Signal key set",
 				"security": [{ "cookieAuth": [] }],
+				"parameters": [
+					{
+						"name": "expectedUserId",
+						"in": "query",
+						"required": false,
+						"schema": { "type": "string", "minLength": 1 },
+						"description": "If specified, the ID must match the authenticated account."
+					}
+				],
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -391,7 +411,9 @@
 							"application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
 						}
 					},
-					"401": { "description": "Authentication required" }
+					"400": { "description": "Invalid request parameters" },
+					"401": { "description": "Authentication required" },
+					"403": { "description": "The authenticated account does not match the expected account" }
 				}
 			},
 			"get": {
@@ -401,7 +423,14 @@
 				"summary": "Retrieve stored Signal key set",
 				"security": [{ "cookieAuth": [] }],
 				"parameters": [
-					{ "name": "deviceId", "in": "query", "required": true, "schema": { "type": "string" } }
+					{ "name": "deviceId", "in": "query", "required": true, "schema": { "type": "string" } },
+					{
+						"name": "expectedUserId",
+						"in": "query",
+						"required": false,
+						"schema": { "type": "string", "minLength": 1 },
+						"description": "If specified, the ID must match the authenticated account."
+					}
 				],
 				"responses": {
 					"200": {
@@ -412,7 +441,9 @@
 							}
 						}
 					},
+					"400": { "description": "Invalid request parameters" },
 					"401": { "description": "Authentication required" },
+					"403": { "description": "The authenticated account does not match the expected account" },
 					"404": {
 						"description": "No keys found",
 						"content": {

@@ -49,11 +49,17 @@ vi.mock('$lib/services/dev-logger', () => ({
 class MockSignalDecryptionError extends Error {
 	constructor(
 		message: string,
-		public details?: unknown
+		details: { hasIdentityKey: boolean; hasSignedPreKey: boolean; hasSession: boolean }
 	) {
 		super(message);
 		this.name = 'SignalDecryptionError';
+		this.hasIdentityKey = details.hasIdentityKey;
+		this.hasSignedPreKey = details.hasSignedPreKey;
+		this.hasSession = details.hasSession;
 	}
+	readonly hasIdentityKey: boolean;
+	readonly hasSignedPreKey: boolean;
+	readonly hasSession: boolean;
 }
 
 // Mock Signal Protocol
@@ -264,6 +270,50 @@ describe('chatService', () => {
 			// decryptMessage must NOT be called — server content is type-3
 			expect(signal.decryptMessage).not.toHaveBeenCalled();
 			expect(result[0]).toMatchObject({ ...cachedFailedMsg, status: 'read', read: true });
+		});
+
+		it('recovers an early prekey failure after the recipient restores local keys', async () => {
+			mockMessageStore.getMessage.mockResolvedValue(null);
+			const content = JSON.stringify({ __encrypted: true, type: 3, body: 'QUJDREVG' });
+			const incoming = { ...testMessages[0], senderId: userId, receiverId: currentUserId, content };
+			const signal = await import('$lib/crypto/signal');
+			vi.mocked(signal.decryptMessage)
+				.mockRejectedValueOnce(
+					new MockSignalDecryptionError('Missing keys', {
+						hasIdentityKey: false,
+						hasSignedPreKey: false,
+						hasSession: false
+					})
+				)
+				.mockResolvedValueOnce('Recovered message');
+
+			const { message: failed } = await chatService.receiveMessage(incoming, currentUserId);
+			expect(failed).toMatchObject({ decryptionRecovery: 'retry', _encryptedContent: content });
+			mockMessageStore.getMessage.mockResolvedValue(failed);
+			const recovered = await chatService.retryDecryption(failed._id, currentUserId);
+
+			expect(recovered.content).toBe('Recovered message');
+			expect(recovered._decryptionFailed).toBe(false);
+			expect(recovered._encryptedContent).toBeUndefined();
+			expect(mockMessageStore.saveMessage).toHaveBeenLastCalledWith(recovered);
+		});
+
+		it('asks for a resend when a session message has no session', async () => {
+			mockMessageStore.getMessage.mockResolvedValue(null);
+			const content = JSON.stringify({ __encrypted: true, type: 1, body: 'QUJDREVG' });
+			const incoming = { ...testMessages[0], senderId: userId, receiverId: currentUserId, content };
+			const signal = await import('$lib/crypto/signal');
+			vi.mocked(signal.decryptMessage).mockRejectedValueOnce(
+				new MockSignalDecryptionError('Missing session', {
+					hasIdentityKey: true,
+					hasSignedPreKey: true,
+					hasSession: false
+				})
+			);
+
+			const { message } = await chatService.receiveMessage(incoming, currentUserId);
+			expect(message.decryptionRecovery).toBe('resend');
+			expect(message.content).toContain('Ask the sender to resend');
 		});
 
 		it('should retry cached WhisperMessage (type 1) decryption failure', async () => {

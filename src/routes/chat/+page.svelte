@@ -10,7 +10,7 @@
 	import { mergeMessages } from '$lib/services/message-merge';
 	import { connectGoWebSocket } from '$lib/services/go-websocket';
 	import { sanitizeMessage } from '$lib/utils';
-	import { initSignalWithRestore, isSignalInitialized } from '$lib/crypto/signal';
+	import { hasLocalKeys, initSignalWithRestore, isSignalInitialized } from '$lib/crypto/signal';
 	import { logger } from '$lib/services/dev-logger';
 	import { API_BASE, getOrCreateDeviceId } from '$lib/config';
 	import type { ChatConversation, Message, MessageListHandle } from '$lib/types';
@@ -89,14 +89,10 @@
 	});
 
 	async function initializeAccount(owner: string, generation: number) {
-		if (!isSignalInitialized()) {
+		const deviceId = getOrCreateDeviceId();
+		if (!isSignalInitialized(owner, deviceId)) {
 			try {
-				const success = await initSignalWithRestore(
-					owner,
-					getOrCreateDeviceId(),
-					API_BASE,
-					undefined
-				);
+				const success = await initSignalWithRestore(owner, deviceId, API_BASE, undefined);
 				if (!owns(owner, generation)) return;
 				if (!success)
 					toastStore.warning('Encryption keys not found. Please log out and log in again.');
@@ -258,6 +254,7 @@
 					!reading.has(message._id) &&
 					message.senderId === peer &&
 					message.receiverId === owner &&
+					!message._decryptionFailed &&
 					!message.read
 			)
 			.slice(0, 50);
@@ -388,6 +385,37 @@
 			row._id === message._id ? { ...row, sendState: 'pending' } : row
 		);
 		void transmitMessage(message, $user._id, accountGeneration, conversationGeneration);
+	}
+
+	async function retryDecryption(message: Message) {
+		const owner = $user?._id;
+		if (!owner || message.receiverId !== owner || message.decryptionRecovery !== 'retry') return;
+		const generation = accountGeneration;
+		const selection = conversationGeneration;
+		const deviceId = getOrCreateDeviceId();
+		try {
+			const ready = isSignalInitialized(owner, deviceId) && (await hasLocalKeys(owner));
+			if (!owns(owner, generation) || selection !== conversationGeneration) return;
+			if (!ready) {
+				const restored = await initSignalWithRestore(owner, deviceId, API_BASE);
+				if (!owns(owner, generation) || selection !== conversationGeneration) return;
+				if (!restored) {
+					toastStore.warning('Sign out and sign in again to restore your encryption keys.');
+					return;
+				}
+			}
+			const recovered = await chatService.retryDecryption(message._id, owner);
+			if (owns(owner, generation) && selection === conversationGeneration) {
+				messages = mergeMessages(messages, [recovered]);
+				if (recovered.decryptionRecovery === 'retry')
+					toastStore.warning(
+						'Message could not be decrypted. Try again after restoring your keys.'
+					);
+			}
+		} catch (error) {
+			if (owns(owner, generation) && selection === conversationGeneration)
+				toastStore.error(error instanceof Error ? error.message : 'Failed to retry decryption');
+		}
 	}
 
 	async function handleIncomingMessage(incoming: Message) {
@@ -619,6 +647,7 @@
 					{typingUsers}
 					typingUsername={selectedConversation.username}
 					retry={retryMessage}
+					{retryDecryption}
 					{hasEarlier}
 					{loadEarlier}
 					{readVisible}

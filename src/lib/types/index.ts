@@ -48,6 +48,9 @@ export interface Message {
 	sendError?: string;
 	pendingNotification?: boolean;
 	recipientUsername?: string;
+	decryptionRecovery?: 'retry' | 'resend';
+	_decryptionFailed?: boolean;
+	_encryptedContent?: string;
 }
 
 // Used by: chat/+page.svelte, MessageInput.svelte

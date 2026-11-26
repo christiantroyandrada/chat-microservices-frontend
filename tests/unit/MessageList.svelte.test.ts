@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { MockedFunction } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent } from '@testing-library/svelte';
 
 import MessageList from '$lib/components/MessageList.svelte';
 
@@ -12,6 +12,27 @@ vi.mock('$lib/services/dev-logger', () => ({
 describe('MessageList component', () => {
 	beforeEach(() => vi.clearAllMocks());
 	afterEach(() => cleanup());
+
+	it('offers a retry only for the message that can be recovered', async () => {
+		const retryDecryption = vi.fn();
+		const retryable = {
+			_id: 'retry',
+			senderId: 'peer',
+			receiverId: 'me',
+			timestamp: new Date().toISOString(),
+			_decryptionFailed: true,
+			decryptionRecovery: 'retry' as const,
+			content: 'Message could not be decrypted.'
+		};
+		render(MessageList, {
+			currentUserId: 'me',
+			retryDecryption,
+			messages: [retryable, { ...retryable, _id: 'old', decryptionRecovery: undefined }]
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+		expect(retryDecryption).toHaveBeenCalledExactlyOnceWith(retryable);
+		expect(screen.getByText(/ask the sender to resend/i)).toBeTruthy();
+	});
 
 	it('renders messages and calls scroll when scrollTo is available via exported helper', async () => {
 		const today = new Date();
