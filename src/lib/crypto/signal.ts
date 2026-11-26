@@ -91,7 +91,7 @@ export async function initSignal(userId?: string): Promise<void> {
 async function initializedStore(userId?: string): Promise<IndexedDBSignalProtocolStore> {
 	const owner = userId ?? currentUserId;
 	if (!owner) throw new Error('initSignal requires userId parameter for first initialization');
-	while (initializationPromise) {
+	while (initializationPromise !== null) {
 		const initializingOwner = currentUserId;
 		try {
 			await initializationPromise;

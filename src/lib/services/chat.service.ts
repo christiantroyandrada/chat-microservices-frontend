@@ -105,7 +105,7 @@ async function processMessage(
 ): Promise<ProcessedMessage> {
 	const key = generation + ':' + message._id;
 	const inFlight = receiving.get(key);
-	if (inFlight) return inFlight;
+	if (inFlight !== undefined) return inFlight;
 	const operation = (async () => {
 		assertOwner(owner, generation);
 		const store = getMessageStore(owner);
@@ -211,7 +211,7 @@ async function clearLegacyNotification(
 ): Promise<void> {
 	const key = owner + ':' + message._id;
 	const existing = clearingNotifications.get(key);
-	if (existing) return existing;
+	if (existing !== undefined) return existing;
 	const operation = (async () => {
 		if (!message.pendingNotification) return;
 		const store = getMessageStore(owner);
@@ -514,7 +514,7 @@ export const chatService = {
 		const generation = ownerGeneration;
 		const key = owner + ':' + clientMessageId;
 		const existing = sending.get(key);
-		if (existing) return existing;
+		if (existing !== undefined) return existing;
 		const operation = (async () => {
 			assertOwner(owner, generation);
 			const store = getMessageStore(owner);
