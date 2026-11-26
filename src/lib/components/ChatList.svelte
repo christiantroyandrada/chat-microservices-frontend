@@ -213,7 +213,11 @@
 				</p>
 			</div>
 		{:else}
-			<ul class="conversations-list divide-y" role="list" aria-label="Conversations">
+			<ul
+				class="conversations-list divide-y divide-(--border-subtle)"
+				role="list"
+				aria-label="Conversations"
+			>
 				{#each conversations as conversation (conversation.userId)}
 					<li class="conversation-item" role="listitem">
 						<button
