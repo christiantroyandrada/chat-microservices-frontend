@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import type { Message, User } from '$lib/types';
 
 const mocks = vi.hoisted(() => ({
@@ -194,7 +194,8 @@ describe('chat durable send UI', () => {
 				status: 'NotDelivered'
 			}
 		});
-		await waitFor(() => expect(rendered.getByText('Message 61')).toBeTruthy());
+		const thread = within(rendered.getByRole('region', { name: 'Conversation thread' }));
+		expect(await thread.findByText('Message 61')).toBeTruthy();
 		expect(mocks.historyPage).toHaveBeenCalledWith('bob', 50, 0, 'alice', {
 			afterMessageId: 'message-0'
 		});
@@ -260,10 +261,11 @@ describe('chat durable send UI', () => {
 		const input = view.getByLabelText('Message input') as HTMLTextAreaElement;
 		await fireEvent.input(input, { target: { value: 'durable text' } });
 		await fireEvent.click(view.getByLabelText('Seal and send message'));
-		await waitFor(() => expect(view.getByRole('status').textContent).toBe('Pending'));
+		const thread = within(view.getByRole('region', { name: 'Conversation thread' }));
+		await waitFor(() => expect(thread.getByRole('status').textContent).toBe('Pending'));
 		expect(input.value).toBe('');
 		request.resolve({ ...pending, sendState: 'failed', sendError: 'Try again.' });
-		await waitFor(() => expect(view.getByRole('status').textContent).toBe('Failed'));
+		await waitFor(() => expect(thread.getByRole('status').textContent).toBe('Failed'));
 		mocks.retry.mockResolvedValueOnce({
 			...pending,
 			_id: 'server-id',
@@ -385,8 +387,10 @@ describe('chat durable send UI', () => {
 		await fireEvent.click(view.getByLabelText('Back to conversations'));
 		await fireEvent.click(view.getByText('Carol'));
 		request.resolve({ ...pending, _id: 'server-id', sendState: 'accepted' });
-		await waitFor(() => expect(view.getByText('Carol')).toBeTruthy());
-		expect(view.queryByText('durable text')).toBeNull();
+		await request.promise;
+		const thread = within(view.getByRole('region', { name: 'Conversation thread' }));
+		expect(thread.getByRole('heading', { name: 'Carol' })).toBeTruthy();
+		expect(thread.queryByText('durable text')).toBeNull();
 	});
 	it('preserves a draft when durable preparation fails', async () => {
 		mocks.prepare.mockRejectedValueOnce(new Error('Storage unavailable'));
@@ -445,8 +449,10 @@ describe('chat durable send UI', () => {
 		mocks.history.mockResolvedValue([]);
 		await fireEvent.click(view.getByText('Carol'));
 		history.resolve([pending]);
-		await waitFor(() => expect(view.getByText('Carol')).toBeTruthy());
-		expect(view.queryByText('durable text')).toBeNull();
+		await history.promise;
+		const thread = within(view.getByRole('region', { name: 'Conversation thread' }));
+		expect(thread.getByRole('heading', { name: 'Carol' })).toBeTruthy();
+		expect(thread.queryByText('durable text')).toBeNull();
 	});
 
 	it('drops incoming completion after logout', async () => {

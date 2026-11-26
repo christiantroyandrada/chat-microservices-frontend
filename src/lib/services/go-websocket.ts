@@ -7,12 +7,14 @@ export function connectGoWebSocket(
 		onMessage,
 		onReceipt,
 		onReady,
+		onDisconnect,
 		onTyping,
 		onPresence
 	}: {
 		onMessage: (message: Message) => void;
 		onReceipt: (peerId: string) => void;
 		onReady: () => void;
+		onDisconnect: () => void;
 		onTyping: (peerId: string, isTyping: boolean) => void;
 		onPresence: (peerId: string, online: boolean | null) => void;
 	}
@@ -106,6 +108,7 @@ export function connectGoWebSocket(
 		connection.addEventListener('close', () => {
 			if (stopped || socket !== connection) return;
 			ready = false;
+			onDisconnect();
 			if (watchedPeer) onPresence(watchedPeer, null);
 			clearTimeout(handshakeTimer);
 			reconnectTimer = setTimeout(connect, delay + Math.random() * 250);

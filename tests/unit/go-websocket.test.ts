@@ -28,6 +28,7 @@ const connections: ReturnType<typeof connectGoWebSocket>[] = [];
 function connect() {
 	const callbacks = {
 		onReady: vi.fn(),
+		onDisconnect: vi.fn(),
 		onMessage: vi.fn(),
 		onReceipt: vi.fn(),
 		onPresence: vi.fn(),
@@ -117,10 +118,11 @@ describe('Go WebSocket boundary', () => {
 	});
 
 	it('closes a stalled handshake and backs off reconnects without retaining old callbacks', () => {
-		const { socket, client, onReady, onPresence } = connect();
+		const { socket, client, onReady, onPresence, onDisconnect } = connect();
 		client.watchPresence('bob');
 		vi.advanceTimersByTime(5000);
 		expect(socket.readyState).toBe(3);
+		expect(onDisconnect).toHaveBeenCalledTimes(1);
 		expect(onPresence).toHaveBeenCalledWith('bob', null);
 		vi.advanceTimersByTime(1000);
 		const second = FixtureSocket.instances[1];
@@ -138,6 +140,7 @@ describe('Go WebSocket boundary', () => {
 		vi.advanceTimersByTime(1);
 		expect(FixtureSocket.instances).toHaveLength(4);
 		client.disconnect();
+		expect(onDisconnect).toHaveBeenCalledTimes(3);
 		client.watchPresence('carol');
 		client.refreshPresence();
 		expect(client.sendTyping('bob', true)).toBeUndefined();

@@ -85,14 +85,31 @@ test.describe('Authenticated chat', () => {
 		await expect(page.getByRole('button', { name: 'E2E Search User' })).toBeVisible();
 	});
 
+	test('keeps conversations beside the open thread on a wide screen', async ({ page }) => {
+		await page.setViewportSize({ width: 1280, height: 800 });
+		const conversations = page.getByRole('list', { name: 'Conversations' });
+		await conversations.getByRole('button', { name: /^Chat with E2E Contact One/ }).click();
+		const thread = page.getByRole('region', { name: 'Conversation thread' });
+		await expect(thread.getByRole('heading', { name: 'E2E Contact One' })).toBeVisible();
+		const draft = thread.getByRole('textbox', { name: 'Message input' });
+		await draft.fill('A draft for the first contact');
+
+		await conversations.getByRole('button', { name: 'Chat with E2E Contact Two' }).click();
+		await expect(thread.getByRole('heading', { name: 'E2E Contact Two' })).toBeVisible();
+		await expect(draft).toHaveValue('');
+		await expect(conversations).toBeVisible();
+	});
+
 	test('keeps the unread count when an opened conversation has no visible messages', async ({
 		page
 	}) => {
+		await page.setViewportSize({ width: 390, height: 844 });
 		const unreadConversation = page.getByRole('button', {
 			name: 'Chat with E2E Contact One, 2 unread messages'
 		});
 		await unreadConversation.click();
 
+		await expect(page.getByRole('list', { name: 'Conversations' })).toBeHidden();
 		await expect(page.getByRole('heading', { name: 'E2E Contact One' })).toBeVisible();
 		await expect(page.getByText('No letters here yet')).toBeVisible();
 		await page.getByRole('button', { name: 'Back to conversations' }).click();

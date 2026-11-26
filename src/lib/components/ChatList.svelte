@@ -203,7 +203,7 @@
 
 	<!-- Conversations List -->
 	<div class="flex-1 overflow-y-auto">
-		{#if loading}
+		{#if loading && !conversations.length}
 			<div class="loading-state p-4 text-center">Gathering your correspondence…</div>
 		{:else if conversations.length === 0}
 			<div class="empty-state mx-auto grid max-w-sm gap-2 px-6 py-12 text-center">

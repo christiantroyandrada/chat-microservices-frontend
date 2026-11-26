@@ -14,6 +14,7 @@
 	// Reactive state (runes)
 	let message = $state('');
 	let preparing = $state(false);
+	let destroyed = false;
 	let textarea: HTMLTextAreaElement;
 	let wrapper: HTMLDivElement;
 
@@ -44,6 +45,8 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
+		// WebKit can report the composition-confirming Enter with isComposing false.
+		if (event.isComposing || event.keyCode === 229) return;
 		if (event.key === 'Enter' && !event.shiftKey) {
 			event.preventDefault();
 			handleSend();
@@ -69,7 +72,7 @@
 		const draft = message;
 		preparing = true;
 		try {
-			if ((await send(trimmedMessage)) === false) return;
+			if ((await send(trimmedMessage)) === false || destroyed) return;
 			if (message === draft) message = '';
 		} catch {
 			return;
@@ -122,6 +125,7 @@
 	});
 
 	onDestroy(() => {
+		destroyed = true;
 		clearTimeout(typingTimeout);
 		if (_ro) _ro.disconnect();
 		window.removeEventListener('resize', updateChatInputHeight);

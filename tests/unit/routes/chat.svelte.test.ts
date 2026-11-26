@@ -82,6 +82,32 @@ describe('chat page', () => {
 		});
 	});
 
+	it('shows connection progress and ignores catch-up from a closed socket', async () => {
+		const { connectGoWebSocket } = await import('$lib/services/go-websocket');
+		const { chatService } = await import('$lib/services/chat.service');
+		vi.mocked(connectGoWebSocket).mockClear();
+		render(ChatPage);
+		const status = screen.getByRole('status', { name: 'Chat connection' });
+		expect(status.textContent).toContain('Connecting');
+		await waitFor(() => expect(connectGoWebSocket).toHaveBeenCalledTimes(1));
+		const callbacks = vi.mocked(connectGoWebSocket).mock.calls[0][1];
+		let finishCatchUp!: (conversations: []) => void;
+		vi.mocked(chatService.getConversations).mockReturnValueOnce(
+			new Promise((resolve) => {
+				finishCatchUp = resolve;
+			})
+		);
+
+		const firstCatchUp = callbacks.onReady();
+		await waitFor(() => expect(status.textContent).toContain('Catching up'));
+		callbacks.onDisconnect();
+		finishCatchUp([]);
+		await firstCatchUp;
+		await waitFor(() => expect(status.textContent).toContain('Reconnecting'));
+		callbacks.onReady();
+		await waitFor(() => expect(status.textContent).toContain('Connected'));
+	});
+
 	it('initializes Signal Protocol on mount', async () => {
 		render(ChatPage);
 		const { initSignalWithRestore } = await import('$lib/crypto/signal');

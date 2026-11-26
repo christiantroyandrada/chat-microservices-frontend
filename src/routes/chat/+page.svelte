@@ -39,6 +39,10 @@
 	const reading = new Set<string>();
 	let unsubscribeOwner: (() => void) | undefined;
 	let goSocket = $state.raw<ReturnType<typeof connectGoWebSocket>>();
+	let connectionStatus = $state<'Connecting…' | 'Reconnecting…' | 'Catching up…' | 'Connected'>(
+		'Connecting…'
+	);
+	let connectionGeneration = 0;
 	let goPresence = $state<{ peerId: string; online: boolean } | null>(null);
 	const presencePeer = $derived.by(() => selectedConversation?.userId);
 
@@ -72,6 +76,7 @@
 			typingUsers = new Set();
 			hasPreloadedMessages = false;
 			clearSocket();
+			connectionStatus = 'Connecting…';
 			if (owner) void initializeAccount(owner, accountGeneration);
 		});
 		if (!$user)
@@ -112,10 +117,19 @@
 					);
 				}
 			},
-			onReady: () => {
+			onReady: async () => {
 				if (!owns(owner, generation)) return;
+				const connection = ++connectionGeneration;
+				connectionStatus = 'Catching up…';
 				void chatService.flushNotifications(owner).catch(() => {});
-				void catchUp(owner, generation);
+				await catchUp(owner, generation);
+				if (owns(owner, generation) && connection === connectionGeneration)
+					connectionStatus = 'Connected';
+			},
+			onDisconnect: () => {
+				if (!owns(owner, generation)) return;
+				connectionGeneration++;
+				connectionStatus = 'Reconnecting…';
 			},
 			onPresence: (peerId, online) => {
 				if (owns(owner, generation) && selectedConversation?.userId === peerId) {
@@ -301,7 +315,8 @@
 	async function selectConversation(userId: string) {
 		const conversation = conversations.find((c) => c.userId === userId);
 		const owner = $user?._id;
-		if (!conversation || !owner) return;
+		if (!conversation || !owner || selectedConversation?.userId === userId) return;
+		handleTyping(false);
 		const generation = accountGeneration;
 		const selection = ++conversationGeneration;
 		selectedConversation = conversation;
@@ -512,20 +527,31 @@
 <div class="flex h-dvh flex-col" style="background: var(--bg-primary);">
 	<!-- Modern Top Navigation with Glass Effect -->
 	<nav class="glass-strong border-b" style="border-color: var(--border-subtle);">
-		<div class="flex items-center justify-between px-6 py-4">
-			<div class="flex items-center gap-4">
-				<!-- Mobile: conversations are shown as the default initial view (no sidebar toggle) -->
-				<div class="flex items-center gap-3">
-					<Seal size={40} />
-					<div>
-						<h1
-							class="text-lg font-semibold"
-							style="color: var(--text-primary); font-family: var(--font-serif);"
-						>
-							Secret
-						</h1>
-						<p class="text-xs" style="color: var(--text-tertiary);">Sealed end-to-end</p>
-					</div>
+		<div class="flex items-center justify-between gap-2 px-3 py-3 sm:px-6 sm:py-4">
+			<div class="flex items-center gap-3">
+				<div class="hidden min-[380px]:block"><Seal size={40} /></div>
+				<div>
+					<h1
+						class="text-lg font-semibold"
+						style="color: var(--text-primary); font-family: var(--font-serif);"
+					>
+						Secret
+					</h1>
+					<p
+						role="status"
+						aria-label="Chat connection"
+						class="flex items-center gap-1.5 text-xs whitespace-nowrap"
+						style="color: var(--text-secondary);"
+					>
+						<span
+							aria-hidden="true"
+							class="size-1.5 shrink-0 rounded-full"
+							style:background={connectionStatus === 'Connected'
+								? 'var(--color-success)'
+								: 'var(--text-tertiary)'}
+						></span>
+						{connectionStatus}
+					</p>
 				</div>
 			</div>
 
@@ -603,13 +629,10 @@
 				</button>
 
 				<!-- User Menu with modern styling -->
-				<div class="ml-2 flex items-center gap-3">
-					<div class="hidden flex-col items-end sm:flex">
-						<span class="text-sm font-medium" style="color: var(--text-primary);"
-							>{$user?.username || 'User'}</span
-						>
-						<span class="text-xs" style="color: var(--text-tertiary);">Online</span>
-					</div>
+				<div class="flex items-center gap-3 sm:ml-2">
+					<span class="hidden text-sm font-medium sm:block" style="color: var(--text-primary);"
+						>{$user?.username || 'User'}</span
+					>
 					<button
 						onclick={handleLogout}
 						class="hover-lift inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200"
@@ -623,11 +646,23 @@
 		</div>
 	</nav>
 
-	<!-- Main Chat Interface with Modern Design (sidebar removed) -->
-	<div class="flex flex-1 overflow-hidden">
-		<!-- Primary area: conversation list is the default initial view (full-width). On select, show chat thread. -->
-		<div class="flex flex-1 flex-col" style="background: var(--bg-primary);">
-			{#if selectedConversation}
+	<div class="flex min-h-0 flex-1 overflow-hidden">
+		<aside
+			aria-label="Conversation list"
+			class="relative w-full min-w-0 lg:block lg:w-[clamp(20rem,28vw,24rem)] lg:shrink-0"
+			class:hidden={selectedConversation !== null}
+		>
+			<ChatList
+				{conversations}
+				selectedUserId={selectedConversation?.userId ?? null}
+				currentUserId={$user?._id ?? null}
+				loading={loading.conversations}
+				onSelect={selectConversation}
+				onCreate={createConversation}
+			/>
+		</aside>
+		{#if selectedConversation}
+			<section class="flex min-w-0 flex-1 flex-col" aria-label="Conversation thread">
 				<ChatHeader
 					recipient={selectedConversation}
 					presence={goSocket
@@ -652,23 +687,20 @@
 					{loadEarlier}
 					{readVisible}
 				/>
-				<MessageInput send={sendMessage} typing={handleTyping} disabled={!$user} />
-			{:else}
-				<!-- Conversation list (full-width) as the default first interaction screen -->
-				<div class="w-full flex-1">
-					<ChatList
-						{conversations}
-						selectedUserId={selectedConversation
-							? (selectedConversation as ChatConversation).userId
-							: null}
-						currentUserId={$user?._id || null}
-						loading={loading.conversations}
-						onSelect={selectConversation}
-						onCreate={createConversation}
-					/>
-				</div>
-			{/if}
-		</div>
+				{#key selectedConversation.userId}
+					<MessageInput send={sendMessage} typing={handleTyping} disabled={!$user} />
+				{/key}
+			</section>
+		{:else}
+			<div
+				class="hidden flex-1 place-items-center lg:grid"
+				style="background: var(--bg-secondary); color: var(--text-secondary);"
+			>
+				{#if conversations.length}
+					<p class="text-sm">Choose a conversation</p>
+				{/if}
+			</div>
+		{/if}
 	</div>
 </div>
 

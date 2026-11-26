@@ -12,6 +12,23 @@ vi.mock('$lib/services/dev-logger', () => ({
 }));
 
 describe('MessageInput component (typing debounce)', () => {
+	it.each([{ isComposing: true }, { keyCode: 229 }])(
+		'keeps the draft when Enter confirms composition (%o)',
+		async (composition) => {
+			const send = vi.fn();
+			const view = render(MessageInput, { send });
+			const input = view.getByRole('textbox', { name: 'Message input' }) as HTMLTextAreaElement;
+			await fireEvent.input(input, { target: { value: 'こんにちは' } });
+
+			await fireEvent.keyDown(input, { key: 'Enter', ...composition });
+			expect(send).not.toHaveBeenCalled();
+			expect(input.value).toBe('こんにちは');
+
+			await fireEvent.keyDown(input, { key: 'Enter' });
+			expect(send).toHaveBeenCalledExactlyOnceWith('こんにちは');
+		}
+	);
+
 	it('preserves the draft until preparation commits and after a preparation failure', async () => {
 		let finish!: (saved: boolean) => void;
 		const send = vi.fn(
