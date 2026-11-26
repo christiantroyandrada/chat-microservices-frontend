@@ -98,11 +98,11 @@ describe('chat page', () => {
 			})
 		);
 
-		const firstCatchUp = callbacks.onReady();
+		callbacks.onReady();
 		await waitFor(() => expect(status.textContent).toContain('Catching up'));
 		callbacks.onDisconnect();
 		finishCatchUp([]);
-		await firstCatchUp;
+		await new Promise((resolve) => setTimeout(resolve, 0));
 		await waitFor(() => expect(status.textContent).toContain('Reconnecting'));
 		callbacks.onReady();
 		await waitFor(() => expect(status.textContent).toContain('Connected'));

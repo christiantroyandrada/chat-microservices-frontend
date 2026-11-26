@@ -117,14 +117,12 @@
 					);
 				}
 			},
-			onReady: async () => {
+			onReady: () => {
 				if (!owns(owner, generation)) return;
 				const connection = ++connectionGeneration;
 				connectionStatus = 'Catching up…';
 				void chatService.flushNotifications(owner).catch(() => {});
-				await catchUp(owner, generation);
-				if (owns(owner, generation) && connection === connectionGeneration)
-					connectionStatus = 'Connected';
+				void catchUp(owner, generation, connection);
 			},
 			onDisconnect: () => {
 				if (!owns(owner, generation)) return;
@@ -297,7 +295,7 @@
 		}
 	}
 
-	async function catchUp(owner: string, generation: number) {
+	async function catchUp(owner: string, generation: number, connection: number) {
 		if (!owns(owner, generation)) return;
 		const userId = selectedConversation?.userId;
 		const selection = conversationGeneration;
@@ -309,6 +307,9 @@
 			await loadConversations();
 		} catch (error) {
 			if (owns(owner, generation)) logger.error('[Chat] Reconnect history failed:', error);
+		} finally {
+			if (owns(owner, generation) && connection === connectionGeneration)
+				connectionStatus = 'Connected';
 		}
 	}
 
