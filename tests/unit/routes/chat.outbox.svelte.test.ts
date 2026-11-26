@@ -42,6 +42,7 @@ vi.mock('$lib/services/chat.service', () => ({
 	}
 }));
 vi.mock('$lib/crypto/signal', () => ({
+	hasLocalKeys: vi.fn().mockResolvedValue(true),
 	initSignalWithRestore: vi.fn().mockResolvedValue(true),
 	isSignalInitialized: () => true,
 	initSignal: vi.fn(),

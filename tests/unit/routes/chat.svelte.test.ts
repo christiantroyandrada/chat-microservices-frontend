@@ -53,6 +53,7 @@ vi.mock('$lib/stores/notification.store', () => ({
 	}
 }));
 vi.mock('$lib/crypto/signal', () => ({
+	hasLocalKeys: vi.fn().mockResolvedValue(true),
 	initSignalWithRestore: vi.fn().mockResolvedValue(true),
 	isSignalInitialized: vi.fn().mockReturnValue(false)
 }));
